@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PMID 41733080 GraRec</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #f4f7f8;
+      font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", "Noto Sans JP", sans-serif;
+      color: #1d2b2f;
+    }
+    .frame {
+      width: 1600px;
+      height: 900px;
+      background: #fbfdfd;
+      padding: 44px 54px 42px;
+      display: flex;
+      flex-direction: column;
+      gap: 26px;
+    }
+    .header {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 24px;
+      align-items: start;
+      border-bottom: 5px solid #2e7d7a;
+      padding-bottom: 24px;
+    }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      color: #2e7d7a;
+      font-size: 26px;
+      font-weight: 800;
+      margin-bottom: 10px;
+    }
+    h1 {
+      margin: 0;
+      font-size: 52px;
+      line-height: 1.12;
+      letter-spacing: 0;
+      color: #162326;
+    }
+    .meta {
+      min-width: 330px;
+      border: 2px solid #bed5d4;
+      border-radius: 8px;
+      padding: 18px 20px;
+      background: #ffffff;
+      font-size: 23px;
+      line-height: 1.45;
+    }
+    .meta strong { color: #245f5d; }
+    .grid {
+      display: grid;
+      grid-template-columns: 1.08fr 1.08fr 1.12fr 1.12fr;
+      gap: 20px;
+      flex: 1;
+    }
+    .card {
+      border: 2px solid #d5e1e2;
+      border-radius: 8px;
+      background: #ffffff;
+      padding: 24px 24px 22px;
+      position: relative;
+      min-height: 0;
+    }
+    .card::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0;
+      right: 0;
+      height: 10px;
+      background: #2e7d7a;
+      border-radius: 7px 7px 0 0;
+    }
+    .card.alt::before { background: #7ba95a; }
+    .card.warn::before { background: #d28b4c; }
+    .card.blue::before { background: #4c7fa3; }
+    .card h2 {
+      margin: 10px 0 18px;
+      font-size: 31px;
+      line-height: 1.2;
+      color: #183234;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .icon {
+      width: 46px;
+      height: 46px;
+      border-radius: 50%;
+      background: #e7f2f1;
+      color: #2e7d7a;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      font-size: 28px;
+      flex: 0 0 auto;
+    }
+    .alt .icon { background: #eef5e8; color: #5f863e; }
+    .warn .icon { background: #fbf0e4; color: #b66c2e; }
+    .blue .icon { background: #e9f1f7; color: #376b8e; }
+    ul {
+      margin: 0;
+      padding-left: 25px;
+      font-size: 25px;
+      line-height: 1.55;
+    }
+    li { margin: 0 0 13px; }
+    .em {
+      display: inline;
+      background: linear-gradient(transparent 62%, #dcedd6 62%);
+      font-weight: 800;
+    }
+    .flow {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 20px 0 8px;
+      font-size: 23px;
+      font-weight: 800;
+      color: #285c5a;
+    }
+    .pill {
+      border-radius: 999px;
+      border: 2px solid #c7d9d8;
+      background: #f7fbfb;
+      padding: 9px 14px;
+      white-space: nowrap;
+    }
+    .arrow { color: #79a65b; font-size: 29px; }
+    .takehome {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 18px;
+      align-items: center;
+      padding: 22px 28px;
+      border-radius: 8px;
+      background: #15383a;
+      color: #ffffff;
+    }
+    .takehome .label {
+      color: #bfe3d6;
+      font-weight: 900;
+      font-size: 26px;
+      white-space: nowrap;
+    }
+    .takehome .message {
+      font-size: 31px;
+      line-height: 1.35;
+      font-weight: 800;
+    }
+    .footer {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 18px;
+      align-items: center;
+      color: #5a6a6d;
+      font-size: 20px;
+    }
+    .note {
+      border-left: 5px solid #d28b4c;
+      padding-left: 14px;
+    }
+  </style>
+</head>
+<body>
+  <main class="frame">
+    <section class="header">
+      <div>
+        <div class="eyebrow">腎臓・糸球体レビュー</div>
+        <h1>ポドサイトスリット膜は<br>抗ネフリン抗体の標的となる</h1>
+      </div>
+      <div class="meta">
+        <div><strong>PMID</strong> 41733080</div>
+        <div><strong>Journal</strong><br>Current Opinion in Nephrology and Hypertension</div>
+        <div><strong>Year</strong> 2026</div>
+        <div><strong>Type</strong> Review</div>
+      </div>
+    </section>
+
+    <section class="grid">
+      <article class="card">
+        <h2><span class="icon">1</span> 背景</h2>
+        <ul>
+          <li>ポドサイトの<span class="em">スリット膜構造</span>に新知見</li>
+          <li>抗ネフリン抗体が後天性ポドサイト疾患で注目</li>
+          <li>小児ステロイド感受性ネフローゼ、MCD、一部FSGSが関連</li>
+        </ul>
+      </article>
+
+      <article class="card alt">
+        <h2><span class="icon">2</span> 新しい理解</h2>
+        <ul>
+          <li>ネフリン、Neph1、関連タンパクが多層構造を形成</li>
+          <li>高解像度プロテオミクス、cryo-ETなどで解析が進展</li>
+          <li>単なるフィルターではなく、シグナル伝達の場として整理</li>
+        </ul>
+      </article>
+
+      <article class="card blue">
+        <h2><span class="icon">3</span> 病態仮説</h2>
+        <div class="flow">
+          <span class="pill">抗ネフリン抗体</span>
+          <span class="arrow">→</span>
+        </div>
+        <div class="flow">
+          <span class="pill">スリット膜障害</span>
+          <span class="arrow">→</span>
+        </div>
+        <div class="flow">
+          <span class="pill">足突起消失</span>
+          <span class="arrow">→</span>
+        </div>
+        <div class="flow">
+          <span class="pill">蛋白尿</span>
+        </div>
+      </article>
+
+      <article class="card warn">
+        <h2><span class="icon">4</span> 臨床への意味</h2>
+        <ul>
+          <li>抗ネフリン抗体測定は診断・予後・治療選択に影響しうる</li>
+          <li>標的エピトープとネフリン内在化の機序は今後の課題</li>
+          <li>広く使える信頼性の高い測定系が必要</li>
+        </ul>
+      </article>
+    </section>
+
+    <section class="takehome">
+      <div class="label">Take Home</div>
+      <div class="message">抗ネフリン抗体は、後天性ポドサイト疾患の診断・予後・治療選択に影響しうる注目標的として整理されている。</div>
+    </section>
+
+    <section class="footer">
+      <div class="note">AI下読み用。診療変更の判断前に、対象疾患、検査法、臨床研究の位置づけを原文で確認。</div>
+      <div>Title: The podocyte slit-diaphragm: target of anti-nephrin antibodies.</div>
+    </section>
+  </main>
+</body>
+</html>

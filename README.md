@@ -65,3 +65,19 @@ python3 scripts/run_mvp.py --pmid 41733080 --graphic-url "https://example.com/PM
 
 - `output/summaries/PMID_41733080.json`
 - `output/prompts/PMID_41733080_graphic_prompt.txt`
+
+## GitHub Pagesで画像をNotionへ反映する
+
+GitHub Pagesを `main` ブランチの `/root` から公開すると、repository内の画像は以下のURLで参照できます。
+
+```text
+https://haman-360.github.io/pubmed-grarec-notion/images/2026/05/PMID_41733080_grarec.png
+```
+
+既存のNotionページに画像URLとページカバーを反映する場合:
+
+```bash
+python3 scripts/update_graphic_url.py --pmid 41733080
+```
+
+このスクリプトは [output/notion_pages.json](/Users/thama/Documents/GitHub/pubmed-grarec-notion/output/notion_pages.json) からNotionページIDを探し、`Graphic URL`、`Graphic Image`、ページカバーを更新します。Notion DBに `Graphic Image` プロパティがない場合は、存在するプロパティだけ更新します。

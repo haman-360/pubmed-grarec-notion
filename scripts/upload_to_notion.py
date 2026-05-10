@@ -33,6 +33,39 @@ def create_notion_page(summary: dict[str, Any], database_id: str, token: str, gr
         raise RuntimeError(f"Notion API error {error.code}: {body}") from error
 
 
+def update_notion_page_cover_and_graphic_url(page_id: str, database_id: str, token: str, graphic_url: str) -> dict[str, Any]:
+    database = retrieve_database(database_id, token)
+    schema = database.get("properties", {})
+    properties: dict[str, Any] = {}
+    _add_property(properties, schema, "Graphic URL", {"url": graphic_url or None})
+    _add_property(
+        properties,
+        schema,
+        "Graphic Image",
+        {"files": [{"name": os.path.basename(graphic_url), "type": "external", "external": {"url": graphic_url}}]},
+    )
+    payload: dict[str, Any] = {
+        "cover": {"type": "external", "external": {"url": graphic_url}},
+        "properties": properties,
+    }
+    request = urllib.request.Request(
+        f"{NOTION_API_URL}/{page_id}",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "Notion-Version": NOTION_VERSION,
+        },
+        method="PATCH",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except HTTPError as error:
+        body = error.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Notion API error {error.code}: {body}") from error
+
+
 def retrieve_database(database_id: str, token: str) -> dict[str, Any]:
     request = urllib.request.Request(
         f"{NOTION_DATABASE_API_URL}/{database_id}",
