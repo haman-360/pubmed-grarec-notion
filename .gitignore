@@ -1,0 +1,10 @@
+.env
+.DS_Store
+__pycache__/
+.pycache_check/
+.swift_module_cache/
+*.pyc
+output/
+!output/.gitkeep
+images/
+!images/.gitkeep
