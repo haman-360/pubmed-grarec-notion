@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import shlex
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote
@@ -47,7 +48,7 @@ def main() -> None:
 
 def resolve_source(source: str | None, search_dirs: list[str] | None) -> Path:
     if source:
-        path = Path(source)
+        path = Path(clean_source_path(source))
         if not path.is_absolute():
             path = ROOT / path
         if not path.exists():
@@ -65,6 +66,17 @@ def resolve_source(source: str | None, search_dirs: list[str] | None) -> Path:
     if not candidates:
         raise SystemExit("No image files found. Pass --source or --search-dir.")
     return max(candidates, key=lambda path: path.stat().st_mtime)
+
+
+def clean_source_path(source: str) -> str:
+    value = source.strip()
+    try:
+        parts = shlex.split(value)
+    except ValueError:
+        parts = []
+    if len(parts) == 1:
+        return parts[0]
+    return value.strip("\"'")
 
 
 if __name__ == "__main__":
