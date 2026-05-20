@@ -25,6 +25,7 @@ def main() -> None:
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--dry-run", action="store_true", help="Print the Notion payload without writing to Notion.")
     mode.add_argument("--notion", action="store_true", help="Create or update the Notion page.")
+    parser.add_argument("--properties-only", action="store_true", help="For existing Notion pages, update properties without appending body blocks.")
     args = parser.parse_args()
 
     path = Path(args.file) if args.file else resolve_summary_path(args.pmid)
@@ -53,7 +54,7 @@ def main() -> None:
     if not token or not database_id:
         raise SystemExit("NOTION_TOKEN and NOTION_DATABASE_ID are required in .env for --notion.")
 
-    page = upsert_chatgpt_summary_page(summary, database_id, token)
+    page = upsert_chatgpt_summary_page(summary, database_id, token, append_children_to_existing=not args.properties_only)
     remember_notion_page(summary.get("pmid"), page)
     print(
         json.dumps(

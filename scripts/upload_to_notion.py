@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from urllib.error import HTTPError
 import urllib.request
 from typing import Any
@@ -71,6 +72,7 @@ def upsert_chatgpt_summary_page(
     summary: dict[str, Any],
     database_id: str,
     token: str,
+    append_children_to_existing: bool = True,
 ) -> dict[str, Any]:
     database = retrieve_database(database_id, token)
     pmid = str(summary.get("pmid", "")).strip()
@@ -80,7 +82,8 @@ def upsert_chatgpt_summary_page(
     if existing_page:
         page_id = existing_page["id"]
         page = update_notion_page(page_id, payload, token)
-        append_block_children(page_id, payload.get("children", []), token)
+        if append_children_to_existing:
+            append_block_children(page_id, payload.get("children", []), token)
         page["import_action"] = "updated"
         return page
 
@@ -401,8 +404,19 @@ def _list(value: Any) -> list[str]:
     if value in (None, ""):
         return []
     if isinstance(value, list):
-        return [str(item)[:100] for item in value if str(item).strip()]
-    return [str(value)[:100]]
+        values = []
+        for item in value:
+            values.extend(_split_select_values(item))
+        return values
+    return _split_select_values(value)
+
+
+def _split_select_values(value: Any) -> list[str]:
+    text = str(value or "").strip()
+    if not text:
+        return []
+    parts = [part.strip() for part in re.split(r"[,、;；]", text)]
+    return [part[:100] for part in parts if part]
 
 
 def _title_property_name(schema: dict[str, Any]) -> str:

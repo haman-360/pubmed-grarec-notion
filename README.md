@@ -126,6 +126,7 @@ python3 scripts/import_chatgpt_summary.py --file input/chatgpt_summaries/PMID_41
 
 JSON内の `PMID`, `title`, `journal`, `year`, `doi`, `topic`, `one_line_summary`, `practice_change`, `human_checked` はNotion DBのプロパティへ登録します。
 `one_line_summary` は既存DBの `Take Home Message` に入ります。
+`topic` は配列でも文字列でも使えます。文字列の場合は `,`、`、`、`;`、`；` で区切るとNotionのmulti-selectに分割して登録します。
 `PICO`, `figure_table_summary`, `main_results`, `safety`, `limitations`, `applicability_to_japanese_pediatric_clinic`, `tomorrow_action` はNotionページ本文に見出し付きで追加します。
 `graphic_url` がある場合は `Graphic URL`, `Graphic Image`, ページカバーへ反映します。
 
