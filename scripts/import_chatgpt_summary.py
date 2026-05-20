@@ -14,6 +14,7 @@ from upload_to_notion import (
 
 ROOT = Path(__file__).resolve().parents[1]
 INPUT_SUMMARIES = ROOT / "input" / "chatgpt_summaries"
+NOTION_PAGES = ROOT / "output" / "notion_pages.json"
 
 
 def main() -> None:
@@ -53,6 +54,7 @@ def main() -> None:
         raise SystemExit("NOTION_TOKEN and NOTION_DATABASE_ID are required in .env for --notion.")
 
     page = upsert_chatgpt_summary_page(summary, database_id, token)
+    remember_notion_page(summary.get("pmid"), page)
     print(
         json.dumps(
             {
@@ -131,6 +133,24 @@ def fallback_database_schema() -> dict[str, Any]:
             "Human Checked": {"type": "checkbox"},
         }
     }
+
+
+def remember_notion_page(pmid: Any, page: dict[str, Any]) -> None:
+    if not pmid or not page.get("id"):
+        return
+    NOTION_PAGES.parent.mkdir(parents=True, exist_ok=True)
+    pages = []
+    if NOTION_PAGES.exists():
+        pages = json.loads(NOTION_PAGES.read_text(encoding="utf-8"))
+
+    record = {"pmid": str(pmid), "notion_page_id": page.get("id"), "url": page.get("url")}
+    for index, existing in enumerate(pages):
+        if str(existing.get("pmid")) == str(pmid):
+            pages[index] = record
+            break
+    else:
+        pages.append(record)
+    NOTION_PAGES.write_text(json.dumps(pages, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":

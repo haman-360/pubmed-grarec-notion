@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from urllib.parse import quote
 
-from upload_to_notion import notion_credentials_from_env, update_notion_page_cover_and_graphic_url
+from upload_to_notion import find_notion_page_by_pmid, notion_credentials_from_env, update_notion_page_cover_and_graphic_url
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -35,14 +35,20 @@ def main() -> None:
 
 
 def find_page_id(pmid: str) -> str:
-    if not NOTION_PAGES.exists():
-        raise SystemExit("No output/notion_pages.json found. Pass --page-id.")
-    pages = json.loads(NOTION_PAGES.read_text(encoding="utf-8"))
-    for page in pages:
-        if str(page.get("pmid")) == str(pmid):
-            page_id = page.get("notion_page_id")
-            if page_id:
-                return page_id
+    if NOTION_PAGES.exists():
+        pages = json.loads(NOTION_PAGES.read_text(encoding="utf-8"))
+        for page in pages:
+            if str(page.get("pmid")) == str(pmid):
+                page_id = page.get("notion_page_id")
+                if page_id:
+                    return page_id
+
+    token, database_id = notion_credentials_from_env()
+    if not token or not database_id:
+        raise SystemExit("NOTION_TOKEN and NOTION_DATABASE_ID are required in .env.")
+    page = find_notion_page_by_pmid(pmid, database_id, token)
+    if page and page.get("id"):
+        return page["id"]
     raise SystemExit(f"No Notion page found for PMID {pmid}. Pass --page-id.")
 
 

@@ -41,6 +41,14 @@ APIキーは `.env` に保存し、GitHubには送信しません。必要な環
 
 PMID 41733080 は [input/pmids.txt](/Users/thama/Documents/GitHub/pubmed-grarec-notion/input/pmids.txt) に入れてあります。
 
+コマンドを覚えずに進めたい場合は、repository直下の `PubMedGraRec.command` をダブルクリックします。
+メニューから以下を選べます。
+
+- ChatGPT精読JSONのdry-run確認
+- Notionへの登録/更新
+- ChatGPT画像のPMID名リネーム
+- グラレコ画像のNotion反映
+
 Notionへ登録せず、要約JSONとグラレコプロンプトだけ作る場合:
 
 ```bash
@@ -108,3 +116,89 @@ JSON内の `PMID`, `title`, `journal`, `year`, `doi`, `topic`, `one_line_summary
 `one_line_summary` は既存DBの `Take Home Message` に入ります。
 `PICO`, `figure_table_summary`, `main_results`, `safety`, `limitations`, `applicability_to_japanese_pediatric_clinic`, `tomorrow_action` はNotionページ本文に見出し付きで追加します。
 `graphic_url` がある場合は `Graphic URL`, `Graphic Image`, ページカバーへ反映します。
+
+## ChatGPTとCodexの役割分担
+
+この運用では、ChatGPTとCodexを以下のように使い分けます。
+
+- ChatGPT: 論文精読JSONを作成する。
+- ChatGPT: 精読JSONや論文内容をもとに、グラレコ画像を作成する。
+- Codex: JSONファイルをrepositoryへ保存し、dry-runでNotion送信内容を確認する。
+- Codex: Notion DBへ精読結果を登録し、既存PMIDがあれば更新する。
+- Codex: グラレコ画像URLを `Graphic URL`, `Graphic Image`, ページカバーへ反映する。
+
+グラレコをChatGPTへ依頼するときの例:
+
+```text
+この論文精読JSONをもとに、小児科医がNotionで一覧したときに内容を一目で把握できるグラレコ画像を作成してください。
+
+条件:
+- 横長 16:9
+- 日本語
+- 論文タイトル、PMID、Journal、Yearを入れる
+- PICO、主な結果、診療への示唆、注意点を視覚的に整理する
+- 数値やカットオフはJSONの内容に忠実にする
+- 誇張した結論にしない
+- 小児クリニックでの実用性が伝わる構成にする
+```
+
+ChatGPTで画像を作成したら、PNGとしてrepository内の `images/YYYY/MM/` に保存し、CodexでNotionへ反映します。
+ChatGPTが作る画像ファイル名は `ChatGPT Image ...png` のような名前でかまいません。
+Codex側でPMIDベースの名前へ整えます。
+
+## ChatGPT精読ページに後からグラレコを追加する
+
+ChatGPT精読JSONを先にNotionへ登録し、あとからグラレコ画像を追加する場合の流れです。
+
+1. グラレコ画像をrepository内へ保存する。
+
+```text
+images/2026/05/PMID_42115808_grarec.png
+```
+
+ChatGPTが作成した画像を `Downloads` や `images/` に保存したあと、以下で最新画像をPMID名へリネームできます。
+
+```bash
+python3 scripts/rename_latest_grarec.py --pmid 42115808
+```
+
+特定の画像ファイルを指定する場合:
+
+```bash
+python3 scripts/rename_latest_grarec.py \
+  --pmid 42115808 \
+  --source "images/2026/05/ChatGPT Image May 20, 2026, 08_08_04 PM.png"
+```
+
+2. GitHub Pagesなどで画像を公開する。
+
+公開URLの例:
+
+```text
+https://haman-360.github.io/pubmed-grarec-notion/images/2026/05/PMID_42115808_grarec.png
+```
+
+3. 既存のNotionページへ画像URLを反映する。
+
+ChatGPT精読JSONから作ったページは `output/notion_pages.json` に記録されていないことがあるため、確実に更新するには `--page-id` を指定します。
+`page_id` は登録時の出力、またはNotionページURL末尾のIDから確認します。
+
+PMID 42115808 の例:
+
+```bash
+python3 scripts/update_graphic_url.py \
+  --pmid 42115808 \
+  --page-id 36615ad2-c8d8-8188-a1a8-f34e2e7ad3c7 \
+  --image-path images/2026/05/PMID_42115808_grarec.png
+```
+
+このコマンドは既存ページの `Graphic URL`, `Graphic Image`, ページカバーを更新します。
+画像ファイルをGitHub Pagesの標準URL以外で公開している場合は、`--base-url` を指定します。
+
+```bash
+python3 scripts/update_graphic_url.py \
+  --pmid 42115808 \
+  --page-id 36615ad2-c8d8-8188-a1a8-f34e2e7ad3c7 \
+  --image-path images/2026/05/PMID_42115808_grarec.png \
+  --base-url https://example.com/pubmed-grarec-notion
+```
