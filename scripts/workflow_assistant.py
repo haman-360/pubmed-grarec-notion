@@ -8,6 +8,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 INPUT_SUMMARIES = ROOT / "input" / "chatgpt_summaries"
+PENDING_SUMMARIES = INPUT_SUMMARIES / "pending"
+DONE_SUMMARIES = INPUT_SUMMARIES / "done"
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 
 
@@ -24,7 +26,8 @@ def main() -> None:
         print("3. ChatGPT画像をPMID名に整理")
         print("4. 画像をGitHub Pagesへ公開")
         print("5. グラレコ画像をNotionに表示")
-        print("6. PMIDを変更する")
+        print("6. この精読JSONを処理済み(done)へ移動")
+        print("7. PMIDを変更する")
         print("q. 終了")
         choice = input("> ").strip().lower()
 
@@ -39,6 +42,8 @@ def main() -> None:
         elif choice == "5":
             update_graphic(pmid)
         elif choice == "6":
+            move_summary_to_done(pmid)
+        elif choice == "7":
             pmid = ask_pmid()
         elif choice in {"q", "quit", "exit"}:
             break
@@ -49,9 +54,11 @@ def main() -> None:
 def ask_pmid() -> str:
     candidates = summary_candidates()
     if candidates:
-        print("見つかったChatGPT精読JSON:")
+        print("未処理のChatGPT精読JSON:")
         for index, (pmid, path) in enumerate(candidates[:5], start=1):
-            print(f"{index}. PMID {pmid}  ({path.name})")
+            print(f"{index}. PMID {pmid}  ({path.relative_to(INPUT_SUMMARIES)})")
+    else:
+        print("未処理JSONが見つかりません。PMIDを直接入力することもできます。")
     value = input("PMIDを入力してください: ").strip()
     if value in {str(index) for index in range(1, min(len(candidates), 5) + 1)}:
         return candidates[int(value) - 1][0]
@@ -68,7 +75,8 @@ def ask_pmid() -> str:
 
 def summary_candidates() -> list[tuple[str, Path]]:
     candidates: list[tuple[str, Path]] = []
-    for path in sorted(INPUT_SUMMARIES.glob("*.json"), key=lambda value: value.stat().st_mtime, reverse=True):
+    paths = list(PENDING_SUMMARIES.glob("*.json")) + list(INPUT_SUMMARIES.glob("*.json"))
+    for path in sorted(paths, key=lambda value: value.stat().st_mtime, reverse=True):
         pmid = pmid_from_summary_file(path)
         if pmid:
             candidates.append((pmid, path))
@@ -136,6 +144,27 @@ def publish_grarec(pmid: str) -> None:
     if not run_command(["git", "push", "origin", branch]):
         return
     print("GitHub Pagesへの反映には少し時間がかかることがあります。反映後に5を実行してください。")
+
+
+def move_summary_to_done(pmid: str) -> None:
+    source = find_active_summary_path(pmid)
+    if not source:
+        print("未処理フォルダに該当JSONが見つかりません。すでにdoneへ移動済みかもしれません。")
+        return
+
+    DONE_SUMMARIES.mkdir(parents=True, exist_ok=True)
+    destination = DONE_SUMMARIES / source.name
+    if destination.exists():
+        destination = DONE_SUMMARIES / f"{source.stem}_{pmid}{source.suffix}"
+    source.replace(destination)
+    print(f"処理済みに移動しました: {destination.relative_to(INPUT_SUMMARIES)}")
+
+
+def find_active_summary_path(pmid: str) -> Path | None:
+    for candidate_pmid, path in summary_candidates():
+        if candidate_pmid == str(pmid):
+            return path
+    return None
 
 
 def latest_grarec_path(pmid: str) -> Path | None:

@@ -23,6 +23,7 @@ Notionに以下のデータベースを作成します。
 5. 画像を公開URL化する。
 6. Notion DBに論文ページを作り、画像URLと要約を入れる。
 7. 医師が原文確認後、`Human Checked` をオンにする。
+8. 処理が終わった精読JSONは `input/chatgpt_summaries/done/` に移す。
 
 運用の詳細は [docs/workflow.md](/Users/thama/Documents/GitHub/pubmed-grarec-notion/docs/workflow.md) を参照してください。
 
@@ -50,6 +51,7 @@ PMID 41733080 は [input/pmids.txt](/Users/thama/Documents/GitHub/pubmed-grarec-
 3. ChatGPT画像をPMID名に整理
 4. 画像をGitHub Pagesへ公開
 5. グラレコ画像をNotionに表示
+6. この精読JSONを処理済み(done)へ移動
 ```
 
 ただし、3以降はChatGPTでグラレコ画像を作ってから実行します。
@@ -98,12 +100,15 @@ python3 scripts/update_graphic_url.py --pmid 41733080
 
 ## ChatGPT精読JSONをNotionへ登録する
 
-ChatGPTの「小児アップデート」プロジェクトで作成した精読JSONは `input/chatgpt_summaries/` に保存します。
+ChatGPTの「小児アップデート」プロジェクトで作成した精読JSONは、まず `input/chatgpt_summaries/pending/` に保存します。
 ファイル名の例:
 
 ```text
-input/chatgpt_summaries/PMID_41733080_chatgpt.json
+input/chatgpt_summaries/pending/PMID_41733080_chatgpt.json
 ```
+
+ファイル名は `PMID_41733080_chatgpt.json` が分かりやすいですが、`41733080.json` のような名前でもJSON内に `pmid` または `PMID` があれば読み取れます。
+すでに `input/chatgpt_summaries/` 直下に置いたJSONも読み取れます。
 
 まずNotionへ送る内容をローカルで確認します。
 これはNotion登録前プレビューで、Notionはまだ変更されません。
@@ -123,6 +128,9 @@ JSON内の `PMID`, `title`, `journal`, `year`, `doi`, `topic`, `one_line_summary
 `one_line_summary` は既存DBの `Take Home Message` に入ります。
 `PICO`, `figure_table_summary`, `main_results`, `safety`, `limitations`, `applicability_to_japanese_pediatric_clinic`, `tomorrow_action` はNotionページ本文に見出し付きで追加します。
 `graphic_url` がある場合は `Graphic URL`, `Graphic Image`, ページカバーへ反映します。
+
+処理が終わったJSONは `PubMedGraRec.command` の `6. この精読JSONを処理済み(done)へ移動` で `input/chatgpt_summaries/done/` に移します。
+`done/` に移すと、次回以降の候補一覧には出にくくなりますが、元データとして残ります。
 
 ## ChatGPTとCodexの役割分担
 
@@ -159,7 +167,7 @@ ChatGPT精読JSONを先にNotionへ登録し、あとからグラレコ画像を
 `PubMedGraRec.command` を使う場合は、以下の順番で進めます。
 
 ```text
-JSONを input/chatgpt_summaries/ に入れる
+JSONを input/chatgpt_summaries/pending/ に入れる
 -> 1. Notion登録前プレビュー
 -> 2. 精読JSONをNotionへ登録/更新
 -> ChatGPTでグラレコ画像を作る
@@ -167,6 +175,7 @@ JSONを input/chatgpt_summaries/ に入れる
 -> 3. ChatGPT画像をPMID名に整理
 -> 4. 画像をGitHub Pagesへ公開
 -> 5. グラレコ画像をNotionに表示
+-> 6. この精読JSONを処理済み(done)へ移動
 ```
 
 1. グラレコ画像をrepository内へ保存する。

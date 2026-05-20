@@ -81,11 +81,11 @@ def resolve_summary_path(pmid: str) -> Path:
     if expected.exists():
         return expected
 
-    named_matches = sorted(INPUT_SUMMARIES.glob(f"*{pmid}*.json"))
+    named_matches = sorted(INPUT_SUMMARIES.rglob(f"*{pmid}*.json"))
     if named_matches:
         return named_matches[0]
 
-    for path in sorted(INPUT_SUMMARIES.glob("*.json")):
+    for path in sorted(INPUT_SUMMARIES.rglob("*.json")):
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
