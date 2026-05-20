@@ -81,3 +81,30 @@ python3 scripts/update_graphic_url.py --pmid 41733080
 ```
 
 このスクリプトは [output/notion_pages.json](/Users/thama/Documents/GitHub/pubmed-grarec-notion/output/notion_pages.json) からNotionページIDを探し、`Graphic URL`、`Graphic Image`、ページカバーを更新します。Notion DBに `Graphic Image` プロパティがない場合は、存在するプロパティだけ更新します。
+
+## ChatGPT精読JSONをNotionへ登録する
+
+ChatGPTの「小児アップデート」プロジェクトで作成した精読JSONは `input/chatgpt_summaries/` に保存します。
+ファイル名の例:
+
+```text
+input/chatgpt_summaries/PMID_41733080_chatgpt.json
+```
+
+まずNotionへ送る内容をローカルで確認します。
+
+```bash
+python3 scripts/import_chatgpt_summary.py --pmid 41733080 --dry-run
+```
+
+問題なければNotion DBへ登録します。DB内に同じ `PMID` のページがある場合は新規作成せず更新します。
+
+```bash
+python3 scripts/import_chatgpt_summary.py --pmid 41733080 --notion
+python3 scripts/import_chatgpt_summary.py --file input/chatgpt_summaries/PMID_41733080_chatgpt.json --notion
+```
+
+JSON内の `PMID`, `title`, `journal`, `year`, `doi`, `topic`, `one_line_summary`, `practice_change`, `human_checked` はNotion DBのプロパティへ登録します。
+`one_line_summary` は既存DBの `Take Home Message` に入ります。
+`PICO`, `figure_table_summary`, `main_results`, `safety`, `limitations`, `applicability_to_japanese_pediatric_clinic`, `tomorrow_action` はNotionページ本文に見出し付きで追加します。
+`graphic_url` がある場合は `Graphic URL`, `Graphic Image`, ページカバーへ反映します。
