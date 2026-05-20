@@ -42,12 +42,18 @@ APIキーは `.env` に保存し、GitHubには送信しません。必要な環
 PMID 41733080 は [input/pmids.txt](/Users/thama/Documents/GitHub/pubmed-grarec-notion/input/pmids.txt) に入れてあります。
 
 コマンドを覚えずに進めたい場合は、repository直下の `PubMedGraRec.command` をダブルクリックします。
-メニューから以下を選べます。
+基本は、PMIDを選んだあとに上から順番に進めます。
 
-- ChatGPT精読JSONのdry-run確認
-- Notionへの登録/更新
-- ChatGPT画像のPMID名リネーム
-- グラレコ画像のNotion反映
+```text
+1. Notion登録前プレビュー
+2. 精読JSONをNotionへ登録/更新
+3. ChatGPT画像をPMID名に整理
+4. 画像をGitHub Pagesへ公開
+5. グラレコ画像をNotionに表示
+```
+
+ただし、3以降はChatGPTでグラレコ画像を作ってから実行します。
+まず精読JSONだけ登録したい場合は、1と2までで完了です。
 
 Notionへ登録せず、要約JSONとグラレコプロンプトだけ作る場合:
 
@@ -100,6 +106,7 @@ input/chatgpt_summaries/PMID_41733080_chatgpt.json
 ```
 
 まずNotionへ送る内容をローカルで確認します。
+これはNotion登録前プレビューで、Notionはまだ変更されません。
 
 ```bash
 python3 scripts/import_chatgpt_summary.py --pmid 41733080 --dry-run
@@ -149,6 +156,18 @@ Codex側でPMIDベースの名前へ整えます。
 ## ChatGPT精読ページに後からグラレコを追加する
 
 ChatGPT精読JSONを先にNotionへ登録し、あとからグラレコ画像を追加する場合の流れです。
+`PubMedGraRec.command` を使う場合は、以下の順番で進めます。
+
+```text
+JSONを input/chatgpt_summaries/ に入れる
+-> 1. Notion登録前プレビュー
+-> 2. 精読JSONをNotionへ登録/更新
+-> ChatGPTでグラレコ画像を作る
+-> 画像をDownloadsまたはimages/に保存
+-> 3. ChatGPT画像をPMID名に整理
+-> 4. 画像をGitHub Pagesへ公開
+-> 5. グラレコ画像をNotionに表示
+```
 
 1. グラレコ画像をrepository内へ保存する。
 
@@ -172,6 +191,9 @@ python3 scripts/rename_latest_grarec.py \
 
 2. GitHub Pagesなどで画像を公開する。
 
+`PubMedGraRec.command` の `4. 画像をGitHub Pagesへ公開` を選ぶと、PMID名に整理した画像だけを `git add`、`commit`、`push` します。
+GitHub Pagesへの反映には少し時間がかかることがあります。
+
 公開URLの例:
 
 ```text
@@ -180,25 +202,24 @@ https://haman-360.github.io/pubmed-grarec-notion/images/2026/05/PMID_42115808_gr
 
 3. 既存のNotionページへ画像URLを反映する。
 
-ChatGPT精読JSONから作ったページは `output/notion_pages.json` に記録されていないことがあるため、確実に更新するには `--page-id` を指定します。
-`page_id` は登録時の出力、またはNotionページURL末尾のIDから確認します。
+`PubMedGraRec.command` の `5. グラレコ画像をNotionに表示` を選ぶと、PMIDからNotionページを探して画像URLを反映します。
+手動で実行する場合は以下のコマンドでも同じことができます。
 
 PMID 42115808 の例:
 
 ```bash
 python3 scripts/update_graphic_url.py \
   --pmid 42115808 \
-  --page-id 36615ad2-c8d8-8188-a1a8-f34e2e7ad3c7 \
   --image-path images/2026/05/PMID_42115808_grarec.png
 ```
 
 このコマンドは既存ページの `Graphic URL`, `Graphic Image`, ページカバーを更新します。
+PMIDからNotionページを探すため、通常は `--page-id` は不要です。
 画像ファイルをGitHub Pagesの標準URL以外で公開している場合は、`--base-url` を指定します。
 
 ```bash
 python3 scripts/update_graphic_url.py \
   --pmid 42115808 \
-  --page-id 36615ad2-c8d8-8188-a1a8-f34e2e7ad3c7 \
   --image-path images/2026/05/PMID_42115808_grarec.png \
   --base-url https://example.com/pubmed-grarec-notion
 ```

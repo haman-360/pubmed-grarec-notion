@@ -27,7 +27,7 @@ def main() -> None:
     mode.add_argument("--notion", action="store_true", help="Create or update the Notion page.")
     args = parser.parse_args()
 
-    path = Path(args.file) if args.file else INPUT_SUMMARIES / f"PMID_{args.pmid}_chatgpt.json"
+    path = Path(args.file) if args.file else resolve_summary_path(args.pmid)
     if not path.is_absolute():
         path = ROOT / path
     summary = normalize_chatgpt_summary(read_json(path))
@@ -76,6 +76,25 @@ def read_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def resolve_summary_path(pmid: str) -> Path:
+    expected = INPUT_SUMMARIES / f"PMID_{pmid}_chatgpt.json"
+    if expected.exists():
+        return expected
+
+    named_matches = sorted(INPUT_SUMMARIES.glob(f"*{pmid}*.json"))
+    if named_matches:
+        return named_matches[0]
+
+    for path in sorted(INPUT_SUMMARIES.glob("*.json")):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            continue
+        if str(value_by_case_insensitive_key(data, "pmid") or "") == str(pmid):
+            return path
+    return expected
+
+
 def normalize_chatgpt_summary(data: dict[str, Any]) -> dict[str, Any]:
     normalized = {str(key).lower(): value for key, value in data.items()}
     aliases = {
@@ -113,6 +132,13 @@ def normalize_chatgpt_summary(data: dict[str, Any]) -> dict[str, Any]:
     if not result.get("title"):
         raise SystemExit("ChatGPT summary JSON must include title.")
     return result
+
+
+def value_by_case_insensitive_key(data: dict[str, Any], key: str) -> Any:
+    for data_key, value in data.items():
+        if str(data_key).lower() == key.lower():
+            return value
+    return None
 
 
 def fallback_database_schema() -> dict[str, Any]:
