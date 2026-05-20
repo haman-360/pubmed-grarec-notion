@@ -1,0 +1,34 @@
+{
+  "pmid": "42115808",
+  "title": "Application of FeNO in the diagnostic and therapeutic algorithm of pediatric asthma: From chronic cough and wheeze to personalized management",
+  "journal": "Allergologia et Immunopathologia",
+  "year": "2026",
+  "doi": "10.15586/aei.v54i3.1576",
+  "topic": "FeNO in pediatric asthma management",
+  "clinical_area": "小児喘息、慢性咳嗽、反復性喘鳴、T2炎症、吸入ステロイド反応性、生物学的製剤",
+  "one_line_summary": "小児喘息におけるFeNOは、単独診断検査ではなく、T2炎症、ICS反応性、減量時リスク、生物学的製剤反応性を補助的に評価するバイオマーカーである。",
+  "why_important": "FeNOを外来で使用している小児科医にとって、20 ppb未満、20–35 ppb、35 ppb超という解釈、交絡因子、ICS減量時の注意点を整理できる実用的な総説である。ただしnarrative reviewであり、診療を大きく変える根拠というより、既存のFeNO運用を見直すための論文である。",
+  "pico": {
+    "p": "喘息症状、慢性咳嗽、反復性喘鳴をもつ小児、または小児喘息患者",
+    "i_or_exposure": "FeNO測定を診断、治療調整、ICS反応性評価、生物学的製剤選択に組み込むこと",
+    "c": "症状評価、スパイロメトリー、通常のガイドラインベース管理のみ",
+    "o": "喘息診断の補助、T2炎症の推定、ICS反応性、増悪リスク、ICS減量時リスク、生物学的製剤への反応予測"
+  },
+  "study_design": "Narrative review",
+  "population_setting": "主に小児喘息、反復性喘鳴、慢性咳嗽をもつ小児を対象とした文献レビュー。未就学児から思春期までを含む。一般小児外来にも関係するが、重症喘息、生物学的製剤、専門施設での評価に関する内容も多い。",
+  "figure_table_summary": {
+    "figure_1": "文献選択フロー。データベース515件、レジスター5件から重複65件を除外し、455件をスクリーニング、92件を適格性評価、最終的に80文献を定性的統合に採用している。",
+    "table_1": "FeNO値に影響する因子の整理。FeNOを上げる因子として男性、年齢・身長増加、アレルギー性鼻炎、アトピー性皮膚炎、好酸球性気管支炎、急性ウイルス感染、強い運動などがあり、下げる因子として急性気管支収縮、能動・受動喫煙、吸入・全身ステロイドなどが示されている。",
+    "main_figures_tables": "Figure 5はNICE、SIGN、ERS、GINA、ATSなど各ガイドラインのFeNO推奨の違いを示している。Figure 6は喘息症状のある小児に対し、スパイロメトリー可否とFeNO値を組み合わせ、20 ppb未満、20–35 ppb、35 ppb超で判断する臨床アルゴリズムを提示している。Table 2はFeNOの臨床応用、Table 3は診断・予測研究、Table 4は治療調整・ICS反応性、Table 5は生物学的製剤反応予測を整理している。",
+    "supplement": "不明"
+  },
+  "main_results": "FeNOは喘息診断において感度より特異度が高く、喘息の除外より診断支持に向く。引用されたメタ解析では特異度0.82、感度0.65とされる。小児RCT 9件1885人のメタ解析では、FeNOガイド下管理により増悪オッズが低下し、OR 0.77、95% CI 0.62–0.94であった。一方でRAACENO試験では有意な増悪減少が示されず、FeNOガイド下管理の有効性は一貫していない。FeNO 20 ppb未満は好酸球性炎症の可能性が低く、35 ppb超はT2炎症およびICS反応性を示唆し、20–35 ppbはグレーゾーンとされる。",
+  "safety": "FeNO測定自体は非侵襲的で反復可能な検査であり、直接的な有害事象は大きく扱われていない。臨床上の注意点は、FeNO高値だけでICSを過剰に増量すること、鼻炎・皮膚炎・感染・受動喫煙などの交絡因子を見落とすことである。生物学的製剤では感染リスクやまれなアレルギー反応・自己免疫反応が注意点として記載されている。",
+  "limitations": "Narrative reviewであり、PRISMAに準拠したsystematic reviewではない。研究選択に主観性、publication bias、英語文献に限定したことによるselection biasがあり得る。小児FeNO研究は成人に比べてエビデンスが少なく、ガイドライン間で推奨やカットオフ値が一致していない。",
+  "applicability_to_japanese_pediatric_clinic": "FeNOを測定できる日本の小児科外来では、喘息診断が曖昧な学童、慢性咳嗽、反復性喘鳴、ICS導入・増量・減量判断、吸入手技やアドヒアランス確認に応用しやすい。一方、未就学児では測定成功率や協力の問題があり、全例スクリーニングではなく判断に迷う場面での補助検査として使うのが現実的である。",
+  "practice_change": "Unclear",
+  "practice_change_reason": "この論文だけでFeNOの新規導入を強く推奨するほどの根拠ではない。一方で、すでにFeNOを使用している外来では、カットオフ、交絡因子、ICS減量時のリスク評価を見直す価値がある。",
+  "tomorrow_action": "FeNO高値を見たときは喘息悪化だけでなく、アレルギー性鼻炎、アトピー性皮膚炎、急性ウイルス感染、測定前運動、受動喫煙、吸入手技、アドヒアランスを確認する。FeNO 35 ppb超で症状がある学童ではT2炎症性喘息とICS反応性を支持するが、FeNO低値でも喘息は否定しない。減量を考える場面では、症状が安定していてもFeNO高値ならstep downは慎重に行う。",
+  "human_checked": false,
+  "source": "ChatGPT 小児アップデート Thinking 精読"
+}
