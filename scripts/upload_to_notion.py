@@ -155,13 +155,14 @@ def build_chatgpt_summary_payload(
     _add_property(properties, schema, "Topic", {"multi_select": [{"name": value} for value in _list(summary.get("topic"))]})
     _add_property(properties, schema, "Practice Change", {"select": _select(summary.get("practice_change"))})
     _add_property(properties, schema, "Take Home Message", {"rich_text": [{"text": {"content": _truncate(summary.get("one_line_summary", ""), 2000)}}]})
-    _add_property(properties, schema, "Graphic URL", {"url": graphic_url or None})
-    _add_property(
-        properties,
-        schema,
-        "Graphic Image",
-        {"files": [{"name": os.path.basename(graphic_url), "type": "external", "external": {"url": graphic_url}}]} if graphic_url else {"files": []},
-    )
+    if graphic_url:
+        _add_property(properties, schema, "Graphic URL", {"url": graphic_url})
+        _add_property(
+            properties,
+            schema,
+            "Graphic Image",
+            {"files": [{"name": os.path.basename(graphic_url), "type": "external", "external": {"url": graphic_url}}]},
+        )
     _add_property(properties, schema, "Created By AI", {"checkbox": True})
     _add_property(properties, schema, "Human Checked", {"checkbox": _checkbox(summary.get("human_checked"))})
 
