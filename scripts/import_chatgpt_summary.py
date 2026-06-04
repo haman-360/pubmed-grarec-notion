@@ -74,7 +74,7 @@ def main() -> None:
 def read_json(path: Path) -> dict[str, Any]:
     if not path.exists():
         raise SystemExit(f"ChatGPT summary JSON not found: {path}")
-    return json.loads(path.read_text(encoding="utf-8"))
+    return json.loads(strip_markdown_json_fence(path.read_text(encoding="utf-8")))
 
 
 def resolve_summary_path(pmid: str) -> Path:
@@ -88,12 +88,25 @@ def resolve_summary_path(pmid: str) -> Path:
 
     for path in sorted(INPUT_SUMMARIES.rglob("*.json")):
         try:
-            data = json.loads(path.read_text(encoding="utf-8"))
+            data = json.loads(strip_markdown_json_fence(path.read_text(encoding="utf-8")))
         except json.JSONDecodeError:
             continue
         if str(value_by_case_insensitive_key(data, "pmid") or "") == str(pmid):
             return path
     return expected
+
+
+def strip_markdown_json_fence(text: str) -> str:
+    stripped = text.strip()
+    if not stripped.startswith("```"):
+        return stripped
+
+    lines = stripped.splitlines()
+    if lines and lines[0].strip().startswith("```"):
+        lines = lines[1:]
+    if lines and lines[-1].strip() == "```":
+        lines = lines[:-1]
+    return "\n".join(lines).strip()
 
 
 def normalize_chatgpt_summary(data: dict[str, Any]) -> dict[str, Any]:

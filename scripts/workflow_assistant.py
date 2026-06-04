@@ -85,7 +85,7 @@ def summary_candidates() -> list[tuple[str, Path]]:
 
 def pmid_from_summary_file(path: Path) -> str:
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(strip_markdown_json_fence(path.read_text(encoding="utf-8")))
     except json.JSONDecodeError:
         return ""
     for key, value in data.items():
@@ -96,6 +96,19 @@ def pmid_from_summary_file(path: Path) -> str:
         if part.isdigit():
             return part
     return path.stem if path.stem.isdigit() else ""
+
+
+def strip_markdown_json_fence(text: str) -> str:
+    stripped = text.strip()
+    if not stripped.startswith("```"):
+        return stripped
+
+    lines = stripped.splitlines()
+    if lines and lines[0].strip().startswith("```"):
+        lines = lines[1:]
+    if lines and lines[-1].strip() == "```":
+        lines = lines[:-1]
+    return "\n".join(lines).strip()
 
 
 def rename_grarec(pmid: str) -> None:
