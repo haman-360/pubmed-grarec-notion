@@ -12,12 +12,12 @@ Notionに以下のデータベースを作成します。
 - Gallery名: `画像ギャラリー`
 - Galleryのカードプレビュー: `Graphic Image` またはページカバー
 
-詳しいプロパティ定義は [notion/database_schema.md](/Users/thama/Documents/GitHub/pubmed-grarec-notion/notion/database_schema.md) を参照してください。
+詳しいプロパティ定義は [notion/database_schema.md](notion/database_schema.md) を参照してください。
 
 ## 最初の運用
 
 1. PubMedで論文を選ぶ。
-2. PMIDを [input/pmids.txt](/Users/thama/Documents/GitHub/pubmed-grarec-notion/input/pmids.txt) に記録する。
+2. PMIDを [input/pmids.txt](input/pmids.txt) に記録する。
 3. AI要約とグラレコ用プロンプトを作る。
 4. グラレコ画像を `images/YYYY/MM/PMID_xxxxxxxx.png` に保存する。
 5. 画像を公開URL化する。
@@ -25,7 +25,7 @@ Notionに以下のデータベースを作成します。
 7. 医師が原文確認後、`Human Checked` をオンにする。
 8. 処理が終わった精読JSONは `input/chatgpt_summaries/done/` に移す。
 
-運用の詳細は [docs/workflow.md](/Users/thama/Documents/GitHub/pubmed-grarec-notion/docs/workflow.md) を参照してください。
+運用の詳細は [docs/workflow.md](docs/workflow.md) を参照してください。
 
 ## 自動化のMVP
 
@@ -36,11 +36,11 @@ Notionに以下のデータベースを作成します。
 - 手動指定した画像URLをNotionへ登録
 - Notionページのカバー画像または画像プロパティにグラレコを設定
 
-APIキーは `.env` に保存し、GitHubには送信しません。必要な環境変数は [.env.example](/Users/thama/Documents/GitHub/pubmed-grarec-notion/.env.example) を参照してください。
+APIキーは `.env` に保存し、GitHubには送信しません。必要な環境変数は [.env.example](.env.example) を参照してください。
 
 ## 実行方法
 
-PMID 41733080 は [input/pmids.txt](/Users/thama/Documents/GitHub/pubmed-grarec-notion/input/pmids.txt) に入れてあります。
+PMID 41733080 は [input/pmids.txt](input/pmids.txt) に入れてあります。
 
 コマンドを覚えずに進めたい場合は、repository直下の `PubMedGraRec.command` をダブルクリックします。
 基本は、PMIDを選んだあとに上から順番に進めます。
@@ -96,7 +96,7 @@ https://haman-360.github.io/pubmed-grarec-notion/images/2026/05/PMID_41733080_gr
 python3 scripts/update_graphic_url.py --pmid 41733080
 ```
 
-このスクリプトは [output/notion_pages.json](/Users/thama/Documents/GitHub/pubmed-grarec-notion/output/notion_pages.json) からNotionページIDを探し、`Graphic URL`、`Graphic Image`、ページカバーを更新します。Notion DBに `Graphic Image` プロパティがない場合は、存在するプロパティだけ更新します。
+このスクリプトは [output/notion_pages.json](output/notion_pages.json) からNotionページIDを探し、`Graphic URL`、`Graphic Image`、ページカバーを更新します。Notion DBに `Graphic Image` プロパティがない場合は、存在するプロパティだけ更新します。
 
 ## ChatGPT精読JSONをNotionへ登録する
 

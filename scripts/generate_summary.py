@@ -32,27 +32,53 @@ def generate_summary(article: PubMedArticle, topic: list[str] | None = None) -> 
 
 
 def generate_graphic_prompt(summary: dict[str, Any]) -> str:
-    topics = ", ".join(summary.get("topic") or [])
+    topics = ", ".join(_prompt_list(summary.get("topic")))
+    study_type = str(summary.get("study_type") or summary.get("study_design") or "")
+    layout_guidance = graphic_layout_guidance(study_type)
     return f"""以下の論文情報をもとに、日本語の医師向けグラフィカルレコード画像を1枚作成してください。
 
 目的：医師が30秒で内容を把握できること。
 
 デザイン条件：
-- 横長16:9
-- 白背景
-- 青・緑・グレーを基調
-- 学会スライド風
-- 文字は読みやすく大きめ
-- アイコンと矢印を使う
-- 3〜4ブロック構成
+- 用途: scientific-educational
+- Asset type: Japanese medical graphical abstract
+- 横長16:9、1600x900
+- 白背景、tealを介入/主題、coralを比較/注意、navyを本文、light grayを区切り線に使う
+- クリアな医学誌風インフォグラフィック。装飾よりも、密度があり読みやすい誌面構成を優先
+- 日本語テキストは画像内に最初から正確に描画し、後から追加しない
+- 文字はサムネイルでも読める大きさ。タイトルは大きく、本文は短く
+- アイコン、矢印、簡潔な患者/研究/臓器/検査/モデルの図を使う
 - 数字は提供されたものだけ使用し、推測で追加しない
 
 構成：
-1. 左上：論文タイトル、PMID、Journal、Year
-2. 左：対象・研究デザイン
-3. 中央：介入、曝露、比較、評価項目
-4. 右：主要結果
-5. 下段：Take Home Message
+1. 最上段：大きな日本語タイトル
+2. タイトル下：短いサブタイトルまたは比較軸
+3. 中央：研究デザインに合わせた主ビジュアル
+4. 下段：3つの結果カード
+5. 右下：短い結論バッジ
+6. 小さく：PMID、Journal、Year
+
+画像内に入れるテキスト枠：
+- Title: Take Home Messageを日本語で短く
+- Subtitle: Topicまたは比較軸を日本語で短く
+- Left label: 対象・介入・曝露・入力のいずれか
+- Left small text: N数または重要な条件。なければ「原文確認」
+- Right label: 比較・参照基準・アウトカム・臨床的意味のいずれか
+- Right small text: 主要指標。なければ「数値は原文確認」
+- Bottom card 1: 主要結果
+- Bottom card 2: 臨床への影響
+- Bottom card 3: 注意点・限界
+- Conclusion badge: Take Home Messageをさらに短く
+
+研究デザイン別の中央ビジュアル：
+{layout_guidance}
+
+制約：
+- 余計な英単語、ランダム文字、透かし、ロゴを入れない
+- 日本語の誤字・文字化けを避ける
+- 略語はTXI、WLI、AI、CT、MRIなど不可避なものだけ英字可
+- 結論を原文より強くしない
+- レイアウトは装飾的ではなく、医学誌・学会抄録風にする
 
 論文情報：
 タイトル：{summary.get("title", "")}
@@ -60,9 +86,9 @@ PMID：{summary.get("pmid", "")}
 Journal：{summary.get("journal", "")}
 Year：{summary.get("year", "")}
 Topic：{topics}
-研究デザイン：{summary.get("study_type", "")}
+研究デザイン：{study_type}
 Abstract：
-{summary.get("source", {}).get("abstract", "")}
+{_source_abstract(summary)}
 
 日本語要約：
 {summary.get("summary_jp", "")}
@@ -71,8 +97,59 @@ Abstract：
 {summary.get("clinical_impact", "")}
 
 Take Home Message：
-{summary.get("take_home_message", "")}
+{summary.get("take_home_message") or summary.get("one_line_summary", "")}
 """
+
+
+def graphic_layout_guidance(study_type: str) -> str:
+    normalized = study_type.lower()
+    if "random" in normalized or normalized == "rct":
+        return (
+            "- RCT: 左に多施設ランダム化試験と患者数、中央に介入群と比較群の並列パネル、"
+            "下段に数値アウトカムカード、右下に結論バッジ"
+        )
+    if "総説" in study_type or "専門家" in study_type or "expert" in normalized:
+        return (
+            "- Review: 背景、病態/機序、臨床的意味、今後の課題を4ブロックで整理"
+        )
+    if "systematic" in normalized or "meta" in normalized:
+        return (
+            "- Systematic review/meta-analysis: 検索フロー、採用研究数、pooled result風カード、"
+            "異質性/確実性カードを配置"
+        )
+    if "diagnostic" in normalized or "ai" in normalized or "model" in normalized:
+        return (
+            "- Diagnostic/AI model: 入力データ、index test/model、参照基準、外部検証、"
+            "性能指標を左から右へ流す"
+        )
+    if "observ" in normalized or "cohort" in normalized or "case-control" in normalized:
+        return (
+            "- Observational study: コホート/曝露/比較/アウトカムのタイムラインと、"
+            "調整済み結果カードを配置"
+        )
+    if "review" in normalized:
+        return (
+            "- Review: 背景、病態/機序、臨床的意味、今後の課題を4ブロックで整理"
+        )
+    return (
+        "- Original/non-RCT study: 対象集団、方法/介入または曝露、主要アウトカム、"
+        "臨床的意味を流れ図として整理"
+    )
+
+
+def _prompt_list(value: Any) -> list[str]:
+    if value in (None, ""):
+        return []
+    if isinstance(value, list):
+        return [str(item) for item in value if item not in (None, "")]
+    return [str(value)]
+
+
+def _source_abstract(summary: dict[str, Any]) -> str:
+    source = summary.get("source")
+    if isinstance(source, dict):
+        return str(source.get("abstract") or "")
+    return ""
 
 
 def infer_topics(article: PubMedArticle) -> list[str]:

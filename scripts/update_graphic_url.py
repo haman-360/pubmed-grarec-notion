@@ -11,6 +11,7 @@ from upload_to_notion import find_notion_page_by_pmid, notion_credentials_from_e
 
 ROOT = Path(__file__).resolve().parents[1]
 NOTION_PAGES = ROOT / "output" / "notion_pages.json"
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 
 
 def main() -> None:
@@ -26,7 +27,7 @@ def main() -> None:
         raise SystemExit("NOTION_TOKEN and NOTION_DATABASE_ID are required in .env.")
 
     page_id = args.page_id or find_page_id(args.pmid)
-    image_path = args.image_path or f"images/2026/05/PMID_{args.pmid}_grarec.png"
+    image_path = normalize_image_path(args.image_path) if args.image_path else find_latest_grarec_path(args.pmid)
     base_url = (args.base_url or os.getenv("GITHUB_PAGES_BASE_URL") or "https://haman-360.github.io/pubmed-grarec-notion").rstrip("/")
     graphic_url = f"{base_url}/{quote(image_path)}"
 
@@ -50,6 +51,29 @@ def find_page_id(pmid: str) -> str:
     if page and page.get("id"):
         return page["id"]
     raise SystemExit(f"No Notion page found for PMID {pmid}. Pass --page-id.")
+
+
+def find_latest_grarec_path(pmid: str) -> str:
+    image_root = ROOT / "images"
+    candidates = [
+        path
+        for path in image_root.rglob(f"PMID_{pmid}_grarec.*")
+        if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS
+    ]
+    if not candidates:
+        raise SystemExit(f"No grarec image found for PMID {pmid}. Pass --image-path.")
+    latest = max(candidates, key=lambda path: path.stat().st_mtime)
+    return latest.relative_to(ROOT).as_posix()
+
+
+def normalize_image_path(image_path: str) -> str:
+    path = Path(image_path).expanduser()
+    if path.is_absolute():
+        try:
+            return path.relative_to(ROOT).as_posix()
+        except ValueError as error:
+            raise SystemExit(f"Image path must be inside this repository: {path}") from error
+    return path.as_posix()
 
 
 if __name__ == "__main__":
