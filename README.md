@@ -52,10 +52,12 @@ PMID 41733080 は [input/pmids.txt](input/pmids.txt) に入れてあります。
 4. 画像をGitHub Pagesへ公開
 5. グラレコ画像をNotionに表示
 6. この精読JSONを処理済み(done)へ移動
+8. pending全件を一括処理
 ```
 
 ただし、3以降はChatGPTでグラレコ画像を作ってから実行します。
 まず精読JSONだけ登録したい場合は、1と2までで完了です。
+複数件をまとめて処理する場合は、JSONを `input/chatgpt_summaries/pending/` に入れ、グラレコ画像を `images/YYYY/MM/` に保存したあと、8を選びます。
 
 Notionへ登録せず、要約JSONとグラレコプロンプトだけ作る場合:
 
@@ -161,6 +163,33 @@ JSON内の `PMID`, `title`, `journal`, `year`, `doi`, `topic`, `one_line_summary
 ChatGPTで画像を作成したら、PNGとしてrepository内の `images/YYYY/MM/` に保存し、CodexでNotionへ反映します。
 ChatGPTが作る画像ファイル名は `ChatGPT Image ...png` のような名前でかまいません。
 Codex側でPMIDベースの名前へ整えます。
+
+## pending全件を一括処理する
+
+複数論文をまとめて登録する場合は、以下の流れにすると手作業を減らせます。
+
+```text
+1. Web版ChatGPTでPDFから精読JSONを作る
+2. JSONを input/chatgpt_summaries/pending/ に保存する
+3. Web版ChatGPTでJSONからグラレコ画像を作る
+4. 画像を images/YYYY/MM/ に保存する
+5. PubMedGraRec.command の 8. pending全件を一括処理 を選ぶ
+```
+
+一括処理では、まずdry-runで対象PMID、JSON、画像候補、Notion登録予定を表示します。
+確認後に、画像のPMID名整理、GitHub Pages公開、Notion登録/更新、画像URL反映、JSONの `done/` 移動をまとめて行います。
+
+手動で確認する場合:
+
+```bash
+python3 scripts/batch_process_grarec.py --dry-run
+```
+
+手動で実行する場合:
+
+```bash
+python3 scripts/batch_process_grarec.py --yes
+```
 
 ## ChatGPT精読ページに後からグラレコを追加する
 
