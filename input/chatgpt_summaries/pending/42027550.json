@@ -1,0 +1,34 @@
+{
+  "pmid": "42027550",
+  "title": "Systematic Review of IgA Nephropathy Coexisting With Alport Syndrome",
+  "journal": "Kidney International Reports",
+  "year": "2026",
+  "doi": "10.1016/j.ekir.2026.106500",
+  "topic": "IgA腎症とAlport症候群の併存",
+  "clinical_area": "小児腎臓・学校検尿・血尿蛋白尿・遺伝性腎疾患",
+  "one_line_summary": "IgA腎症とAlport症候群の併存例81例を整理し、IgAN-ASは免疫性IgA沈着と糸球体基底膜異常が重なるheterogeneousなdual pathologyで、若年でも腎予後不良例が少なくないことを示したsystematic review。",
+  "why_important": "小児外来で血尿・蛋白尿、特に家族歴を伴う症例を診る際に、IgA腎症だけでなくCOL4A3/COL4A4/COL4A5関連疾患やAlport症候群の合併を考える必要があることを示す。治療として免疫抑制に反応する例もあるが、構造的GBM異常が背景にあり、腎予後を過小評価しないことが重要である。",
+  "pico": {
+    "p": "IgA腎症とAlport症候群の両方の診断基準を満たす小児・成人患者。自施設小児5例と既報76例、合計81例。",
+    "i_or_exposure": "メサンギウムIgA優位沈着と、GBM異常またはCOL4A3/COL4A4/COL4A5 pathogenic/likely pathogenic variantの併存、すなわちIgAN-AS。",
+    "c": "明確な介入比較群はない。年齢、小児と成人、典型的ASのGBM変化の有無、遺伝形式、治療反応の有無で比較。",
+    "o": "臨床像、蛋白尿の程度、病理所見、遺伝子変異、Gd-IgA1など免疫学的所見、免疫抑制治療反応、腎エンドポイント。"
+  },
+  "study_design": "自施設後ろ向き小児症例シリーズとsystematic reviewを組み合わせた観察研究。PubMed、Scopus、Web of Science、Wanfang Data、CNKIを検索し、2025年8月までの文献17報を採用。症例報告・症例シリーズ中心であり、治療効果の因果推論は限定的。",
+  "population_setting": "自施設では2015年から2023年までにIgAN-ASと診断された18歳未満の小児5例を対象。systematic reviewでは、初回腎生検でメサンギウムIgA優位または共優位沈着を示すIgA腎症に、電子顕微鏡でのGBM異常、IV型コラーゲン染色異常、またはCOL4A3/COL4A4/COL4A5のpathogenic/likely pathogenic variantを伴う症例を対象とした。全体で81例、72家系。",
+  "figure_table_summary": {
+    "figure_1": "自施設小児IgAN-AS例でIgAとKM55、すなわちgalactose-deficient IgA1の二重染色を提示。case 1とcase 2はKM55陽性、case 5は陰性で、IgAN-ASのIgA沈着が全例で典型的Gd-IgA1陽性IgANとは限らないことを示す。",
+    "table_1": "自施設5小児例の臨床像。全例に血尿があり、4例に家族歴がある。蛋白尿は幅があり、5例中3例が最終的にCKD G3〜G4へ進行している。",
+    "main_figures_tables": "Figure 2は文献選択フローで最終17研究を採用。Table 2は自施設例の病理・遺伝子所見を示し、IgA沈着とGBM菲薄化または典型的AS変化が併存。Table 3では全体の病理・遺伝子所見として、M1 25.9%、E1 11.9%、S1 37.3%、T1/T2 13.6%、C1/C2 20.3%、典型的ASのGBM変化28.8%、GBM菲薄化69.5%、COL4A4ヘテロ接合41.5%を示す。Table 4では典型的ASのGBM変化あり群でnephrotic-range proteinuriaが多く、男性XLASが多い。Table 5では免疫抑制治療19例を示し、評価可能14例中CR 1例、PR 9例、無寛解4例。",
+    "supplement": "Supplementary Tables S1〜S3に、文献由来76例の臨床病理所見、遺伝子所見、免疫抑制治療内容が整理されている。"
+  },
+  "main_results": "全81例中、顕微鏡的血尿はデータのある64例すべてに認められ、肉眼的血尿は24例、37.5%。個別蛋白尿データのある25例では15例、60.0%がnephrotic-range proteinuriaであり、小児では14/19、73.7%、成人では3/34、8.8%で小児に多かった。77例にCOL4A3/COL4A4/COL4A5のpathogenic/likely pathogenic variantがあり、66種類の変異を認めた。免疫抑制治療反応を評価できた14例中、CR 7.1%、PR 64.3%、無寛解28.6%。フォローアップデータのある27例中11例、40.7%がeGFR <60 ml/min/1.73m2またはESKDの腎エンドポイントに到達した。",
+  "safety": "免疫抑制薬としてステロイド、シクロスポリン、タクロリムス、ミコフェノール酸モフェチル、シクロホスファミドなどが使用されているが、有害事象は体系的に報告されていない。したがって、この論文から安全性を評価することはできない。",
+  "limitations": "後ろ向き症例シリーズと症例報告の集積であり、データ欠損、腎生検・遺伝子検査・Gd-IgA1測定・治療選択の非標準化がある。症例数は限られ、サブグループ解析や予後因子解析には不十分。中国からのデータが多く地域バイアスがある。AS患者の偶発的IgA沈着と真のIgA腎症を区別する高感度・高特異度バイオマーカーがない点も重要な限界。",
+  "applicability_to_japanese_pediatric_clinic": "直接治療変更につながる論文ではないが、学校検尿や小児外来で血尿・蛋白尿を評価する際には有用。血尿に蛋白尿が持続する、家族歴がある、難聴や眼症状がある、IgA腎症として経過をみているが蛋白尿が強い、ステロイド反応が不十分、腎機能低下がある場合は、Alport症候群やCOL4A3/COL4A4/COL4A5関連疾患の合併を考え、腎臓専門医へつなぐ意義がある。",
+  "practice_change": "Unclear",
+  "practice_change_reason": "この論文だけで一般小児外来の治療を変更する根拠にはならない。ただし、血尿・蛋白尿・家族歴を伴う児で、IgA腎症だけでなくAlport症候群やCOL4A3/COL4A4/COL4A5関連疾患を意識し、早めに専門医評価へつなぐ診療姿勢は強化すべきである。",
+  "tomorrow_action": "学校検尿後の血尿・蛋白尿フォローでは、尿蛋白/Cr比、血圧、腎機能、家族歴、難聴・眼症状の有無を確認する。血尿＋持続蛋白尿、家族歴あり、腎機能低下、IgA腎症としては経過が重い症例では、腎臓専門医に紹介し、腎生検所見の再確認や遺伝子検査の適応を相談する。",
+  "human_checked": false,
+  "source": "ChatGPT 小児アップデート Thinking 精読"
+}
