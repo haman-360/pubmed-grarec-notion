@@ -3,6 +3,7 @@
 __pycache__/
 .pycache_check/
 .swift_module_cache/
+.build/
 *.pyc
 output/*
 !output/.gitkeep

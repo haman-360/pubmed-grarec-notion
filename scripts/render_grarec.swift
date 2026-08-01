@@ -1,221 +1,170 @@
 import AppKit
 import Foundation
 
-struct Style {
-    let bg = NSColor(calibratedRed: 0.984, green: 0.992, blue: 0.992, alpha: 1)
-    let ink = NSColor(calibratedRed: 0.098, green: 0.137, blue: 0.149, alpha: 1)
-    let muted = NSColor(calibratedRed: 0.353, green: 0.416, blue: 0.427, alpha: 1)
-    let teal = NSColor(calibratedRed: 0.180, green: 0.490, blue: 0.478, alpha: 1)
-    let green = NSColor(calibratedRed: 0.482, green: 0.663, blue: 0.353, alpha: 1)
-    let orange = NSColor(calibratedRed: 0.824, green: 0.545, blue: 0.298, alpha: 1)
-    let blue = NSColor(calibratedRed: 0.298, green: 0.498, blue: 0.639, alpha: 1)
-    let border = NSColor(calibratedRed: 0.835, green: 0.882, blue: 0.886, alpha: 1)
-    let white = NSColor.white
+guard CommandLine.arguments.count >= 3 else {
+    fputs("Usage: swift scripts/render_grarec.swift summary.json output.png\n", stderr)
+    exit(2)
 }
 
-let style = Style()
-let size = NSSize(width: 1600, height: 900)
-let output = CommandLine.arguments.count > 1
-    ? CommandLine.arguments[1]
-    : "images/2026/05/PMID_41733080_grarec.png"
+let summaryURL = URL(fileURLWithPath: CommandLine.arguments[1])
+let outputURL = URL(fileURLWithPath: CommandLine.arguments[2])
+let data = try Data(contentsOf: summaryURL)
+guard let summary = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+    fatalError("Summary JSON must be an object")
+}
+
+struct Palette {
+    let background = NSColor(calibratedRed: 0.965, green: 0.979, blue: 0.981, alpha: 1)
+    let paper = NSColor.white
+    let ink = NSColor(calibratedRed: 0.075, green: 0.130, blue: 0.150, alpha: 1)
+    let muted = NSColor(calibratedRed: 0.335, green: 0.405, blue: 0.430, alpha: 1)
+    let teal = NSColor(calibratedRed: 0.075, green: 0.475, blue: 0.455, alpha: 1)
+    let green = NSColor(calibratedRed: 0.340, green: 0.625, blue: 0.390, alpha: 1)
+    let blue = NSColor(calibratedRed: 0.220, green: 0.455, blue: 0.675, alpha: 1)
+    let orange = NSColor(calibratedRed: 0.850, green: 0.500, blue: 0.260, alpha: 1)
+    let border = NSColor(calibratedRed: 0.815, green: 0.865, blue: 0.875, alpha: 1)
+    let dark = NSColor(calibratedRed: 0.055, green: 0.205, blue: 0.225, alpha: 1)
+}
+
+let palette = Palette()
+let canvas = NSSize(width: 1600, height: 900)
+
+func value(_ key: String, fallback: String = "") -> String {
+    guard let raw = summary[key], !(raw is NSNull) else { return fallback }
+    if let text = raw as? String { return text }
+    if let values = raw as? [Any] { return values.map { readable($0) }.joined(separator: "、") }
+    if let dictionary = raw as? [String: Any] {
+        let preferred = ["p", "i_or_exposure", "c", "o"]
+        let labels = ["p": "P", "i_or_exposure": "I/E", "c": "C", "o": "O"]
+        let ordered = preferred.filter { dictionary[$0] != nil } + dictionary.keys.filter { !preferred.contains($0) }.sorted()
+        return ordered.map { "\(labels[$0] ?? $0): \(readable(dictionary[$0]!))" }.joined(separator: "\n")
+    }
+    return String(describing: raw)
+}
+
+func readable(_ raw: Any) -> String {
+    if let text = raw as? String { return text }
+    if let values = raw as? [Any] { return values.map { readable($0) }.joined(separator: "、") }
+    if let dictionary = raw as? [String: Any] {
+        return dictionary.keys.sorted().map { "\($0): \(readable(dictionary[$0]!))" }.joined(separator: " / ")
+    }
+    return String(describing: raw)
+}
 
 func mapped(_ rect: NSRect) -> NSRect {
-    NSRect(x: rect.minX, y: size.height - rect.minY - rect.height, width: rect.width, height: rect.height)
+    NSRect(x: rect.minX, y: canvas.height - rect.minY - rect.height, width: rect.width, height: rect.height)
 }
 
-func mapped(_ point: NSPoint) -> NSPoint {
-    NSPoint(x: point.x, y: size.height - point.y)
-}
-
-func font(_ size: CGFloat, weight: NSFont.Weight = .regular) -> NSFont {
+func font(_ size: CGFloat, _ weight: NSFont.Weight = .regular) -> NSFont {
     let candidates = ["Hiragino Sans", "Yu Gothic", "Noto Sans JP", "Helvetica Neue"]
     for name in candidates {
-        if let f = NSFont(name: name, size: size) {
-            let manager = NSFontManager.shared
-            return manager.convert(f, toHaveTrait: weight == .bold || weight == .heavy ? .boldFontMask : [])
+        if let base = NSFont(name: name, size: size) {
+            if weight == .bold || weight == .heavy || weight == .semibold {
+                return NSFontManager.shared.convert(base, toHaveTrait: .boldFontMask)
+            }
+            return base
         }
     }
     return NSFont.systemFont(ofSize: size, weight: weight)
 }
 
-func paragraph(_ alignment: NSTextAlignment = .left, lineHeight: CGFloat? = nil) -> NSMutableParagraphStyle {
-    let p = NSMutableParagraphStyle()
-    p.alignment = alignment
-    if let lineHeight {
-        p.minimumLineHeight = lineHeight
-        p.maximumLineHeight = lineHeight
+func attributes(size: CGFloat, weight: NSFont.Weight = .regular, color: NSColor = palette.ink, lineHeight: CGFloat? = nil, alignment: NSTextAlignment = .left) -> [NSAttributedString.Key: Any] {
+    let paragraph = NSMutableParagraphStyle()
+    paragraph.alignment = alignment
+    paragraph.lineBreakMode = .byWordWrapping
+    if let height = lineHeight {
+        paragraph.minimumLineHeight = height
+        paragraph.maximumLineHeight = height
     }
-    return p
+    return [.font: font(size, weight), .foregroundColor: color, .paragraphStyle: paragraph]
 }
 
-func attrs(size: CGFloat, weight: NSFont.Weight = .regular, color: NSColor = style.ink, lineHeight: CGFloat? = nil) -> [NSAttributedString.Key: Any] {
-    return [
-        .font: font(size, weight: weight),
-        .foregroundColor: color,
-        .paragraphStyle: paragraph(.left, lineHeight: lineHeight)
-    ]
+func drawText(_ text: String, rect: NSRect, size: CGFloat, weight: NSFont.Weight = .regular, color: NSColor = palette.ink, lineHeight: CGFloat? = nil, alignment: NSTextAlignment = .left) {
+    NSAttributedString(string: text, attributes: attributes(size: size, weight: weight, color: color, lineHeight: lineHeight, alignment: alignment))
+        .draw(with: mapped(rect), options: [.usesLineFragmentOrigin, .usesFontLeading, .truncatesLastVisibleLine])
 }
 
-func drawText(_ text: String, in rect: NSRect, size: CGFloat, weight: NSFont.Weight = .regular, color: NSColor = style.ink, lineHeight: CGFloat? = nil) {
-    NSString(string: text).draw(in: mapped(rect), withAttributes: attrs(size: size, weight: weight, color: color, lineHeight: lineHeight))
-}
-
-func drawRounded(_ rect: NSRect, radius: CGFloat, fill: NSColor, stroke: NSColor? = nil, width: CGFloat = 1) {
+func rounded(_ rect: NSRect, radius: CGFloat, fill: NSColor, stroke: NSColor? = nil, width: CGFloat = 1) {
     let path = NSBezierPath(roundedRect: mapped(rect), xRadius: radius, yRadius: radius)
     fill.setFill()
     path.fill()
-    if let stroke {
+    if let stroke = stroke {
         stroke.setStroke()
         path.lineWidth = width
         path.stroke()
     }
 }
 
-func drawLine(from: NSPoint, to: NSPoint, color: NSColor, width: CGFloat) {
+func line(_ x1: CGFloat, _ y1: CGFloat, _ x2: CGFloat, _ y2: CGFloat, color: NSColor, width: CGFloat) {
     let path = NSBezierPath()
-    path.move(to: mapped(from))
-    path.line(to: mapped(to))
+    path.move(to: NSPoint(x: x1, y: canvas.height - y1))
+    path.line(to: NSPoint(x: x2, y: canvas.height - y2))
     color.setStroke()
     path.lineWidth = width
     path.stroke()
 }
 
-func drawBullet(_ text: String, x: CGFloat, y: CGFloat, width: CGFloat, size: CGFloat = 21) -> CGFloat {
-    drawText("•", in: NSRect(x: x, y: y - 2, width: 24, height: 34), size: size + 3, weight: .bold, color: style.teal)
-    let rect = NSRect(x: x + 28, y: y, width: width - 28, height: 110)
-    let attributed = NSAttributedString(string: text, attributes: attrs(size: size, weight: .regular, color: style.ink, lineHeight: 31))
-    let used = attributed.boundingRect(with: rect.size, options: [.usesLineFragmentOrigin, .usesFontLeading]).height
-    attributed.draw(in: mapped(NSRect(x: rect.minX, y: rect.minY, width: rect.width, height: ceil(used) + 6)))
-    return y + ceil(used) + 12
+func compact(_ text: String, limit: Int) -> String {
+    let normalized = text.replacingOccurrences(of: "\r", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+    if normalized.count <= limit { return normalized }
+    return String(normalized.prefix(limit - 1)) + "…"
 }
 
-func drawCircleLabel(_ label: String, center: NSPoint, color: NSColor) {
-    color.withAlphaComponent(0.14).setFill()
-    NSBezierPath(ovalIn: mapped(NSRect(x: center.x - 23, y: center.y - 23, width: 46, height: 46))).fill()
-    let labelRect = NSRect(x: center.x - 23, y: center.y - 17, width: 46, height: 34)
-    let p = paragraph(.center)
-    NSString(string: label).draw(in: mapped(labelRect), withAttributes: [
-        .font: font(26, weight: .heavy),
-        .foregroundColor: color,
-        .paragraphStyle: p
-    ])
+func card(x: CGFloat, color: NSColor, number: String, title: String, body: String) {
+    let rect = NSRect(x: x, y: 270, width: 358, height: 360)
+    rounded(rect, radius: 12, fill: palette.paper, stroke: palette.border, width: 2)
+    rounded(NSRect(x: x, y: 270, width: 358, height: 11), radius: 6, fill: color)
+    rounded(NSRect(x: x + 22, y: 303, width: 46, height: 46), radius: 23, fill: color.withAlphaComponent(0.14))
+    drawText(number, rect: NSRect(x: x + 22, y: 309, width: 46, height: 32), size: 24, weight: .heavy, color: color, alignment: .center)
+    drawText(title, rect: NSRect(x: x + 82, y: 303, width: 250, height: 42), size: 29, weight: .heavy)
+    drawText(compact(body, limit: 260), rect: NSRect(x: x + 25, y: 370, width: 308, height: 225), size: 21, color: palette.ink, lineHeight: 31)
 }
 
-func drawCard(x: CGFloat, y: CGFloat, w: CGFloat, h: CGFloat, color: NSColor, number: String, title: String, bullets: [String]) {
-    let rect = NSRect(x: x, y: y, width: w, height: h)
-    drawRounded(rect, radius: 8, fill: style.white, stroke: style.border, width: 2)
-    drawRounded(NSRect(x: x, y: y, width: w, height: 10), radius: 5, fill: color)
-    drawCircleLabel(number, center: NSPoint(x: x + 47, y: y + 58), color: color)
-    drawText(title, in: NSRect(x: x + 82, y: y + 35, width: w - 105, height: 42), size: 31, weight: .heavy)
-    var cy = y + 100
-    for item in bullets {
-        cy = drawBullet(item, x: x + 25, y: cy, width: w - 48)
-    }
-}
-
-func drawFlowCard(x: CGFloat, y: CGFloat, w: CGFloat, h: CGFloat) {
-    let rect = NSRect(x: x, y: y, width: w, height: h)
-    drawRounded(rect, radius: 8, fill: style.white, stroke: style.border, width: 2)
-    drawRounded(NSRect(x: x, y: y, width: w, height: 10), radius: 5, fill: style.blue)
-    drawCircleLabel("3", center: NSPoint(x: x + 47, y: y + 58), color: style.blue)
-    drawText("病態仮説", in: NSRect(x: x + 82, y: y + 35, width: w - 105, height: 42), size: 31, weight: .heavy)
-
-    let labels = ["抗ネフリン抗体", "スリット膜障害", "足突起消失", "蛋白尿"]
-    var cy: CGFloat = y + 115
-    for (idx, label) in labels.enumerated() {
-        let pill = NSRect(x: x + 46, y: cy, width: w - 92, height: 48)
-        drawRounded(pill, radius: 24, fill: NSColor(calibratedRed: 0.969, green: 0.984, blue: 0.984, alpha: 1), stroke: NSColor(calibratedRed: 0.78, green: 0.85, blue: 0.85, alpha: 1), width: 2)
-        let p = paragraph(.center)
-        NSString(string: label).draw(in: mapped(NSRect(x: pill.minX, y: pill.minY + 9, width: pill.width, height: 34)), withAttributes: [
-            .font: font(24, weight: .heavy),
-            .foregroundColor: NSColor(calibratedRed: 0.157, green: 0.361, blue: 0.353, alpha: 1),
-            .paragraphStyle: p
-        ])
-        cy += 61
-        if idx < labels.count - 1 {
-            drawText("↓", in: NSRect(x: x + w / 2 - 12, y: cy - 9, width: 40, height: 34), size: 29, weight: .heavy, color: style.green)
-            cy += 24
-        }
-    }
-}
-
-let image = NSImage(size: size)
+let image = NSImage(size: canvas)
 image.lockFocus()
-NSColor(calibratedRed: 0.957, green: 0.973, blue: 0.976, alpha: 1).setFill()
-NSRect(origin: .zero, size: size).fill()
-drawRounded(NSRect(x: 0, y: 0, width: size.width, height: size.height), radius: 0, fill: style.bg)
+palette.background.setFill()
+NSRect(origin: .zero, size: canvas).fill()
 
-drawText("腎臓・糸球体レビュー", in: NSRect(x: 54, y: 40, width: 560, height: 36), size: 26, weight: .heavy, color: style.teal)
-drawText("ポドサイトスリット膜は\n抗ネフリン抗体の標的となる", in: NSRect(x: 54, y: 84, width: 1010, height: 126), size: 52, weight: .heavy, lineHeight: 58)
-drawLine(from: NSPoint(x: 54, y: 230), to: NSPoint(x: 1546, y: 230), color: style.teal, width: 5)
+let source = value("source_level", fallback: "source unknown")
+let sourceLabel: String
+switch source {
+case "user_pdf": sourceLabel = "FULL TEXT・提供PDF"
+case "pmc_full_text": sourceLabel = "FULL TEXT・PMC"
+case "pubmed_abstract": sourceLabel = "ABSTRACT ONLY"
+default: sourceLabel = source.uppercased()
+}
 
-let meta = NSRect(x: 1198, y: 45, width: 348, height: 166)
-drawRounded(meta, radius: 8, fill: style.white, stroke: NSColor(calibratedRed: 0.745, green: 0.835, blue: 0.831, alpha: 1), width: 2)
-drawText("PMID 41733080\nJournal  Current Opinion in Nephrology and Hypertension\nYear 2026\nType Review", in: NSRect(x: 1218, y: 61, width: 308, height: 136), size: 22, weight: .semibold, color: style.ink, lineHeight: 32)
+drawText(sourceLabel, rect: NSRect(x: 54, y: 35, width: 500, height: 34), size: 23, weight: .heavy, color: source == "pubmed_abstract" ? palette.orange : palette.teal)
+let headline = compact(value("one_line_summary", fallback: value("take_home_message", fallback: value("title"))), limit: 84)
+drawText(headline, rect: NSRect(x: 54, y: 78, width: 1065, height: 130), size: 48, weight: .heavy, lineHeight: 56)
+line(54, 229, 1546, 229, color: palette.teal, width: 5)
 
-let cardY: CGFloat = 256
-let cardH: CGFloat = 390
-let gap: CGFloat = 20
-let cardW: CGFloat = (1492 - gap * 3) / 4
-drawCard(
-    x: 54,
-    y: cardY,
-    w: cardW,
-    h: cardH,
-    color: style.teal,
-    number: "1",
-    title: "背景",
-    bullets: [
-        "ポドサイトのスリット膜構造に新知見",
-        "抗ネフリン抗体が後天性ポドサイト疾患で注目",
-        "小児ステロイド感受性ネフローゼ、MCD、一部FSGSが関連"
-    ]
-)
-drawCard(
-    x: 54 + (cardW + gap),
-    y: cardY,
-    w: cardW,
-    h: cardH,
-    color: style.green,
-    number: "2",
-    title: "新しい理解",
-    bullets: [
-        "ネフリン、Neph1、関連タンパクが多層構造を形成",
-        "高解像度プロテオミクス、cryo-ETなどで解析が進展",
-        "単なるフィルターではなく、シグナル伝達の場として整理"
-    ]
-)
-drawFlowCard(x: 54 + (cardW + gap) * 2, y: cardY, w: cardW, h: cardH)
-drawCard(
-    x: 54 + (cardW + gap) * 3,
-    y: cardY,
-    w: cardW,
-    h: cardH,
-    color: style.orange,
-    number: "4",
-    title: "臨床への意味",
-    bullets: [
-        "抗ネフリン抗体測定は診断・予後・治療選択に影響しうる",
-        "標的エピトープとネフリン内在化の機序は今後の課題",
-        "広く使える信頼性の高い測定系が必要"
-    ]
-)
+rounded(NSRect(x: 1170, y: 42, width: 376, height: 165), radius: 10, fill: palette.paper, stroke: palette.border, width: 2)
+let metadata = "PMID  \(value("pmid"))\nJournal  \(compact(value("journal"), limit: 38))\nYear  \(value("year"))\nType  \(compact(value("study_type"), limit: 35))"
+drawText(metadata, rect: NSRect(x: 1193, y: 60, width: 330, height: 132), size: 20, weight: .semibold, lineHeight: 30)
 
-let take = NSRect(x: 54, y: 674, width: 1492, height: 118)
-drawRounded(take, radius: 8, fill: NSColor(calibratedRed: 0.082, green: 0.220, blue: 0.227, alpha: 1))
-drawText("Take Home", in: NSRect(x: 84, y: 715, width: 185, height: 34), size: 26, weight: .heavy, color: NSColor(calibratedRed: 0.749, green: 0.890, blue: 0.839, alpha: 1))
-drawText("抗ネフリン抗体は、後天性ポドサイト疾患の診断・予後・治療選択に影響しうる注目標的として整理されている。", in: NSRect(x: 288, y: 696, width: 1218, height: 86), size: 27, weight: .heavy, color: .white, lineHeight: 36)
+card(x: 54, color: palette.teal, number: "1", title: "PICO / 対象", body: value("pico", fallback: "原文確認"))
+card(x: 432, color: palette.blue, number: "2", title: "主要結果", body: value("main_results", fallback: "数値は原文確認"))
+card(x: 810, color: palette.green, number: "3", title: "診療への意味", body: value("applicability_to_japanese_pediatric_clinic", fallback: value("clinical_impact", fallback: "原文確認")))
+card(x: 1188, color: palette.orange, number: "4", title: "限界・注意", body: value("limitations", fallback: value("safety", fallback: "原文確認")))
 
-drawLine(from: NSPoint(x: 54, y: 819), to: NSPoint(x: 54, y: 858), color: style.orange, width: 5)
-drawText("AI下読み用。診療変更の判断前に、対象疾患、検査法、臨床研究の位置づけを原文で確認。", in: NSRect(x: 72, y: 818, width: 920, height: 42), size: 20, weight: .semibold, color: style.muted)
-drawText("Title: The podocyte slit-diaphragm: target of anti-nephrin antibodies.", in: NSRect(x: 1040, y: 820, width: 506, height: 40), size: 19, weight: .regular, color: style.muted)
+rounded(NSRect(x: 54, y: 660, width: 1492, height: 130), radius: 12, fill: palette.dark)
+drawText("TAKE HOME", rect: NSRect(x: 82, y: 700, width: 190, height: 38), size: 25, weight: .heavy, color: NSColor(calibratedRed: 0.72, green: 0.91, blue: 0.84, alpha: 1))
+drawText(compact(value("one_line_summary", fallback: "原文確認が必要です"), limit: 120), rect: NSRect(x: 286, y: 683, width: 1215, height: 88), size: 28, weight: .heavy, color: .white, lineHeight: 37)
+
+line(54, 821, 54, 860, color: palette.orange, width: 5)
+let footer = source == "pubmed_abstract"
+    ? "AI下読み用・Abstractのみ。主要数値、対象、評価項目、結論を全文で確認してください。"
+    : "AI下読み用。主要数値、対象、評価項目、結論を原文で確認し、Human Checkedを更新してください。"
+drawText(footer, rect: NSRect(x: 72, y: 817, width: 940, height: 48), size: 19, weight: .semibold, color: palette.muted)
+drawText(compact(value("title"), limit: 75), rect: NSRect(x: 1030, y: 819, width: 516, height: 44), size: 17, color: palette.muted, alignment: .right)
 
 image.unlockFocus()
-
 guard let tiff = image.tiffRepresentation,
       let bitmap = NSBitmapImageRep(data: tiff),
       let png = bitmap.representation(using: .png, properties: [:]) else {
     fatalError("Failed to render PNG")
 }
-try png.write(to: URL(fileURLWithPath: output))
-print(output)
+try FileManager.default.createDirectory(at: outputURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+try png.write(to: outputURL)
+print(outputURL.path)

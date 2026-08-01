@@ -28,6 +28,11 @@ def main() -> None:
         print("5. グラレコ画像をNotionに表示")
         print("6. この精読JSONを処理済み(done)へ移動")
         print("7. PMIDを変更する")
+        print("8. PMID/PDFのBatch事前確認（OpenAI課金なし）")
+        print("9. 半額Batchへ投入")
+        print("10. Batchの状況を確認")
+        print("11. 完了結果を回収してグラレコ作成")
+        print("12. 完了結果を回収してNotion登録")
         print("q. 終了")
         choice = input("> ").strip().lower()
 
@@ -45,6 +50,16 @@ def main() -> None:
             move_summary_to_done(pmid)
         elif choice == "7":
             pmid = ask_pmid()
+        elif choice == "8":
+            run(["scripts/process_papers.py", "prepare"])
+        elif choice == "9":
+            run(["scripts/process_papers.py", "submit"])
+        elif choice == "10":
+            run(["scripts/process_papers.py", "status"])
+        elif choice == "11":
+            run(["scripts/process_papers.py", "resume"])
+        elif choice == "12":
+            run(["scripts/process_papers.py", "resume", "--notion"])
         elif choice in {"q", "quit", "exit"}:
             break
         else:
