@@ -28,11 +28,12 @@ def main() -> None:
         print("5. グラレコ画像をNotionに表示")
         print("6. この精読JSONを処理済み(done)へ移動")
         print("7. PMIDを変更する")
-        print("8. PMID/PDFのBatch事前確認（OpenAI課金なし）")
-        print("9. 半額Batchへ投入")
-        print("10. Batchの状況を確認")
-        print("11. 完了結果を回収してグラレコ作成")
-        print("12. 完了結果を回収してNotion登録")
+        print("8. pending全件を一括処理")
+        print("9. PMID/PDFのBatch事前確認（OpenAI課金なし）")
+        print("10. 半額Batchへ投入")
+        print("11. Batchの状況を確認")
+        print("12. 完了結果を回収してグラレコ作成")
+        print("13. 完了結果を回収してNotion登録")
         print("q. 終了")
         choice = input("> ").strip().lower()
 
@@ -51,14 +52,16 @@ def main() -> None:
         elif choice == "7":
             pmid = ask_pmid()
         elif choice == "8":
-            run(["scripts/process_papers.py", "prepare"])
+            batch_process_pending()
         elif choice == "9":
-            run(["scripts/process_papers.py", "submit"])
+            run(["scripts/process_papers.py", "prepare"])
         elif choice == "10":
-            run(["scripts/process_papers.py", "status"])
+            run(["scripts/process_papers.py", "submit"])
         elif choice == "11":
-            run(["scripts/process_papers.py", "resume"])
+            run(["scripts/process_papers.py", "status"])
         elif choice == "12":
+            run(["scripts/process_papers.py", "resume"])
+        elif choice == "13":
             run(["scripts/process_papers.py", "resume", "--notion"])
         elif choice in {"q", "quit", "exit"}:
             break
@@ -172,6 +175,18 @@ def publish_grarec(pmid: str) -> None:
     if not run_command(["git", "push", "origin", branch]):
         return
     print("GitHub Pagesへの反映には少し時間がかかることがあります。反映後に5を実行してください。")
+
+
+def batch_process_pending() -> None:
+    print("pending/ の精読JSON全件を対象に、画像整理、Notion登録、GitHub Pages公開、Notion画像反映、done移動を行います。")
+    print("まずdry-runで対象と画像候補を確認します。")
+    if not run_command(["python3", "scripts/batch_process_grarec.py", "--dry-run"]):
+        return
+    value = input("この内容で一括処理を実行しますか？ [y/N]: ").strip().lower()
+    if value not in {"y", "yes"}:
+        print("中止しました。")
+        return
+    run_command(["python3", "scripts/batch_process_grarec.py", "--yes"])
 
 
 def move_summary_to_done(pmid: str) -> None:

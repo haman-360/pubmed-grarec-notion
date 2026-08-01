@@ -1,0 +1,34 @@
+{
+  "pmid": "42014363",
+  "title": "Efficacy, safety, and biomarker changes of B-cell activating factor- and A proliferation-inducing ligand-targeted therapies in IgA nephropathy: a systematic review and meta-analysis of randomized controlled trials",
+  "journal": "Journal of Nephrology",
+  "year": "2026",
+  "doi": "10.1093/joneph/aajaf002",
+  "topic": "IgA腎症に対するBAFF/APRIL標的治療",
+  "clinical_area": "小児腎臓・IgA腎症・蛋白尿",
+  "one_line_summary": "成人IgA腎症に対するBAFF/APRIL標的治療は、プラセボと比べて蛋白尿を約39%低下させ、短期的にeGFRも改善方向を示したが、小児外来診療へ直接適用できる段階ではない。",
+  "why_important": "IgA腎症治療がACE阻害薬・ARBによる蛋白尿低下中心から、Gd-IgA1産生やB細胞系サイトカインを標的とする病態修飾治療へ進みつつあることを示す。小児では直接適用できないが、将来の専門施設治療や保護者説明の背景知識として重要。",
+  "pico": {
+    "p": "18歳以上の生検確定IgA腎症患者",
+    "i_or_exposure": "BAFFまたはAPRILを標的とする治療薬（atacicept、sibeprenlimab、telitacicept）",
+    "c": "プラセボ",
+    "o": "24時間UPCR変化、eGFR変化、有害事象、Gd-IgA1・IgG・IgA・IgMの変化"
+  },
+  "study_design": "PRISMAに準拠したシステマティックレビュー・メタ解析。PubMed、Scopus、Cochrane Libraryを2024年12月まで検索し、BAFF/APRIL標的薬とプラセボを比較したRCTを対象とした。第II相RCT 4本、合計331例を解析。",
+  "population_setting": "成人の生検確定IgA腎症患者。全体の平均年齢は約40.7歳、男性56.8%、アジア人51.1%、ベースライン蛋白尿は平均3.46 g/day、eGFRは平均73.52 mL/min/1.73 m²。小児は対象外。",
+  "figure_table_summary": {
+    "figure_1": "文献選択フロー。3,215件から重複、タイトル・抄録、全文評価を経て最終的に4件のRCTが組み入れられた。RCT数が少なく、エビデンスはまだ発展途上である。",
+    "table_1": "ORIGIN 2024、ENVISION 2023、Lv 2023、JANUS 2022の4試験をまとめる。介入はatacicept、sibeprenlimab、telitaciceptで、追跡期間は24〜72週。薬剤、用量、追跡期間にばらつきがある。",
+    "main_figures_tables": "Figure 2では多くの試験が低バイアスリスクだが、Lv 2023はsome concerns。Figure 3では24時間UPCRがMD −38.80%、eGFRがMD +7.05 mL/min/1.73 m²と治療群有利。Figure 4では全有害事象と上気道感染に有意差なし。Figure 5ではGd-IgA1がMD −46.48%と大きく低下。",
+    "supplement": "補足資料には検索式、除外研究、GRADE、感度分析、IgG・IgA・IgM変化、有害事象詳細などが含まれる。添付PDF内ではTable 1はsupplemental file扱いで、本文PDF単独では詳細表は完全には確認できない。"
+  },
+  "main_results": "BAFF/APRIL標的薬はプラセボと比べ、24時間UPCRを有意に低下させた（MD −38.80%、95%CI −59.17〜−18.44）。eGFRも有意に改善方向を示した（MD +7.05 mL/min/1.73 m²、95%CI 3.83〜10.27）。Gd-IgA1はMD −46.48%、IgGは約−29.76%、IgAは約−49.04%、IgMは約−65.56%と低下した。",
+  "safety": "全有害事象は治療群78.75%、プラセボ群78.02%で差はなかった。上気道感染、薬剤関連有害事象、重篤有害事象、中止に至る有害事象にも有意差はなかった。ただし、免疫グロブリン低下を伴う治療であり、長期感染リスクや反復投与時の安全性は未確立。",
+  "limitations": "成人対象であり小児データではない。第II相RCT 4本、331例のみで、薬剤、用量、追跡期間が異なる。長期腎予後、末期腎不全抑制、長期安全性は不明。試験ごとに背景因子の不均衡があり、出版バイアスも十分評価できない。",
+  "applicability_to_japanese_pediatric_clinic": "日本の一般小児科外来にそのまま適用することはできない。学校検尿後のIgA腎症疑い、蛋白尿持続例、腎機能低下リスク例を腎専門医へ紹介する重要性を補強する背景知識として有用。将来的な専門施設での治療選択肢として知っておく価値がある。",
+  "practice_change": "No",
+  "practice_change_reason": "対象が成人であり、第II相RCT中心で、小児への有効性・安全性・国内適用が不明なため、一般小児外来の診療を直接変更する根拠にはならない。",
+  "tomorrow_action": "IgA腎症疑いまたは診断後の小児では、蛋白尿持続、尿蛋白/Cr高値、血圧上昇、eGFR低下、血尿蛋白尿の持続を見逃さず、腎専門医と早めに連携する。保護者には、新規治療は研究が進んでいるが小児で一般使用する段階ではないと説明する。",
+  "human_checked": false,
+  "source": "ChatGPT 小児アップデート Thinking 精読"
+}
