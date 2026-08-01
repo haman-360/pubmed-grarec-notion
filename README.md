@@ -38,6 +38,70 @@ Notionに以下のデータベースを作成します。
 
 APIキーは `.env` に保存し、GitHubには送信しません。必要な環境変数は [.env.example](.env.example) を参照してください。
 
+## 半額BatchでPMID/PDFから自動処理
+
+急がない論文精読はOpenAI Batch APIへ送り、通常APIより50%安い料金で処理します。処理は原則24時間以内です。
+「半額になる時間帯」を待つ方式ではなく、24時間枠の非同期Batchとして明示的に送ることで割引が適用されます。ChatGPTの契約とは別にOpenAI APIキーとAPI利用料金が必要です。
+
+標準フロー:
+
+```text
+PMIDまたはPDF
+→ PubMed/PMC取得とNotion重複確認（OpenAI課金なし）
+→ gpt-5.6-terraのBatchへ投入
+→ 翌日に結果回収
+→ JSON駆動のグラレコPNGを生成
+→ PMIDでNotionをupsertし、PNGをNotionへ直接アップロード
+```
+
+1. [.env.example](.env.example)をコピーして`.env`を作り、`OPENAI_API_KEY`、`NOTION_TOKEN`、`NOTION_DATABASE_ID`を設定します。
+2. PMIDは [input/pmids.txt](input/pmids.txt) に1行1件で書きます。
+3. 手元のPDFを使う場合は `input/pdfs/PMID_42115808.pdf` のような名前で置きます。
+
+まず、OpenAI APIを呼ばずに取得可否、Notion重複、推定Batch料金を確認します。
+
+```bash
+python3 scripts/process_papers.py prepare
+```
+
+問題なければ半額Batchへ投入します。既定では最大5論文、1論文の推定上限は`$0.50`です。
+
+```bash
+python3 scripts/process_papers.py submit
+```
+
+既定の料金設定（入力 `$1.00`/100万token、出力 `$6.00`/100万token）では、入力3万token・出力上限8千tokenの例は約`$0.078`です。料金改定時は`.env`の単価を変更してください。実料金は完了後のusageから記録されます。
+
+`prepare`の論文探索はPubMed/PMCだけを使うためOpenAI APIキーを消費しません。取得元がない論文は`NO_SOURCE`、Notionに画像付きで存在する論文は`SKIP_EXISTS`となり、Batchへ入りません。`submit`にも最大件数、論文ごとの推定額上限、最終確認があります。
+
+後から状況を確認します。
+
+```bash
+python3 scripts/process_papers.py status
+```
+
+完了結果を回収し、グラレコを作成します。ここまではNotionを変更しません。
+
+```bash
+python3 scripts/process_papers.py resume
+```
+
+Notionまで登録・更新する場合:
+
+```bash
+python3 scripts/process_papers.py resume --notion
+```
+
+同じPMIDがNotionにあり、すでに画像もある場合は既定でスキップします。画像がない既存ページは新規作成せず更新します。再精読したい場合は次のように準備します。
+
+```bash
+python3 scripts/process_papers.py prepare --update-existing
+```
+
+Batchジョブの状態、実トークン数、実料金は `output/jobs/PMID_<id>.json` に保存されます。Batchの結果順序が変わっても、PMID、PDFハッシュ、プロンプト版を含む`custom_id`で対応付けます。
+
+グラレコは画像生成AIではなく、精読JSONをSwift/AppKitテンプレートへ流し込んで作ります。これにより日本語と数値を確定的に描画し、画像生成API料金を発生させません。
+
 ## 実行方法
 
 PMID 41733080 は [input/pmids.txt](input/pmids.txt) に入れてあります。

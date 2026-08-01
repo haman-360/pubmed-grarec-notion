@@ -29,6 +29,11 @@ def main() -> None:
         print("6. この精読JSONを処理済み(done)へ移動")
         print("7. PMIDを変更する")
         print("8. pending全件を一括処理")
+        print("9. PMID/PDFのBatch事前確認（OpenAI課金なし）")
+        print("10. 半額Batchへ投入")
+        print("11. Batchの状況を確認")
+        print("12. 完了結果を回収してグラレコ作成")
+        print("13. 完了結果を回収してNotion登録")
         print("q. 終了")
         choice = input("> ").strip().lower()
 
@@ -48,6 +53,16 @@ def main() -> None:
             pmid = ask_pmid()
         elif choice == "8":
             batch_process_pending()
+        elif choice == "9":
+            run(["scripts/process_papers.py", "prepare"])
+        elif choice == "10":
+            run(["scripts/process_papers.py", "submit"])
+        elif choice == "11":
+            run(["scripts/process_papers.py", "status"])
+        elif choice == "12":
+            run(["scripts/process_papers.py", "resume"])
+        elif choice == "13":
+            run(["scripts/process_papers.py", "resume", "--notion"])
         elif choice in {"q", "quit", "exit"}:
             break
         else:

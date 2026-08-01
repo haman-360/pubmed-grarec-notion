@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import json
+import mimetypes
 import os
 import re
+import uuid
+from pathlib import Path
 from urllib.error import HTTPError
 import urllib.request
 from typing import Any
@@ -12,6 +15,8 @@ NOTION_API_URL = "https://api.notion.com/v1/pages"
 NOTION_DATABASE_API_URL = "https://api.notion.com/v1/databases"
 NOTION_BLOCKS_API_URL = "https://api.notion.com/v1/blocks"
 NOTION_VERSION = "2022-06-28"
+NOTION_FILE_UPLOAD_VERSION = os.getenv("NOTION_FILE_UPLOAD_VERSION", "2026-03-11")
+AI_SECTION_TITLE = "AI Generated Review (auto)"
 
 
 def create_notion_page(summary: dict[str, Any], database_id: str, token: str, graphic_url: str = "") -> dict[str, Any]:
@@ -73,6 +78,7 @@ def upsert_chatgpt_summary_page(
     database_id: str,
     token: str,
     append_children_to_existing: bool = True,
+    replace_generated_section: bool = False,
 ) -> dict[str, Any]:
     database = retrieve_database(database_id, token)
     pmid = str(summary.get("pmid", "")).strip()
@@ -82,11 +88,15 @@ def upsert_chatgpt_summary_page(
     if existing_page:
         page_id = existing_page["id"]
         page = update_notion_page(page_id, payload, token)
-        if append_children_to_existing:
+        if replace_generated_section:
+            replace_ai_generated_section(page_id, summary, token)
+        elif append_children_to_existing:
             append_block_children(page_id, payload.get("children", []), token)
         page["import_action"] = "updated"
         return page
 
+    if replace_generated_section:
+        payload["children"] = [ai_generated_toggle(summary)]
     page = send_create_page(payload, token)
     page["import_action"] = "created"
     return page
@@ -153,8 +163,13 @@ def build_chatgpt_summary_payload(
     _add_property(properties, schema, "Journal", {"select": _select(summary.get("journal"))})
     _add_property(properties, schema, "Year", {"number": _number(summary.get("year"))})
     _add_property(properties, schema, "Topic", {"multi_select": [{"name": value} for value in _list(summary.get("topic"))]})
+    _add_property(properties, schema, "Study Type", {"select": _select(summary.get("study_type"))})
     _add_property(properties, schema, "Practice Change", {"select": _select(summary.get("practice_change"))})
-    _add_property(properties, schema, "Take Home Message", {"rich_text": [{"text": {"content": _truncate(summary.get("one_line_summary", ""), 2000)}}]})
+    one_line = summary.get("one_line_summary") or summary.get("take_home_message", "")
+    _add_property(properties, schema, "Take Home Message", {"rich_text": [{"text": {"content": _truncate(one_line, 2000)}}]})
+    _add_property(properties, schema, "Why Important", {"rich_text": [{"text": {"content": _truncate(summary.get("why_important", ""), 2000)}}]})
+    _add_property(properties, schema, "Clinical Impact", {"rich_text": [{"text": {"content": _truncate(summary.get("clinical_impact", ""), 2000)}}]})
+    _add_property(properties, schema, "Summary JP", {"rich_text": [{"text": {"content": _truncate(summary.get("summary_jp", ""), 2000)}}]})
     if graphic_url:
         _add_property(properties, schema, "Graphic URL", {"url": graphic_url})
         _add_property(
@@ -237,6 +252,159 @@ def append_block_children(page_id: str, children: list[dict[str, Any]], token: s
     except HTTPError as error:
         body = error.read().decode("utf-8", errors="replace")
         raise RuntimeError(f"Notion API error {error.code}: {body}") from error
+
+
+def replace_ai_generated_section(page_id: str, summary: dict[str, Any], token: str) -> None:
+    """Replace only the pipeline-owned toggle, preserving all user-authored blocks."""
+    for block in list_block_children(page_id, token):
+        if block.get("type") != "toggle":
+            continue
+        title = _plain_text(block.get("toggle", {}).get("rich_text", []))
+        if title == AI_SECTION_TITLE:
+            delete_block(block["id"], token)
+    append_block_children(page_id, [ai_generated_toggle(summary)], token)
+
+
+def ai_generated_toggle(summary: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "object": "block",
+        "type": "toggle",
+        "toggle": {
+            "rich_text": [{"type": "text", "text": {"content": AI_SECTION_TITLE}}],
+            "children": chatgpt_summary_children(summary),
+        },
+    }
+
+
+def list_block_children(block_id: str, token: str) -> list[dict[str, Any]]:
+    results: list[dict[str, Any]] = []
+    cursor = ""
+    while True:
+        suffix = f"?page_size=100&start_cursor={cursor}" if cursor else "?page_size=100"
+        request = urllib.request.Request(
+            f"{NOTION_BLOCKS_API_URL}/{block_id}/children{suffix}",
+            headers={"Authorization": f"Bearer {token}", "Notion-Version": NOTION_VERSION},
+            method="GET",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                body = json.loads(response.read().decode("utf-8"))
+        except HTTPError as error:
+            payload = error.read().decode("utf-8", errors="replace")
+            raise RuntimeError(f"Notion API error {error.code}: {payload}") from error
+        results.extend(body.get("results", []))
+        if not body.get("has_more") or not body.get("next_cursor"):
+            return results
+        cursor = body["next_cursor"]
+
+
+def delete_block(block_id: str, token: str) -> None:
+    request = urllib.request.Request(
+        f"{NOTION_BLOCKS_API_URL}/{block_id}",
+        headers={"Authorization": f"Bearer {token}", "Notion-Version": NOTION_VERSION},
+        method="DELETE",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30):
+            return
+    except HTTPError as error:
+        body = error.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Notion API error {error.code}: {body}") from error
+
+
+def attach_local_graphic(page_id: str, database_id: str, token: str, image_path: Path) -> dict[str, Any]:
+    """Upload a local image to Notion-managed storage and attach it as cover/files property."""
+    file_upload = create_notion_file_upload(image_path, token)
+    send_notion_file_upload(file_upload["id"], image_path, token)
+    database = retrieve_database(database_id, token)
+    schema = database.get("properties", {})
+    properties: dict[str, Any] = {}
+    _add_property(
+        properties,
+        schema,
+        "Graphic Image",
+        {
+            "files": [
+                {
+                    "name": image_path.name,
+                    "type": "file_upload",
+                    "file_upload": {"id": file_upload["id"]},
+                }
+            ]
+        },
+    )
+    payload = {
+        "cover": {"type": "file_upload", "file_upload": {"id": file_upload["id"]}},
+        "properties": properties,
+    }
+    request = urllib.request.Request(
+        f"{NOTION_API_URL}/{page_id}",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "Notion-Version": NOTION_FILE_UPLOAD_VERSION,
+        },
+        method="PATCH",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except HTTPError as error:
+        body = error.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Notion API error {error.code}: {body}") from error
+
+
+def create_notion_file_upload(image_path: Path, token: str) -> dict[str, Any]:
+    content_type = mimetypes.guess_type(image_path.name)[0] or "application/octet-stream"
+    payload = {"filename": image_path.name, "content_type": content_type}
+    request = urllib.request.Request(
+        "https://api.notion.com/v1/file_uploads",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "Notion-Version": NOTION_FILE_UPLOAD_VERSION,
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except HTTPError as error:
+        body = error.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Notion API error {error.code}: {body}") from error
+
+
+def send_notion_file_upload(file_upload_id: str, image_path: Path, token: str) -> dict[str, Any]:
+    content_type = mimetypes.guess_type(image_path.name)[0] or "application/octet-stream"
+    boundary = f"----notion-grarec-{uuid.uuid4().hex}"
+    body = b"".join(
+        [
+            f"--{boundary}\r\n".encode(),
+            f'Content-Disposition: form-data; name="file"; filename="{image_path.name.replace(chr(34), "")}"\r\n'.encode(),
+            f"Content-Type: {content_type}\r\n\r\n".encode(),
+            image_path.read_bytes(),
+            b"\r\n",
+            f"--{boundary}--\r\n".encode(),
+        ]
+    )
+    request = urllib.request.Request(
+        f"https://api.notion.com/v1/file_uploads/{file_upload_id}/send",
+        data=body,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": f"multipart/form-data; boundary={boundary}",
+            "Notion-Version": NOTION_FILE_UPLOAD_VERSION,
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=120) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except HTTPError as error:
+        response_body = error.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Notion API error {error.code}: {response_body}") from error
 
 
 def retrieve_database(database_id: str, token: str) -> dict[str, Any]:
@@ -330,6 +498,10 @@ def page_children(summary: dict[str, Any]) -> list[dict[str, Any]]:
 
 def chatgpt_summary_children(summary: dict[str, Any]) -> list[dict[str, Any]]:
     sections = [
+        ("Take Home Message", summary.get("take_home_message") or summary.get("one_line_summary", "")),
+        ("日本語要約", summary.get("summary_jp", "")),
+        ("なぜ重要か", summary.get("why_important", "")),
+        ("臨床への影響", summary.get("clinical_impact", "")),
         ("PICO", summary.get("pico", "")),
         ("Figure/Table Summary", summary.get("figure_table_summary", "")),
         ("Main Results", summary.get("main_results", "")),
@@ -337,6 +509,8 @@ def chatgpt_summary_children(summary: dict[str, Any]) -> list[dict[str, Any]]:
         ("Limitations", summary.get("limitations", "")),
         ("Applicability to Japanese Pediatric Clinic", summary.get("applicability_to_japanese_pediatric_clinic", "")),
         ("Tomorrow Action", summary.get("tomorrow_action", "")),
+        ("Evidence Notes", summary.get("evidence_notes", "")),
+        ("Source Level", summary.get("source_level", "")),
     ]
     blocks: list[dict[str, Any]] = []
     for heading, value in sections:
@@ -472,3 +646,7 @@ def _stringify_body_value(value: Any) -> str:
             lines.append(f"{key}: {_stringify_body_value(item)}")
         return "\n".join(lines)
     return str(value)
+
+
+def _plain_text(rich_text: list[dict[str, Any]]) -> str:
+    return "".join(str(item.get("plain_text") or item.get("text", {}).get("content") or "") for item in rich_text)
