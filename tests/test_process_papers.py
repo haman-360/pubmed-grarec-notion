@@ -78,6 +78,29 @@ class ProcessPapersTests(unittest.TestCase):
         self.assertEqual(summary["take_home_message"], "結論")
         self.assertEqual(summary["source_level"], "user_pdf")
 
+    def test_has_uncollected_batches(self) -> None:
+        manifests = [
+            (Path("first.json"), {"batch_id": "batch-1", "collected_at": "2026-08-04"}),
+            (Path("second.json"), {"batch_id": "batch-2"}),
+        ]
+        with patch.object(process_papers, "_batch_manifests", return_value=manifests):
+            self.assertTrue(process_papers._has_uncollected_batches())
+
+        with patch.object(process_papers, "_batch_manifests", return_value=manifests[:1]):
+            self.assertFalse(process_papers._has_uncollected_batches())
+
+    def test_automatic_workflow_prepares_submits_then_watches(self) -> None:
+        args = object()
+        with (
+            patch.object(process_papers, "prepare_jobs") as prepare,
+            patch.object(process_papers, "submit_jobs", return_value=True) as submit,
+            patch.object(process_papers, "watch_batches") as watch,
+        ):
+            process_papers.automatic_workflow(args)
+        prepare.assert_called_once_with(args)
+        submit.assert_called_once_with(args)
+        watch.assert_called_once_with(args)
+
 
 if __name__ == "__main__":
     unittest.main()

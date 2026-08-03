@@ -34,6 +34,7 @@ def main() -> None:
         print("11. Batchの状況を確認")
         print("12. 完了結果を回収してグラレコ作成")
         print("13. 完了結果を回収してNotion登録")
+        print("14. 全自動：事前確認からNotion登録まで（おすすめ）")
         print("q. 終了")
         choice = input("> ").strip().lower()
 
@@ -63,6 +64,8 @@ def main() -> None:
             run(["scripts/process_papers.py", "resume"])
         elif choice == "13":
             run(["scripts/process_papers.py", "resume", "--notion"])
+        elif choice == "14":
+            run(["scripts/process_papers.py", "auto"])
         elif choice in {"q", "quit", "exit"}:
             break
         else:

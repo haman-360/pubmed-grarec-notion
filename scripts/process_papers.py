@@ -7,6 +7,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
@@ -63,6 +64,17 @@ def main() -> None:
     resume.add_argument("--notion", action="store_true", help="Create/update Notion pages and upload graphics.")
     resume.add_argument("--no-render", action="store_true", help="Collect JSON without rendering graphics.")
 
+    auto = subparsers.add_parser(
+        "auto",
+        help="Prepare, submit, wait for Batch completion, render graphics, and update Notion.",
+    )
+    _add_input_args(auto)
+    auto.add_argument("--update-existing", action="store_true", help="Reprocess Notion pages that already have a graphic.")
+    auto.add_argument("--max-papers", type=int, default=_env_int("OPENAI_MAX_BATCH_PAPERS", 5))
+    auto.add_argument("--yes", action="store_true", help="Submit without an interactive confirmation.")
+    auto.add_argument("--interval-minutes", type=int, default=30, help="Minutes between completion checks (minimum 5).")
+    auto.add_argument("--timeout-hours", type=int, default=48, help="Maximum time to keep waiting for Batch completion.")
+
     args = parser.parse_args()
     if args.command == "prepare":
         prepare_jobs(args)
@@ -72,6 +84,8 @@ def main() -> None:
         show_status()
     elif args.command == "resume":
         resume_batches(args)
+    elif args.command == "auto":
+        automatic_workflow(args)
 
 
 def _add_input_args(parser: argparse.ArgumentParser) -> None:
@@ -160,7 +174,7 @@ def prepare_jobs(args: argparse.Namespace) -> None:
     print("OpenAI APIはまだ呼び出していません。")
 
 
-def submit_jobs(args: argparse.Namespace) -> None:
+def submit_jobs(args: argparse.Namespace) -> bool:
     _ensure_dirs()
     api_key = api_key_from_env()
     if not api_key:
@@ -187,7 +201,7 @@ def submit_jobs(args: argparse.Namespace) -> None:
         answer = input("半額Batchへ投入しますか？ [y/N]: ").strip().lower()
         if answer not in {"y", "yes"}:
             print("中止しました。")
-            return
+            return False
 
     model = os.getenv("OPENAI_MODEL", "gpt-5.6-terra")
     detail = os.getenv("OPENAI_PDF_DETAIL", "low")
@@ -222,6 +236,47 @@ def submit_jobs(args: argparse.Namespace) -> None:
         job["updated_at"] = _now()
         _write_json(_job_path(job["pmid"]), job)
     print(json.dumps(manifest, ensure_ascii=False, indent=2))
+    return True
+
+
+def automatic_workflow(args: argparse.Namespace) -> None:
+    """Run the paid submission once, then wait locally until Notion is updated."""
+    prepare_jobs(args)
+    if not submit_jobs(args):
+        return
+    watch_batches(args)
+
+
+def watch_batches(args: argparse.Namespace) -> None:
+    interval_seconds = max(5, int(args.interval_minutes)) * 60
+    timeout_seconds = max(1, int(args.timeout_hours)) * 60 * 60
+    deadline = time.monotonic() + timeout_seconds
+    print()
+    print("Batch完了を待機します。このTerminalは閉じないでください。")
+    print("Macがスリープしても、起動後にここから確認を再開します。")
+
+    while _has_uncollected_batches():
+        try:
+            resume_batches(argparse.Namespace(notion=True, no_render=False))
+        except (HTTPError, URLError, TimeoutError, OSError, RuntimeError) as error:
+            print(f"一時的なエラー: {error}")
+            print("次の確認時に再試行します。")
+
+        if not _has_uncollected_batches():
+            print("すべてのBatchを回収し、Notionへの反映を完了しました。")
+            return
+        if time.monotonic() >= deadline:
+            raise SystemExit(
+                "自動待機がタイムアウトしました。後で `python3 scripts/process_papers.py resume --notion` を実行してください。"
+            )
+        print(f"次回確認: 約{interval_seconds // 60}分後")
+        time.sleep(interval_seconds)
+
+    print("自動待機が必要なBatchはありません。")
+
+
+def _has_uncollected_batches() -> bool:
+    return any(not manifest.get("collected_at") for _, manifest in _batch_manifests())
 
 
 def show_status() -> None:

@@ -1,45 +1,6 @@
 # 1行に1つPMIDを入力します
 # 例:
 # 12345678
-41366315
-41403017
-41661638
-41707748
-42079786
-42090154
-42097647
-42115792
-
-# 2026-06 kidney
-
-42219187
-42161893
-42098776
-42027550
-42014363
-41730387
-41627401
-41204962
-40996504
-
-# 2026-06 発達
-
-42134365
-41932226
-
-# 20260-06 便秘
-
-# 2026-06 夜尿症
-
-41706319
-42183884
-
-# 2026-06 food
-
-41967460
-41947307
-41967109
-41993019
-41949750
-42162787
-42173442
+42514315_Pollen-Food Allergy Syndrome Children Global Prevalence Pathogenesis
+42526604_Use electronic cigarettes asthma across lifespan
+42526949_Antihistamines atopic dermatitis eczema systematic review network meta-analysis randomised trials

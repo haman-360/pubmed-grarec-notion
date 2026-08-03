@@ -92,6 +92,24 @@ Notionまで登録・更新する場合:
 python3 scripts/process_papers.py resume --notion
 ```
 
+### 一度の実行でNotionまで自動反映する
+
+事前確認、Batch投入、完了待機、要約JSONの回収、グラレコPNG生成、Notion登録と画像アップロードまでを一度に実行できます。
+
+```bash
+python3 scripts/process_papers.py auto
+```
+
+最も簡単な方法は、repository直下の `PubMedGraRecAuto.command` をダブルクリックすることです。既存の `PubMedGraRec.command` を開き、`14. 全自動：事前確認からNotion登録まで` を選ぶこともできます。料金見積りを確認してBatch投入を承認した後は、30分ごとに完了を確認します。
+
+待機中はTerminalを閉じないでください。Macを閉じてスリープしても処理状態は保たれ、Macを再び起動すると確認を再開します。Batchが完了していれば、グラレコ作成とNotion登録まで進みます。生成物はこのMacにも残り、Notionへアップロードされた結果はiPadやほかのMacから確認できます。
+
+Macを再起動した、またはTerminalを閉じた場合は、次のコマンドで完了済みBatchを回収してNotionへ登録できます。
+
+```bash
+python3 scripts/process_papers.py resume --notion
+```
+
 同じPMIDがNotionにあり、すでに画像もある場合は既定でスキップします。画像がない既存ページは新規作成せず更新します。再精読したい場合は次のように準備します。
 
 ```bash
