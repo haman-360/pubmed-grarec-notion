@@ -43,7 +43,7 @@ JOBS = ROOT / "output" / "jobs"
 BATCHES = ROOT / "output" / "batches"
 SOURCES = ROOT / "output" / "sources"
 SUMMARIES = ROOT / "output" / "summaries"
-PROMPT_VERSION = "paper-review-v1"
+PROMPT_VERSION = "paper-review-v2"
 PMC_BIOC_URL = "https://www.ncbi.nlm.nih.gov/research/bionlp/RESTful/pmcoa.cgi/BioC_json/{pmid}/unicode"
 DEFAULT_GITHUB_PAGES_BASE_URL = "https://haman-360.github.io/pubmed-grarec-notion"
 
@@ -554,6 +554,9 @@ def _review_prompt(article: dict[str, Any], source_type: str) -> str:
 - Abstractのみの場合は限界を明記する。
 - 結論を原文より強くしない。
 - 日本語で簡潔に書く。
+- summary_jpは、研究目的・対象/方法・主要結果・安全性/限界・診療への意味が単独で理解できる日本語解説（400〜800字）にする。
+- one_line_summaryは画像見出し用として、主要結論を重複なく1文（120字以内）にする。
+- PICO、主要結果、限界、明日の行動は、後からChatGPT web版へ渡してグラレコを作れる粒度で構造化する。
 - evidence_notesには、根拠となるページ、節、表、図、またはAbstract内の位置を可能な範囲で記載する。
 - PMIDは必ず {article['pmid']} とする。
 
@@ -575,16 +578,30 @@ def review_schema() -> dict[str, Any]:
         "year": {"type": "string"},
         "doi": {"type": "string"},
         "topic": {"type": "array", "items": {"type": "string"}},
+        "clinical_area": {"type": "string"},
         "study_type": {"type": "string"},
+        "study_design": {"type": "string"},
+        "population_setting": {"type": "string"},
         "one_line_summary": {"type": "string"},
         "practice_change": {"type": "string", "enum": ["Yes", "No", "Unclear"]},
-        "pico": {"type": "string"},
+        "practice_change_reason": {"type": "string"},
+        "pico": {
+            "type": "object",
+            "properties": {
+                "p": {"type": "string"},
+                "i_or_exposure": {"type": "string"},
+                "c": {"type": "string"},
+                "o": {"type": "string"},
+            },
+            "required": ["p", "i_or_exposure", "c", "o"],
+            "additionalProperties": False,
+        },
         "figure_table_summary": {"type": "string"},
-        "main_results": {"type": "string"},
+        "main_results": {"type": "array", "items": {"type": "string"}},
         "safety": {"type": "string"},
-        "limitations": {"type": "string"},
+        "limitations": {"type": "array", "items": {"type": "string"}},
         "applicability_to_japanese_pediatric_clinic": {"type": "string"},
-        "tomorrow_action": {"type": "string"},
+        "tomorrow_action": {"type": "array", "items": {"type": "string"}},
         "why_important": {"type": "string"},
         "clinical_impact": {"type": "string"},
         "summary_jp": {"type": "string"},
@@ -686,7 +703,7 @@ def _pdf_page_count(path: Path) -> int:
 
 
 def _custom_id(job: dict[str, Any]) -> str:
-    return f"pmid-{job['pmid']}-summary-v1-{job['source_hash'][:8]}"
+    return f"pmid-{job['pmid']}-summary-v2-{job['source_hash'][:8]}"
 
 
 def _pmid_from_custom_id(custom_id: str) -> str:

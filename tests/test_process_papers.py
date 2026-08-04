@@ -40,7 +40,7 @@ class ProcessPapersTests(unittest.TestCase):
     def test_custom_id_round_trip(self) -> None:
         job = {"pmid": "42115808", "source_hash": "abcdef0123456789"}
         custom_id = process_papers._custom_id(job)
-        self.assertEqual(custom_id, "pmid-42115808-summary-v1-abcdef01")
+        self.assertEqual(custom_id, "pmid-42115808-summary-v2-abcdef01")
         self.assertEqual(process_papers._pmid_from_custom_id(custom_id), "42115808")
 
     def test_explicit_pmid_does_not_add_unrelated_pdfs(self) -> None:
@@ -56,6 +56,10 @@ class ProcessPapersTests(unittest.TestCase):
         schema = process_papers.review_schema()
         self.assertFalse(schema["additionalProperties"])
         self.assertEqual(set(schema["required"]), set(schema["properties"]))
+        self.assertEqual(schema["properties"]["pico"]["type"], "object")
+        self.assertEqual(schema["properties"]["main_results"]["type"], "array")
+        self.assertEqual(schema["properties"]["limitations"]["type"], "array")
+        self.assertEqual(schema["properties"]["tomorrow_action"]["type"], "array")
 
     def test_canonical_metadata_overrides_model_output(self) -> None:
         result = {"pmid": "wrong", "title": "wrong", "one_line_summary": "結論"}

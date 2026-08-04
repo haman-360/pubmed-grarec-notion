@@ -8,7 +8,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from upload_to_notion import AI_SECTION_TITLE, ai_generated_toggle, build_chatgpt_summary_payload  # noqa: E402
+from upload_to_notion import (  # noqa: E402
+    AI_SECTION_TITLE,
+    AI_SUMMARY_CALLOUT_PREFIX,
+    ai_generated_review_blocks,
+    ai_generated_toggle,
+    build_chatgpt_summary_payload,
+)
 
 
 class NotionPayloadTests(unittest.TestCase):
@@ -38,6 +44,12 @@ class NotionPayloadTests(unittest.TestCase):
         ]
         self.assertIn("Evidence Notes", headings)
         self.assertIn("Source Level", headings)
+
+    def test_japanese_summary_is_visible_in_callout(self) -> None:
+        blocks = ai_generated_review_blocks(self.summary)
+        self.assertEqual([block["type"] for block in blocks], ["callout", "toggle"])
+        text = blocks[0]["callout"]["rich_text"][0]["text"]["content"]
+        self.assertEqual(text, f"{AI_SUMMARY_CALLOUT_PREFIX}日本語要約")
 
     def test_payload_sets_known_database_properties(self) -> None:
         schema = {

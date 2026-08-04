@@ -17,6 +17,7 @@ NOTION_BLOCKS_API_URL = "https://api.notion.com/v1/blocks"
 NOTION_VERSION = "2022-06-28"
 NOTION_FILE_UPLOAD_VERSION = os.getenv("NOTION_FILE_UPLOAD_VERSION", "2026-03-11")
 AI_SECTION_TITLE = "AI Generated Review (auto)"
+AI_SUMMARY_CALLOUT_PREFIX = "AI日本語要約："
 
 
 def create_notion_page(summary: dict[str, Any], database_id: str, token: str, graphic_url: str = "") -> dict[str, Any]:
@@ -96,7 +97,7 @@ def upsert_chatgpt_summary_page(
         return page
 
     if replace_generated_section:
-        payload["children"] = [ai_generated_toggle(summary)]
+        payload["children"] = ai_generated_review_blocks(summary)
     page = send_create_page(payload, token)
     page["import_action"] = "created"
     return page
@@ -255,14 +256,30 @@ def append_block_children(page_id: str, children: list[dict[str, Any]], token: s
 
 
 def replace_ai_generated_section(page_id: str, summary: dict[str, Any], token: str) -> None:
-    """Replace only the pipeline-owned toggle, preserving all user-authored blocks."""
+    """Replace only pipeline-owned blocks, preserving all user-authored blocks."""
     for block in list_block_children(page_id, token):
-        if block.get("type") != "toggle":
-            continue
-        title = _plain_text(block.get("toggle", {}).get("rich_text", []))
-        if title == AI_SECTION_TITLE:
+        block_type = block.get("type")
+        content = _plain_text(block.get(block_type, {}).get("rich_text", []))
+        if (block_type == "toggle" and content == AI_SECTION_TITLE) or (
+            block_type == "callout" and content.startswith(AI_SUMMARY_CALLOUT_PREFIX)
+        ):
             delete_block(block["id"], token)
-    append_block_children(page_id, [ai_generated_toggle(summary)], token)
+    append_block_children(page_id, ai_generated_review_blocks(summary), token)
+
+
+def ai_generated_review_blocks(summary: dict[str, Any]) -> list[dict[str, Any]]:
+    summary_jp = str(summary.get("summary_jp") or "日本語要約は生成されていません。").strip()
+    return [
+        {
+            "object": "block",
+            "type": "callout",
+            "callout": {
+                "icon": {"type": "emoji", "emoji": "📝"},
+                "rich_text": [{"type": "text", "text": {"content": _truncate(f"{AI_SUMMARY_CALLOUT_PREFIX}{summary_jp}", 1900)}}],
+            },
+        },
+        ai_generated_toggle(summary),
+    ]
 
 
 def ai_generated_toggle(summary: dict[str, Any]) -> dict[str, Any]:
@@ -498,8 +515,8 @@ def page_children(summary: dict[str, Any]) -> list[dict[str, Any]]:
 
 def chatgpt_summary_children(summary: dict[str, Any]) -> list[dict[str, Any]]:
     sections = [
-        ("Take Home Message", summary.get("take_home_message") or summary.get("one_line_summary", "")),
         ("日本語要約", summary.get("summary_jp", "")),
+        ("一文要約", summary.get("one_line_summary") or summary.get("take_home_message", "")),
         ("なぜ重要か", summary.get("why_important", "")),
         ("臨床への影響", summary.get("clinical_impact", "")),
         ("PICO", summary.get("pico", "")),

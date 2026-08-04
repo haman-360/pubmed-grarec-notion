@@ -155,7 +155,7 @@ func card(rect: NSRect, color: NSColor, number: String, title: String, body: Str
     rounded(NSRect(x: rect.minX + 20, y: rect.minY + 24, width: 38, height: 38), radius: 19, fill: color.withAlphaComponent(0.14))
     drawText(number, rect: NSRect(x: rect.minX + 20, y: rect.minY + 29, width: 38, height: 27), size: 20, weight: .heavy, color: color, alignment: .center)
     drawText(title, rect: NSRect(x: rect.minX + 70, y: rect.minY + 24, width: rect.width - 92, height: 36), size: 25, weight: .heavy)
-    drawFittedText(body, rect: NSRect(x: rect.minX + 22, y: rect.minY + 70, width: rect.width - 44, height: rect.height - 88), maximum: 19, minimum: 11)
+    drawFittedText(body, rect: NSRect(x: rect.minX + 22, y: rect.minY + 70, width: rect.width - 44, height: rect.height - 88), maximum: 24, minimum: 15)
 }
 
 let image = NSImage(size: canvas)
@@ -181,14 +181,10 @@ rounded(NSRect(x: 1170, y: 42, width: 376, height: 165), radius: 10, fill: palet
 let metadata = "PMID  \(value("pmid"))\nJournal  \(value("journal"))\nYear  \(value("year"))\nType  \(value("study_type"))"
 drawFittedText(metadata, rect: NSRect(x: 1193, y: 60, width: 330, height: 132), maximum: 20, minimum: 14, weight: .semibold)
 
-card(rect: NSRect(x: 54, y: 260, width: 730, height: 180), color: palette.teal, number: "1", title: "PICO / 対象", body: completeSentences(value("pico", fallback: "原文確認"), limit: 230))
-card(rect: NSRect(x: 808, y: 260, width: 738, height: 180), color: palette.blue, number: "2", title: "主要結果", body: completeSentences(value("main_results", fallback: "数値は原文確認"), limit: 230))
-card(rect: NSRect(x: 54, y: 458, width: 730, height: 180), color: palette.green, number: "3", title: "診療への意味", body: completeSentences(value("applicability_to_japanese_pediatric_clinic", fallback: value("clinical_impact", fallback: "原文確認")), limit: 210))
-card(rect: NSRect(x: 808, y: 458, width: 738, height: 180), color: palette.orange, number: "4", title: "限界・注意", body: completeSentences(value("limitations", fallback: value("safety", fallback: "原文確認")), limit: 210))
-
-rounded(NSRect(x: 54, y: 660, width: 1492, height: 130), radius: 12, fill: palette.dark)
-drawText("TAKE HOME", rect: NSRect(x: 82, y: 700, width: 190, height: 38), size: 25, weight: .heavy, color: NSColor(calibratedRed: 0.72, green: 0.91, blue: 0.84, alpha: 1))
-drawFittedText(value("one_line_summary", fallback: "原文確認が必要です"), rect: NSRect(x: 286, y: 683, width: 1215, height: 88), maximum: 28, minimum: 18, weight: .heavy, color: .white)
+card(rect: NSRect(x: 54, y: 260, width: 730, height: 255), color: palette.teal, number: "1", title: "PICO / 対象", body: completeSentences(value("pico", fallback: "原文確認"), limit: 230))
+card(rect: NSRect(x: 808, y: 260, width: 738, height: 255), color: palette.blue, number: "2", title: "主要結果", body: completeSentences(value("main_results", fallback: "数値は原文確認"), limit: 230))
+card(rect: NSRect(x: 54, y: 535, width: 730, height: 255), color: palette.green, number: "3", title: "診療への意味", body: completeSentences(value("applicability_to_japanese_pediatric_clinic", fallback: value("clinical_impact", fallback: "原文確認")), limit: 210))
+card(rect: NSRect(x: 808, y: 535, width: 738, height: 255), color: palette.orange, number: "4", title: "限界・注意", body: completeSentences(value("limitations", fallback: value("safety", fallback: "原文確認")), limit: 210))
 
 line(54, 821, 54, 860, color: palette.orange, width: 5)
 let footer = source == "pubmed_abstract"

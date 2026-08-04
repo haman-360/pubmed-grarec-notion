@@ -120,6 +120,8 @@ Batchジョブの状態、実トークン数、実料金は `output/jobs/PMID_<i
 
 グラレコは画像生成AIではなく、精読JSONをSwift/AppKitテンプレートへ流し込んで作ります。これにより日本語と数値を確定的に描画し、画像生成API料金を発生させません。
 
+自動精読JSONは、Web版ChatGPTでより高度なグラレコを作る際の入力にも使えるよう、`pico`をP/I(C)/O別のobject、`main_results`、`limitations`、`tomorrow_action`を配列で保存します。`summary_jp`には研究目的、対象・方法、主要結果、安全性・限界、診療への意味を含む400〜800字の日本語解説を保存します。Notionページでは、この日本語解説を折りたたみ外のコールアウトにも表示します。
+
 ## 実行方法
 
 PMID 41733080 は [input/pmids.txt](input/pmids.txt) に入れてあります。
@@ -211,7 +213,7 @@ python3 scripts/import_chatgpt_summary.py --file input/chatgpt_summaries/PMID_41
 JSON内の `PMID`, `title`, `journal`, `year`, `doi`, `topic`, `one_line_summary`, `practice_change`, `human_checked` はNotion DBのプロパティへ登録します。
 `one_line_summary` は既存DBの `Take Home Message` に入ります。
 `topic` は配列でも文字列でも使えます。文字列の場合は `,`、`、`、`;`、`；` で区切るとNotionのmulti-selectに分割して登録します。
-`PICO`, `figure_table_summary`, `main_results`, `safety`, `limitations`, `applicability_to_japanese_pediatric_clinic`, `tomorrow_action` はNotionページ本文に見出し付きで追加します。
+`summary_jp`はNotionページ上で常に見える日本語要約として表示します。`PICO`, `figure_table_summary`, `main_results`, `safety`, `limitations`, `applicability_to_japanese_pediatric_clinic`, `tomorrow_action` は、折りたたみ可能な詳細レビュー内に見出し付きで追加します。
 `graphic_url` がある場合は `Graphic URL`, `Graphic Image`, ページカバーへ反映します。
 
 処理が終わったJSONは `PubMedGraRec.command` の `6. この精読JSONを処理済み(done)へ移動` で `input/chatgpt_summaries/done/` に移します。
