@@ -136,6 +136,18 @@ def strip_markdown_json_fence(text: str) -> str:
 
 
 def rename_grarec(pmid: str, variant: str = "auto", force: bool = False) -> bool:
+    if variant == "auto" and variant_grarec_path(pmid, "auto"):
+        print("このPMIDには自動版画像がすでにあります。")
+        use_web = input("追加画像をWeb版（_web）として保存しますか？ [Y/n]: ").strip().lower()
+        if use_web in {"", "y", "yes"}:
+            variant = "web"
+            existing_web = variant_grarec_path(pmid, "web")
+            if existing_web:
+                replace = input("Web版もあります。新しい画像で置き換えますか？ [y/N]: ").strip().lower()
+                if replace not in {"y", "yes"}:
+                    print("中止しました。")
+                    return False
+                force = True
     print("画像ファイルを直接指定する場合はパスを入力してください。")
     print("空欄ならDownloadsとimages/から最新画像を選びます。")
     source = input("画像パス: ").strip()

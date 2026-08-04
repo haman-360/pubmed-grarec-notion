@@ -450,7 +450,8 @@ def _update_notion(summary: dict[str, Any], image_path: Path | None, job: dict[s
 def graphic_public_url(image_path: Path) -> str:
     relative_path = image_path.resolve().relative_to(ROOT.resolve()).as_posix()
     base_url = os.getenv("GITHUB_PAGES_BASE_URL", DEFAULT_GITHUB_PAGES_BASE_URL).rstrip("/")
-    return f"{base_url}/{quote(relative_path)}"
+    version = hashlib.sha256(image_path.read_bytes()).hexdigest()[:12]
+    return f"{base_url}/{quote(relative_path)}?v={version}"
 
 
 def publish_graphic(image_path: Path, pmid: str) -> str:

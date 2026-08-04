@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -45,8 +46,8 @@ def main() -> None:
         image_path = normalize_image_path(args.image_path) if args.image_path else find_latest_grarec_path(args.pmid)
         additional_paths = [normalize_image_path(path) for path in args.additional_image_path]
     base_url = (args.base_url or os.getenv("GITHUB_PAGES_BASE_URL") or "https://haman-360.github.io/pubmed-grarec-notion").rstrip("/")
-    graphic_url = f"{base_url}/{quote(image_path)}"
-    additional_urls = [f"{base_url}/{quote(path)}" for path in additional_paths]
+    graphic_url = public_image_url(base_url, image_path)
+    additional_urls = [public_image_url(base_url, path) for path in additional_paths]
 
     page = update_notion_page_cover_and_graphic_url(page_id, database_id, token, graphic_url, additional_urls)
     print(json.dumps({"pmid": args.pmid, "page_id": page.get("id"), "url": page.get("url"), "graphic_urls": [graphic_url, *additional_urls]}, ensure_ascii=False, indent=2))
@@ -104,6 +105,12 @@ def normalize_image_path(image_path: str) -> str:
         except ValueError as error:
             raise SystemExit(f"Image path must be inside this repository: {path}") from error
     return path.as_posix()
+
+
+def public_image_url(base_url: str, image_path: str) -> str:
+    local_path = ROOT / image_path
+    version = hashlib.sha256(local_path.read_bytes()).hexdigest()[:12]
+    return f"{base_url.rstrip('/')}/{quote(image_path)}?v={version}"
 
 
 if __name__ == "__main__":

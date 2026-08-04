@@ -6,6 +6,7 @@ import os
 import re
 import uuid
 from pathlib import Path
+from urllib.parse import urlsplit
 from urllib.error import HTTPError
 import urllib.request
 from typing import Any
@@ -91,7 +92,7 @@ def build_graphic_update_payload(
         "Graphic Image",
         {
             "files": [
-                {"name": os.path.basename(url), "type": "external", "external": {"url": url}}
+                {"name": os.path.basename(urlsplit(url).path), "type": "external", "external": {"url": url}}
                 for url in urls
             ]
         },

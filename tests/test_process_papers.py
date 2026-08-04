@@ -111,7 +111,7 @@ class ProcessPapersTests(unittest.TestCase):
             url = process_papers.graphic_public_url(image)
         self.assertEqual(
             url,
-            "https://example.test/pubmed/images/2026/08/PMID_42526949_grarec.png",
+            f"https://example.test/pubmed/images/2026/08/PMID_42526949_grarec.png?v={process_papers.hashlib.sha256(image.read_bytes()).hexdigest()[:12]}",
         )
 
 

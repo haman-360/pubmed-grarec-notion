@@ -76,6 +76,11 @@ class NotionPayloadTests(unittest.TestCase):
         files = payload["properties"]["Graphic Image"]["files"]
         self.assertEqual([item["external"]["url"] for item in files], [web, automatic])
 
+    def test_graphic_filename_ignores_cache_query(self) -> None:
+        database = {"properties": {"Graphic Image": {"type": "files"}}}
+        payload = build_graphic_update_payload(database, "https://example.test/image.png?v=abc")
+        self.assertEqual(payload["properties"]["Graphic Image"]["files"][0]["name"], "image.png")
+
 
 if __name__ == "__main__":
     unittest.main()
