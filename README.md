@@ -122,6 +122,24 @@ Batchジョブの状態、実トークン数、実料金は `output/jobs/PMID_<i
 
 自動精読JSONは、Web版ChatGPTでより高度なグラレコを作る際の入力にも使えるよう、`pico`をP/I(C)/O別のobject、`main_results`、`limitations`、`tomorrow_action`を配列で保存します。`summary_jp`には研究目的、対象・方法、主要結果、安全性・限界、診療への意味を含む400〜800字の日本語解説を保存します。Notionページでは、この日本語解説を折りたたみ外のコールアウトにも表示します。
 
+### 自動版を残してWeb版グラレコを追加する
+
+より高度なグラレコが必要な論文では、自動版を削除せずWeb版ChatGPTの画像を追加できます。`PubMedGraRec.command`を開き、対象PMIDを選んで`15. Web版ChatGPT画像を追加（自動版を残す）`を実行します。Downloads内の最新画像、または入力した画像パスを次の名前で保存・公開し、Notionまで更新します。
+
+```text
+PMID_42526949_grarec_web.png  Web版（先頭・ページカバー）
+PMID_42526949_grarec.png      自動版（2枚目・比較用）
+```
+
+Notionの`Graphic Image`には2枚が入り、クリックして切り替えて確認できます。ギャラリーとページカバーにはWeb版が表示されます。その後に自動処理を再実行しても、repositoryにWeb版があればWeb版優先を維持します。画像生成APIは使わないため、この追加処理自体にOpenAI API料金はかかりません（Web版ChatGPTの利用条件は契約プランに従います）。
+
+コマンドで行う場合:
+
+```bash
+python3 scripts/rename_latest_grarec.py --pmid 42526949 --variant web --source "/path/to/ChatGPT Image.png"
+python3 scripts/update_graphic_url.py --pmid 42526949 --prefer-web
+```
+
 ## 実行方法
 
 PMID 41733080 は [input/pmids.txt](input/pmids.txt) に入れてあります。

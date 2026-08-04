@@ -21,13 +21,15 @@ def main() -> None:
     parser.add_argument("--year", type=int, default=datetime.now().year, help="Destination year. Defaults to current year.")
     parser.add_argument("--month", type=int, default=datetime.now().month, help="Destination month. Defaults to current month.")
     parser.add_argument("--copy", action="store_true", help="Copy instead of moving the source file.")
+    parser.add_argument("--variant", choices=["auto", "web"], default="auto", help="Save as the automatic or Web ChatGPT variant.")
     parser.add_argument("--force", action="store_true", help="Overwrite destination if it already exists.")
     parser.add_argument("--dry-run", action="store_true", help="Show what would happen without moving or copying.")
     parser.add_argument("--base-url", default=os.getenv("GITHUB_PAGES_BASE_URL", "https://haman-360.github.io/pubmed-grarec-notion"), help="Public base URL for the repository.")
     args = parser.parse_args()
 
     source = resolve_source(args.source, args.search_dir)
-    destination = ROOT / "images" / f"{args.year:04d}" / f"{args.month:02d}" / f"PMID_{args.pmid}_grarec{source.suffix.lower()}"
+    variant_suffix = "_web" if args.variant == "web" else ""
+    destination = ROOT / "images" / f"{args.year:04d}" / f"{args.month:02d}" / f"PMID_{args.pmid}_grarec{variant_suffix}{source.suffix.lower()}"
     public_url = f"{args.base_url.rstrip('/')}/{quote(destination.relative_to(ROOT).as_posix())}"
 
     print(f"source: {source}")

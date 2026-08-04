@@ -41,21 +41,15 @@ def create_notion_page(summary: dict[str, Any], database_id: str, token: str, gr
         raise RuntimeError(f"Notion API error {error.code}: {body}") from error
 
 
-def update_notion_page_cover_and_graphic_url(page_id: str, database_id: str, token: str, graphic_url: str) -> dict[str, Any]:
+def update_notion_page_cover_and_graphic_url(
+    page_id: str,
+    database_id: str,
+    token: str,
+    graphic_url: str,
+    additional_graphic_urls: list[str] | None = None,
+) -> dict[str, Any]:
     database = retrieve_database(database_id, token)
-    schema = database.get("properties", {})
-    properties: dict[str, Any] = {}
-    _add_property(properties, schema, "Graphic URL", {"url": graphic_url or None})
-    _add_property(
-        properties,
-        schema,
-        "Graphic Image",
-        {"files": [{"name": os.path.basename(graphic_url), "type": "external", "external": {"url": graphic_url}}]},
-    )
-    payload: dict[str, Any] = {
-        "cover": {"type": "external", "external": {"url": graphic_url}},
-        "properties": properties,
-    }
+    payload = build_graphic_update_payload(database, graphic_url, additional_graphic_urls)
     request = urllib.request.Request(
         f"{NOTION_API_URL}/{page_id}",
         data=json.dumps(payload).encode("utf-8"),
@@ -72,6 +66,40 @@ def update_notion_page_cover_and_graphic_url(page_id: str, database_id: str, tok
     except HTTPError as error:
         body = error.read().decode("utf-8", errors="replace")
         raise RuntimeError(f"Notion API error {error.code}: {body}") from error
+
+
+def build_graphic_update_payload(
+    database: dict[str, Any],
+    graphic_url: str,
+    additional_graphic_urls: list[str] | None = None,
+) -> dict[str, Any]:
+    """Build a cover/files update with the preferred image first."""
+    urls: list[str] = []
+    for value in [graphic_url, *(additional_graphic_urls or [])]:
+        url = str(value or "").strip()
+        if url and url not in urls:
+            urls.append(url)
+    if not urls:
+        raise ValueError("At least one graphic URL is required.")
+
+    schema = database.get("properties", {})
+    properties: dict[str, Any] = {}
+    _add_property(properties, schema, "Graphic URL", {"url": urls[0]})
+    _add_property(
+        properties,
+        schema,
+        "Graphic Image",
+        {
+            "files": [
+                {"name": os.path.basename(url), "type": "external", "external": {"url": url}}
+                for url in urls
+            ]
+        },
+    )
+    return {
+        "cover": {"type": "external", "external": {"url": urls[0]}},
+        "properties": properties,
+    }
 
 
 def upsert_chatgpt_summary_page(

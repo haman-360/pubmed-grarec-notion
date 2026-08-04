@@ -35,6 +35,7 @@ def main() -> None:
         print("12. 完了結果を回収してグラレコ作成")
         print("13. 完了結果を回収してNotion登録")
         print("14. 全自動：事前確認からNotion登録まで（おすすめ）")
+        print("15. Web版ChatGPT画像を追加（自動版を残す）")
         print("q. 終了")
         choice = input("> ").strip().lower()
 
@@ -66,6 +67,8 @@ def main() -> None:
             run(["scripts/process_papers.py", "resume", "--notion"])
         elif choice == "14":
             run(["scripts/process_papers.py", "auto"])
+        elif choice == "15":
+            add_web_grarec(pmid)
         elif choice in {"q", "quit", "exit"}:
             break
         else:
@@ -132,14 +135,60 @@ def strip_markdown_json_fence(text: str) -> str:
     return "\n".join(lines).strip()
 
 
-def rename_grarec(pmid: str) -> None:
+def rename_grarec(pmid: str, variant: str = "auto", force: bool = False) -> bool:
     print("画像ファイルを直接指定する場合はパスを入力してください。")
     print("空欄ならDownloadsとimages/から最新画像を選びます。")
     source = input("画像パス: ").strip()
     command = ["scripts/rename_latest_grarec.py", "--pmid", pmid]
+    if variant == "web":
+        command.extend(["--variant", "web"])
+    if force:
+        command.append("--force")
     if source:
         command.extend(["--source", source])
-    run(command)
+    return run_command([sys.executable, *command])
+
+
+def add_web_grarec(pmid: str) -> None:
+    print("Web版ChatGPTで作成した画像を追加します。自動版は削除しません。")
+    existing_web = variant_grarec_path(pmid, "web")
+    if existing_web:
+        print(f"登録済みのWeb版: {existing_web}")
+        replace = input("新しい画像に置き換えますか？ [y/N]: ").strip().lower()
+        if replace in {"y", "yes"} and not rename_grarec(pmid, variant="web", force=True):
+            return
+    elif not rename_grarec(pmid, variant="web"):
+        return
+    web_path = variant_grarec_path(pmid, "web")
+    auto_path = variant_grarec_path(pmid, "auto")
+    if not web_path or not auto_path:
+        print("Web版と自動版の両方が揃っていないため中止しました。")
+        return
+    print(f"Web版（優先）: {web_path}")
+    print(f"自動版（比較用）: {auto_path}")
+    print("Web版をGitHub Pagesへ公開し、Notionへ2枚とも登録します。")
+    value = input("続けますか？ [y/N]: ").strip().lower()
+    if value not in {"y", "yes"}:
+        print("画像整理まで完了しました。公開・Notion更新は行っていません。")
+        return
+    if not publish_specific_grarec(pmid, web_path):
+        return
+    run(["scripts/update_graphic_url.py", "--pmid", pmid, "--prefer-web"])
+
+
+def publish_specific_grarec(pmid: str, image_path: Path) -> bool:
+    branch = git_output(["branch", "--show-current"]) or "main"
+    if git_output(["status", "--short", "--", image_path.as_posix()]):
+        if not run_command(["git", "add", image_path.as_posix()]):
+            return False
+        if not run_command(["git", "commit", "-m", f"Add Web grarec image for PMID {pmid}"]):
+            return False
+    else:
+        print("Web版画像はすでにcommit済みです。")
+    if not run_command(["git", "push", "origin", branch]):
+        return False
+    print("Web版画像を公開しました。NotionではWeb版が先頭、自動版が2枚目になります。")
+    return True
 
 
 def update_graphic(pmid: str) -> None:
@@ -217,6 +266,18 @@ def latest_grarec_path(pmid: str) -> Path | None:
     candidates = [
         path.relative_to(ROOT)
         for path in (ROOT / "images").rglob(f"PMID_{pmid}_grarec.*")
+        if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS
+    ]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda path: (ROOT / path).stat().st_mtime)
+
+
+def variant_grarec_path(pmid: str, variant: str) -> Path | None:
+    suffix = "_web" if variant == "web" else ""
+    candidates = [
+        path.relative_to(ROOT)
+        for path in (ROOT / "images").rglob(f"PMID_{pmid}_grarec{suffix}.*")
         if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS
     ]
     if not candidates:

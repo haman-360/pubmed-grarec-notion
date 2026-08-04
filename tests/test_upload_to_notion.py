@@ -13,6 +13,7 @@ from upload_to_notion import (  # noqa: E402
     AI_SUMMARY_CALLOUT_PREFIX,
     ai_generated_review_blocks,
     ai_generated_toggle,
+    build_graphic_update_payload,
     build_chatgpt_summary_payload,
 )
 
@@ -64,6 +65,16 @@ class NotionPayloadTests(unittest.TestCase):
         self.assertEqual(properties["PMID"]["rich_text"][0]["text"]["content"], "42115808")
         self.assertEqual(properties["Study Type"]["select"]["name"], "RCT")
         self.assertEqual(properties["Summary JP"]["rich_text"][0]["text"]["content"], "日本語要約")
+
+    def test_graphic_update_keeps_web_and_auto_images(self) -> None:
+        database = {"properties": {"Graphic URL": {"type": "url"}, "Graphic Image": {"type": "files"}}}
+        web = "https://example.test/PMID_1_grarec_web.png"
+        automatic = "https://example.test/PMID_1_grarec.png"
+        payload = build_graphic_update_payload(database, web, [automatic])
+        self.assertEqual(payload["cover"]["external"]["url"], web)
+        self.assertEqual(payload["properties"]["Graphic URL"]["url"], web)
+        files = payload["properties"]["Graphic Image"]["files"]
+        self.assertEqual([item["external"]["url"] for item in files], [web, automatic])
 
 
 if __name__ == "__main__":

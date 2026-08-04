@@ -430,7 +430,13 @@ def _update_notion(summary: dict[str, Any], image_path: Path | None, job: dict[s
     if image_path:
         attach_local_graphic(page["id"], database_id, token, image_path)
     if graphic_url:
-        update_notion_page_cover_and_graphic_url(page["id"], database_id, token, graphic_url)
+        web_image = _find_web_grarec(str(summary["pmid"]))
+        if web_image:
+            web_url = graphic_public_url(web_image)
+            update_notion_page_cover_and_graphic_url(page["id"], database_id, token, web_url, [graphic_url])
+            graphic_url = web_url
+        else:
+            update_notion_page_cover_and_graphic_url(page["id"], database_id, token, graphic_url)
     remember_notion_page(summary.get("pmid"), page)
     job["status"] = "notion_updated"
     job["notion_page_id"] = page.get("id")
@@ -657,6 +663,15 @@ def _render_summary(summary_path: Path, pmid: str) -> Path:
         raise RuntimeError(f"Graphic rendering failed:\n{result.stdout}\n{result.stderr}")
     print(f"PMID {pmid}: rendered {output.relative_to(ROOT)}")
     return output
+
+
+def _find_web_grarec(pmid: str) -> Path | None:
+    candidates = [
+        path
+        for path in (ROOT / "images").rglob(f"PMID_{pmid}_grarec_web.*")
+        if path.is_file() and path.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}
+    ]
+    return max(candidates, key=lambda path: path.stat().st_mtime) if candidates else None
 
 
 def _collect_pmids(explicit: list[str] | None, file_path: Path, pdf_dir: Path) -> list[str]:
