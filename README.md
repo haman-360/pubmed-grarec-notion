@@ -94,7 +94,7 @@ python3 scripts/process_papers.py resume --notion
 
 ### 一度の実行でNotionまで自動反映する
 
-事前確認、Batch投入、完了待機、要約JSONの回収、グラレコPNG生成、Notion登録と画像アップロードまでを一度に実行できます。
+事前確認、Batch投入、完了待機、要約JSONの回収、グラレコPNG生成、GitHub Pages公開、Notion登録と画像アップロードまでを一度に実行できます。公開後のURLはNotionの `Graphic URL` に保存されます。
 
 ```bash
 python3 scripts/process_papers.py auto

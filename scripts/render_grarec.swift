@@ -81,7 +81,31 @@ func attributes(size: CGFloat, weight: NSFont.Weight = .regular, color: NSColor 
 
 func drawText(_ text: String, rect: NSRect, size: CGFloat, weight: NSFont.Weight = .regular, color: NSColor = palette.ink, lineHeight: CGFloat? = nil, alignment: NSTextAlignment = .left) {
     NSAttributedString(string: text, attributes: attributes(size: size, weight: weight, color: color, lineHeight: lineHeight, alignment: alignment))
-        .draw(with: mapped(rect), options: [.usesLineFragmentOrigin, .usesFontLeading, .truncatesLastVisibleLine])
+        .draw(with: mapped(rect), options: [.usesLineFragmentOrigin, .usesFontLeading])
+}
+
+func fittedSize(_ text: String, rect: NSRect, maximum: CGFloat, minimum: CGFloat, weight: NSFont.Weight = .regular) -> CGFloat {
+    var candidate = maximum
+    while candidate > minimum {
+        let lineHeight = candidate * 1.42
+        let attributed = NSAttributedString(
+            string: text,
+            attributes: attributes(size: candidate, weight: weight, lineHeight: lineHeight)
+        )
+        let bounds = attributed.boundingRect(
+            with: NSSize(width: rect.width, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading]
+        )
+        if bounds.height + candidate * 0.55 <= rect.height { return candidate }
+        candidate -= 1
+    }
+    return minimum
+}
+
+func drawFittedText(_ text: String, rect: NSRect, maximum: CGFloat, minimum: CGFloat, weight: NSFont.Weight = .regular, color: NSColor = palette.ink, alignment: NSTextAlignment = .left) {
+    let normalized = text.replacingOccurrences(of: "\r", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+    let size = fittedSize(normalized, rect: rect, maximum: maximum, minimum: minimum, weight: weight)
+    drawText(normalized, rect: rect, size: size, weight: weight, color: color, lineHeight: size * 1.42, alignment: alignment)
 }
 
 func rounded(_ rect: NSRect, radius: CGFloat, fill: NSColor, stroke: NSColor? = nil, width: CGFloat = 1) {
@@ -104,20 +128,34 @@ func line(_ x1: CGFloat, _ y1: CGFloat, _ x2: CGFloat, _ y2: CGFloat, color: NSC
     path.stroke()
 }
 
-func compact(_ text: String, limit: Int) -> String {
-    let normalized = text.replacingOccurrences(of: "\r", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+func completeSentences(_ text: String, limit: Int) -> String {
+    let normalized = text
+        .replacingOccurrences(of: "\r", with: "")
+        .replacingOccurrences(of: "\n", with: " ")
+        .trimmingCharacters(in: .whitespacesAndNewlines)
     if normalized.count <= limit { return normalized }
-    return String(normalized.prefix(limit - 1)) + "…"
+    let pieces = normalized.split(separator: "。", omittingEmptySubsequences: true).map {
+        String($0).trimmingCharacters(in: .whitespacesAndNewlines) + "。"
+    }
+    guard !pieces.isEmpty else { return normalized }
+    var selected: [String] = []
+    var count = 0
+    for sentence in pieces {
+        if !selected.isEmpty && count + sentence.count > limit { break }
+        selected.append(sentence)
+        count += sentence.count
+        if count >= limit { break }
+    }
+    return selected.joined()
 }
 
-func card(x: CGFloat, color: NSColor, number: String, title: String, body: String) {
-    let rect = NSRect(x: x, y: 270, width: 358, height: 360)
+func card(rect: NSRect, color: NSColor, number: String, title: String, body: String) {
     rounded(rect, radius: 12, fill: palette.paper, stroke: palette.border, width: 2)
-    rounded(NSRect(x: x, y: 270, width: 358, height: 11), radius: 6, fill: color)
-    rounded(NSRect(x: x + 22, y: 303, width: 46, height: 46), radius: 23, fill: color.withAlphaComponent(0.14))
-    drawText(number, rect: NSRect(x: x + 22, y: 309, width: 46, height: 32), size: 24, weight: .heavy, color: color, alignment: .center)
-    drawText(title, rect: NSRect(x: x + 82, y: 303, width: 250, height: 42), size: 29, weight: .heavy)
-    drawText(compact(body, limit: 260), rect: NSRect(x: x + 25, y: 370, width: 308, height: 225), size: 21, color: palette.ink, lineHeight: 31)
+    rounded(NSRect(x: rect.minX, y: rect.minY, width: rect.width, height: 9), radius: 5, fill: color)
+    rounded(NSRect(x: rect.minX + 20, y: rect.minY + 24, width: 38, height: 38), radius: 19, fill: color.withAlphaComponent(0.14))
+    drawText(number, rect: NSRect(x: rect.minX + 20, y: rect.minY + 29, width: 38, height: 27), size: 20, weight: .heavy, color: color, alignment: .center)
+    drawText(title, rect: NSRect(x: rect.minX + 70, y: rect.minY + 24, width: rect.width - 92, height: 36), size: 25, weight: .heavy)
+    drawFittedText(body, rect: NSRect(x: rect.minX + 22, y: rect.minY + 70, width: rect.width - 44, height: rect.height - 88), maximum: 19, minimum: 11)
 }
 
 let image = NSImage(size: canvas)
@@ -135,29 +173,29 @@ default: sourceLabel = source.uppercased()
 }
 
 drawText(sourceLabel, rect: NSRect(x: 54, y: 35, width: 500, height: 34), size: 23, weight: .heavy, color: source == "pubmed_abstract" ? palette.orange : palette.teal)
-let headline = compact(value("one_line_summary", fallback: value("take_home_message", fallback: value("title"))), limit: 84)
-drawText(headline, rect: NSRect(x: 54, y: 78, width: 1065, height: 130), size: 48, weight: .heavy, lineHeight: 56)
+let headline = value("one_line_summary", fallback: value("take_home_message", fallback: value("title")))
+drawFittedText(headline, rect: NSRect(x: 54, y: 78, width: 1065, height: 130), maximum: 48, minimum: 18, weight: .heavy)
 line(54, 229, 1546, 229, color: palette.teal, width: 5)
 
 rounded(NSRect(x: 1170, y: 42, width: 376, height: 165), radius: 10, fill: palette.paper, stroke: palette.border, width: 2)
-let metadata = "PMID  \(value("pmid"))\nJournal  \(compact(value("journal"), limit: 38))\nYear  \(value("year"))\nType  \(compact(value("study_type"), limit: 35))"
-drawText(metadata, rect: NSRect(x: 1193, y: 60, width: 330, height: 132), size: 20, weight: .semibold, lineHeight: 30)
+let metadata = "PMID  \(value("pmid"))\nJournal  \(value("journal"))\nYear  \(value("year"))\nType  \(value("study_type"))"
+drawFittedText(metadata, rect: NSRect(x: 1193, y: 60, width: 330, height: 132), maximum: 20, minimum: 14, weight: .semibold)
 
-card(x: 54, color: palette.teal, number: "1", title: "PICO / 対象", body: value("pico", fallback: "原文確認"))
-card(x: 432, color: palette.blue, number: "2", title: "主要結果", body: value("main_results", fallback: "数値は原文確認"))
-card(x: 810, color: palette.green, number: "3", title: "診療への意味", body: value("applicability_to_japanese_pediatric_clinic", fallback: value("clinical_impact", fallback: "原文確認")))
-card(x: 1188, color: palette.orange, number: "4", title: "限界・注意", body: value("limitations", fallback: value("safety", fallback: "原文確認")))
+card(rect: NSRect(x: 54, y: 260, width: 730, height: 180), color: palette.teal, number: "1", title: "PICO / 対象", body: completeSentences(value("pico", fallback: "原文確認"), limit: 230))
+card(rect: NSRect(x: 808, y: 260, width: 738, height: 180), color: palette.blue, number: "2", title: "主要結果", body: completeSentences(value("main_results", fallback: "数値は原文確認"), limit: 230))
+card(rect: NSRect(x: 54, y: 458, width: 730, height: 180), color: palette.green, number: "3", title: "診療への意味", body: completeSentences(value("applicability_to_japanese_pediatric_clinic", fallback: value("clinical_impact", fallback: "原文確認")), limit: 210))
+card(rect: NSRect(x: 808, y: 458, width: 738, height: 180), color: palette.orange, number: "4", title: "限界・注意", body: completeSentences(value("limitations", fallback: value("safety", fallback: "原文確認")), limit: 210))
 
 rounded(NSRect(x: 54, y: 660, width: 1492, height: 130), radius: 12, fill: palette.dark)
 drawText("TAKE HOME", rect: NSRect(x: 82, y: 700, width: 190, height: 38), size: 25, weight: .heavy, color: NSColor(calibratedRed: 0.72, green: 0.91, blue: 0.84, alpha: 1))
-drawText(compact(value("one_line_summary", fallback: "原文確認が必要です"), limit: 120), rect: NSRect(x: 286, y: 683, width: 1215, height: 88), size: 28, weight: .heavy, color: .white, lineHeight: 37)
+drawFittedText(value("one_line_summary", fallback: "原文確認が必要です"), rect: NSRect(x: 286, y: 683, width: 1215, height: 88), maximum: 28, minimum: 18, weight: .heavy, color: .white)
 
 line(54, 821, 54, 860, color: palette.orange, width: 5)
 let footer = source == "pubmed_abstract"
     ? "AI下読み用・Abstractのみ。主要数値、対象、評価項目、結論を全文で確認してください。"
     : "AI下読み用。主要数値、対象、評価項目、結論を原文で確認し、Human Checkedを更新してください。"
 drawText(footer, rect: NSRect(x: 72, y: 817, width: 940, height: 48), size: 19, weight: .semibold, color: palette.muted)
-drawText(compact(value("title"), limit: 75), rect: NSRect(x: 1030, y: 819, width: 516, height: 44), size: 17, color: palette.muted, alignment: .right)
+drawFittedText(value("title"), rect: NSRect(x: 1030, y: 819, width: 516, height: 44), maximum: 17, minimum: 10, color: palette.muted, alignment: .right)
 
 image.unlockFocus()
 guard let tiff = image.tiffRepresentation,

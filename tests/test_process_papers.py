@@ -101,6 +101,15 @@ class ProcessPapersTests(unittest.TestCase):
         submit.assert_called_once_with(args)
         watch.assert_called_once_with(args)
 
+    def test_graphic_public_url_uses_repository_relative_path(self) -> None:
+        image = ROOT / "images" / "2026" / "08" / "PMID_42526949_grarec.png"
+        with patch.dict(os.environ, {"GITHUB_PAGES_BASE_URL": "https://example.test/pubmed"}):
+            url = process_papers.graphic_public_url(image)
+        self.assertEqual(
+            url,
+            "https://example.test/pubmed/images/2026/08/PMID_42526949_grarec.png",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

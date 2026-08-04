@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
 import urllib.request
+from urllib.parse import quote
 
 from fetch_pubmed import PubMedArticle, fetch_pubmed_article
 from import_chatgpt_summary import normalize_chatgpt_summary, remember_notion_page
@@ -30,6 +31,7 @@ from upload_to_notion import (
     attach_local_graphic,
     find_notion_page_by_pmid,
     notion_credentials_from_env,
+    update_notion_page_cover_and_graphic_url,
     upsert_chatgpt_summary_page,
 )
 
@@ -43,6 +45,7 @@ SOURCES = ROOT / "output" / "sources"
 SUMMARIES = ROOT / "output" / "summaries"
 PROMPT_VERSION = "paper-review-v1"
 PMC_BIOC_URL = "https://www.ncbi.nlm.nih.gov/research/bionlp/RESTful/pmcoa.cgi/BioC_json/{pmid}/unicode"
+DEFAULT_GITHUB_PAGES_BASE_URL = "https://haman-360.github.io/pubmed-grarec-notion"
 
 
 def main() -> None:
@@ -413,6 +416,10 @@ def _update_notion(summary: dict[str, Any], image_path: Path | None, job: dict[s
     if not token or not database_id:
         raise SystemExit("NOTION_TOKEN and NOTION_DATABASE_ID are required in .env for --notion.")
     normalized = normalize_chatgpt_summary(summary)
+    graphic_url = ""
+    if image_path:
+        graphic_url = publish_graphic(image_path, str(summary["pmid"]))
+        normalized["graphic_url"] = graphic_url
     page = upsert_chatgpt_summary_page(
         normalized,
         database_id,
@@ -422,13 +429,64 @@ def _update_notion(summary: dict[str, Any], image_path: Path | None, job: dict[s
     )
     if image_path:
         attach_local_graphic(page["id"], database_id, token, image_path)
+    if graphic_url:
+        update_notion_page_cover_and_graphic_url(page["id"], database_id, token, graphic_url)
     remember_notion_page(summary.get("pmid"), page)
     job["status"] = "notion_updated"
     job["notion_page_id"] = page.get("id")
     job["notion_url"] = page.get("url")
+    job["graphic_url"] = graphic_url
     job["updated_at"] = _now()
     _write_json(_job_path(str(summary["pmid"])), job)
     print(f"PMID {summary['pmid']}: Notion {page.get('import_action')} {page.get('url')}")
+
+
+def graphic_public_url(image_path: Path) -> str:
+    relative_path = image_path.resolve().relative_to(ROOT.resolve()).as_posix()
+    base_url = os.getenv("GITHUB_PAGES_BASE_URL", DEFAULT_GITHUB_PAGES_BASE_URL).rstrip("/")
+    return f"{base_url}/{quote(relative_path)}"
+
+
+def publish_graphic(image_path: Path, pmid: str) -> str:
+    relative_path = image_path.resolve().relative_to(ROOT.resolve()).as_posix()
+    subprocess.run(["git", "add", "--", relative_path], cwd=ROOT, check=True)
+    changed = subprocess.run(
+        ["git", "diff", "--cached", "--quiet", "--", relative_path],
+        cwd=ROOT,
+        check=False,
+    ).returncode != 0
+    if changed:
+        subprocess.run(
+            ["git", "commit", "--only", "-m", f"Add grarec image for PMID {pmid}", "--", relative_path],
+            cwd=ROOT,
+            check=True,
+        )
+        branch = subprocess.run(
+            ["git", "branch", "--show-current"],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip() or "main"
+        subprocess.run(["git", "push", "origin", branch], cwd=ROOT, check=True)
+    url = graphic_public_url(image_path)
+    wait_for_public_graphic(url)
+    print(f"PMID {pmid}: Graphic URL {url}")
+    return url
+
+
+def wait_for_public_graphic(url: str, attempts: int = 60, delay_seconds: int = 5) -> None:
+    last_error = ""
+    for _ in range(attempts):
+        request = urllib.request.Request(url, method="HEAD", headers={"User-Agent": "pubmed-grarec-notion/1.0"})
+        try:
+            with urllib.request.urlopen(request, timeout=20) as response:
+                if response.status == 200:
+                    return
+        except (HTTPError, URLError, TimeoutError, OSError) as error:
+            last_error = str(error)
+        time.sleep(delay_seconds)
+    raise RuntimeError(f"GitHub Pagesで画像を確認できませんでした: {url} ({last_error})")
 
 
 def _resolve_source(article: PubMedArticle, pdf_path: Path | None) -> tuple[str, str, str, int]:
