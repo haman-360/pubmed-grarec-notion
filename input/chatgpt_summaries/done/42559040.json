@@ -1,0 +1,34 @@
+{
+  "pmid": "42559040",
+  "title": "Novel nonsteroidal topical therapies for pediatric atopic dermatitis: a systematic review and network meta-analysis of randomized controlled trials",
+  "journal": "Frontiers in Immunology",
+  "year": "2026",
+  "doi": "10.3389/fimmu.2026.1906218",
+  "topic": "小児アトピー性皮膚炎に対する新規非ステロイド外用療法の比較有効性・安全性",
+  "clinical_area": "小児アレルギー・アトピー性皮膚炎・皮膚科",
+  "one_line_summary": "小児ADに対するPDE4阻害薬、外用JAK阻害薬、AhR作動薬はvehicleと比較して4〜8週間の短期有効性を示し、明確な安全性悪化は認めなかったが、薬剤間の直接比較が乏しくランキングの解釈には注意が必要。",
+  "why_important": "15 RCT、3,994例を統合した小児特化network meta-analysisであり、複数の新規非ステロイド外用抗炎症薬をsteroid-sparing optionとして位置づける根拠になる。一方、ほぼすべてがvehicle対照であり、どの薬剤が最良かを決める根拠としては不十分。",
+  "pico": {
+    "p": "2歳以上18歳未満のアトピー性皮膚炎患者3,994例。多くは軽症〜中等症で、一部重症例を含む。",
+    "i_or_exposure": "PDE4阻害薬（crisaborole、difamilast、roflumilast）、外用JAK阻害薬（delgocitinib、ruxolitinib）、AhR作動薬（tapinarof）。薬剤、濃度、投与頻度ごとにnetwork nodeを設定。",
+    "c": "主にvehicle。active comparatorはcrisaborole 2% BIDとpimecrolimus 1% BIDを比較した1試験のみ。",
+    "o": "有効性：IGA treatment success、EASI-75、EASI-90。安全性：treatment-emergent adverse events（TEAEs）、treatment-related adverse events（TRAEs）。"
+  },
+  "study_design": "Systematic review and frequentist random-effects network meta-analysis。12論文15 RCT、3,994小児例。PROSPERO CRD420261400624。14試験はrandomized double-blind vehicle-controlled phase 2/3。RoB 2で概ねlow risk。効果量はRRと95% CI、ランキングはP-score、確実性はCINeMAで評価。",
+  "population_setting": "対象は2歳〜18歳未満。8試験が小児のみ、7試験が成人・小児混合集団から小児データを抽出。北米、欧州、東アジアで実施され、日本人小児を対象としたdelgocitinib、difamilast、tapinarofの試験も含む。治療期間は4〜8週間。",
+  "figure_table_summary": {
+    "figure_1": "PRISMA：1,172件を同定し、237件を全文評価、最終的に12論文・15 RCTを採用。",
+    "table_1": "日本を含む各地域のRCTを一覧化。PDE4阻害薬、JAK阻害薬、AhR作動薬を含み、治療期間4〜8週。多くは軽症〜中等症AD。年齢、重症度、濃度、投与頻度などには研究間差がある。",
+    "main_figures_tables": "Figure 2ではnetworkがほぼvehicle中心の放射状構造で、active drug同士の直接比較がほとんどない。Figure 3のprimary NMAではIGA-TSはtapinarof 0.5% QD以外すべてvehicleより有意に良好。IGA-TS P-score最高はdelgocitinib 0.5% BID（0.928）、次いでruxolitinib 1.5% BID（0.841）。EASI-75では10 regimen中5 regimenが有意、P-score最高はdelgocitinib 0.5% BID（0.839）。EASI-90は評価された6 regimenすべてvehicleより有意に良好で、difamilast 1% BIDがP-score最高（0.786）。active regimen同士ではEASI-75/EASI-90に有意差なし。Figure 4では4週と8週で効果パターンに差があり、tapinarofは8週で効果がより明瞭。Figure 5の年齢別解析はデータが限定的。Figure 6のpairwise meta-analysisはNMAと概ね整合した。",
+    "supplement": "感度分析はprimary analysisと概ね整合。EASI-75とTEAEでglobal inconsistencyを認めたが、評価可能なlocal inconsistencyは有意でなかった。CINeMAではIGA-TSの一部はhigh/moderate confidenceだが、EASI-75、TEAE、TRAEの多くはimprecision、heterogeneity、incoherence等によりlow〜very low confidence。"
+  },
+  "main_results": "15 RCT、3,994例。IGA-TSではtapinarof 0.5% QD（RR 1.86, 95% CI 0.83–4.16）以外のactive nodeがvehicleより有意に良好。delgocitinib 0.5% BIDはIGA-TSでRR 13.54（95% CI 5.19–115.54）、P-score 0.928で最高だったがCIは広い。EASI-75は10 regimen中5 regimenでvehicleより有意に良好。EASI-90は評価された6 regimenすべてvehicleより有意に良好。active regimen間のEASI-75およびEASI-90には統計学的有意差を認めなかった。全体として新規非ステロイド外用薬は短期有効性を示すが、薬剤間ランキングを真の優劣と解釈することはできない。",
+  "safety": "Primary NMAではTEAE、TRAEともactive treatment全体でvehicleに対する一貫した増加を認めず、active regimen間にも明確な差なし。4週subgroupではroflumilast 0.05% QDでTEAEが軽度増加した（RR 1.36, 95% CI 1.02–1.82）。治療期間は4〜8週間に限られ、長期安全性、累積局所毒性、反復・間欠使用時の安全性は不明。",
+  "limitations": "networkの大部分がvehicle対照でactive comparatorが1試験しかなく、薬剤間比較の多くは間接比較。EASI-90、TRAE、年齢別解析はnetworkが疎。研究間で年齢、重症度、治療期間、評価時期が異なりtransitivityに限界がある。EASI-75とTEAEでglobal inconsistencyを認め、CINeMAでは多くの推定がlow〜very low confidence。治療期間は4〜8週のみで、長期維持効果、flare予防、長期安全性、adherenceは評価できない。TCSとの直接的な比較を目的とした研究ではない。",
+  "applicability_to_japanese_pediatric_clinic": "部分的に高い。日本人小児を対象とした複数のRCTを含み、軽症〜中等症ADという一般小児科外来に近い集団が中心。新規非ステロイド外用抗炎症薬をsteroid-sparing optionとして考える根拠になる。ただし薬剤ランキングをそのまま処方順位に用いるべきではなく、国内承認年齢、適応、病変部位、使用回数、刺激感、継続性などを優先する必要がある。本論文自体は日本の承認・保険条件を評価していない。",
+  "practice_change": "Unclear",
+  "practice_change_reason": "新規非ステロイド外用薬に実効性があることを支持するが、標準的TCS治療を置き換える根拠や、特定の新規薬剤を第一選択とする直接比較エビデンスは不足している。すでにsteroid-sparing therapyを適切に使用している診療では大きな変更は不要。",
+  "tomorrow_action": "小児ADで顔面・頸部・間擦部など長期TCS使用を避けたい部位、steroid phobia、継続性の問題がある場合には、新規非ステロイド外用抗炎症薬を有効なsteroid-sparing optionとして検討する。ただしP-score順位で薬剤を選ばず、年齢、部位、投与回数、忍容性、既存治療への反応、使用可能性を優先する。また4〜8週の短期有効性と長期維持安全性は別であることを意識する。",
+  "human_checked": false,
+  "source": "ChatGPT 小児アップデート Thinking 精読"
+}
