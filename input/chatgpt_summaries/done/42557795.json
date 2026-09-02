@@ -1,0 +1,45 @@
+{
+  "pmid": "42557795",
+  "title": "Anti-nephrin autoantibodies in post-transplant recurrence of focal segmental glomerulosclerosis: a review",
+  "journal": "Renal Failure",
+  "year": "2026",
+  "doi": "10.1080/0886022X.2026.2707051",
+  "topic": "腎移植後再発FSGSにおける抗nephrin自己抗体：病態・再発予測バイオマーカーとしての可能性",
+  "clinical_area": "小児腎臓・ネフローゼ症候群・FSGS・腎移植",
+  "one_line_summary": "抗nephrin自己抗体は腎移植後再発FSGSの病勢と関連し、再発予測・診断・治療反応モニタリングのバイオマーカーとなる可能性があるが、測定法の標準化と大規模検証は未確立である。",
+  "why_important": "原発性FSGSは腎移植後に再発し得て、移植腎予後を悪化させる一方、再発予測や治療は依然として経験的な部分が大きい。抗nephrin自己抗体は、病態機序を説明し得る自己抗体であると同時に、再発リスク層別化や治療効果判定に利用できる可能性がある。",
+  "pico": {
+    "p": "原発性FSGSまたはpodocytopathyを背景に腎移植を受けた患者、特に移植後再発FSGSの患者を中心とした既報症例・コホート",
+    "i_or_exposure": "血中抗nephrin自己抗体陽性、抗体価の推移、および移植腎組織でのIgG-nephrin共局在",
+    "c": "移植後FSGS非再発例、抗nephrin抗体陰性例、または寛解前後の比較",
+    "o": "移植後FSGS再発、蛋白尿・病勢、移植腎生存、治療反応、抗体測定法の性能"
+  },
+  "study_design": "State of the Art Review。抗nephrin自己抗体とMCD/FSGS、特に腎移植後再発FSGSに関する症例報告、症例集積、コホート研究、測定法研究、実験研究を概説したナラティブレビュー。",
+  "population_setting": "小児および成人のMCD/FSGS・原発性FSGS、特に腎移植後再発FSGS患者。引用研究には多施設移植コホート、小児・アジア人を多く含む集団、成人を含む多民族集団などが含まれる。",
+  "figure_table_summary": "Table 1では抗nephrin抗体測定法を比較。マウスNSO細胞由来nephrinを用いる従来ELISAは非特異的結合・偽陽性が問題で、HEK293細胞由来ヒトnephrinを用いる方法は背景シグナルが少ない。IP-WBはアーチファクトが少なく有望な参照法候補とされるが、労力と処理能力に制約がある。Figure 1では、原発性FSGSの評価、遺伝性FSGS除外、再発高リスク判定、移植前抗nephrin抗体測定、移植後の抗体価・蛋白尿モニタリングを組み込んだ提案アルゴリズムが示されている。",
+  "main_results": [
+    "移植後再発FSGSを予測した多施設後ろ向き研究では、移植前抗nephrin抗体陽性は再発FSGS/diffuse podocytopathy群で8/21（38%）、非再発群で0/17であり、p=0.005であった。",
+    "別の多施設研究では、移植後再発FSGS患者11例で移植前または再発時に抗nephrin抗体高値を認め、再発時の移植腎生検ではIgGがnephrinと点状に共局在した。臨床的寛解後には血中抗体価が低下し、組織IgGシグナルも消失してnephrin発現パターンが回復した。",
+    "HEK293細胞由来ヒトnephrin ECDを用いたELISAでは、ある再発FSGSコホートの91%（10/11）が陽性となった。一方、研究間で陽性率には差があり、測定法・対象集団の違いが影響する可能性がある。",
+    "抗nephrin抗体価は複数の症例・研究で蛋白尿や疾患活動性と連動し、血漿交換やB細胞標的治療後の抗体低下が寛解と並行して認められている。",
+    "抗体測定は未標準化であり、多施設で検証されたcutoff、ROC解析、施設間再現性、陽性的中率・陰性的中率は確立していない。"
+  ],
+  "safety": "移植後再発FSGSに対する治療には血漿交換、rituximab、ofatumumab、daratumumabなどが報告されているが、効果は患者間で一定せず、普遍的に有効な特異的治療は存在しない。rituximabやofatumumabへの反応はB細胞除去以外の作用もあり、抗nephrin抗体特異的な治療効果と断定できない。CAR-T/CAARなどの細胞治療は抗nephrin抗体陽性FSGSへの臨床報告はなく、将来の研究段階である。",
+  "limitations": [
+    "抗nephrin抗体に関する臨床エビデンスの多くは症例報告・小規模コホートである。",
+    "抗体測定法が標準化されておらず、抗原由来、タグ、測定法によって偽陽性や陽性率が変化する。",
+    "多施設で検証されたcutoff、ROC、施設間再現性、陽性・陰性的中率が未確立である。",
+    "小児・アジア人主体の研究と成人・多民族集団で抗体陽性率に差がみられ、患者背景による一般化可能性が不明である。",
+    "抗nephrin抗体のみでなくpodocinやKirrel1など複数のpodocyte自己抗体が関与する可能性があり、単一抗体だけでは病態を説明できない可能性がある。"
+  ],
+  "applicability_to_japanese_pediatric_clinic": "一般小児科外来で抗nephrin抗体をルーチン測定する段階ではない。一方、小児期発症の原発性FSGSで末期腎不全に進行し腎移植を検討する症例や、移植後に新規蛋白尿を呈した高リスク症例では、抗nephrin抗体が再発リスク評価や病勢モニタリングに利用できる可能性を認識しておく意義がある。検査を解釈する際には測定法、特に抗原由来やアッセイ法を確認する必要がある。",
+  "practice_change": "Unclear",
+  "practice_change_reason": "抗nephrin抗体は再発FSGSとの関連が強く、病態・再発予測・治療反応評価の有望なバイオマーカーであるが、測定法の標準化と大規模コホートでの臨床的妥当性検証が未完了であり、現時点で全例スクリーニングや抗体結果だけに基づく治療変更を支持する根拠は不十分である。",
+  "tomorrow_action": [
+    "小児期発症FSGSで腎移植を予定する症例では、過去の移植腎でのFSGS再発、原疾患からESRDまで3年未満の急速進行、移植前の高度蛋白尿などの再発高リスク因子を確認する。",
+    "高リスクの移植予定例や移植後に新規蛋白尿を認める症例では、専門施設での抗nephrin抗体測定が検討され得ることを認識する。",
+    "抗nephrin抗体結果を確認する際は、HEK293由来ヒトnephrinを使用しているか、ELISA・IP-WBなどどの測定法であるかを含めて解釈する。"
+  ],
+  "human_checked": false,
+  "source": "Anti-nephrin autoantibodies in post-transplant recurrence of focal segmental glomerulosclerosis: a review"
+}
