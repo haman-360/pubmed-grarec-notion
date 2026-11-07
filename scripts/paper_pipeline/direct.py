@@ -7,6 +7,8 @@ from .store import atomic_write, digest, encode
 
 class Direct(Batches):
     def run(self, identifiers):
+        if self.store.setting('budget',{}).get('suspended_reason'):
+            raise ValueError('生成品質の確認待ちです。新規要求を停止しています。')
         papers = {self.store.resolve(value)['id']:self.store.resolve(value) for value in identifiers}
         if not 1 <= len(papers) <= 4:
             raise ValueError('通常API試験は明示した1〜4論文に限定します')
@@ -35,12 +37,28 @@ class Direct(Batches):
         for identifier in selected:
             for _ in range(2):
                 revision = self.store.one('revisions',identifier)
-                if revision['status'] not in ('analysis_ready','image_ready','budget_wait'):
+                if revision['status'] not in ('analysis_ready','image_ready','budget_wait','quality_wait'):
                     break
                 stage = 'image' if revision['summary'] else 'analysis'
                 previous = self.store.rows('SELECT * FROM attempts WHERE revision_id=? AND stage=?',(identifier,stage))
                 if previous:  # Explicit regeneration/review required; never retry an ambiguous paid POST.
                     break
+                prepared_body = None
+                if stage == 'analysis':
+                    try:
+                        prepared_body = self.request_body(revision,stage)
+                        tokens = self.api.count_input(prepared_body)
+                        if type(tokens) is not int or tokens <= 0:
+                            raise ValueError('入力トークン数が不正です')
+                        cfg = json.loads(revision['config'])
+                        cfg['counted_input_tokens'] = tokens
+                        cfg['counted_request_hash'] = digest(prepared_body)
+                        self.store.update('revisions',identifier,config=encode(cfg))
+                        revision = self.store.one('revisions',identifier)
+                        print(f'全文入力確認 {paper_label(self.store,revision)}: {tokens} tokens',flush=True)
+                    except Exception as error:
+                        self.store.update('revisions',identifier,status='budget_wait',error='入力トークン数確認失敗: '+str(error)[:200])
+                        break
                 try:
                     amount = self.estimate(revision,stage)
                     attempt = self.store.reserve(revision,stage,amount)
@@ -50,7 +68,8 @@ class Direct(Batches):
                     break
                 self.store.update('attempts',attempt['id'],details=encode({'mode':'direct'}))
                 try:
-                    body = self.request_body(revision,stage)
+                    body = prepared_body if prepared_body is not None else self.request_body(revision,stage)
+                    atomic_write(self.store.root/'direct'/(attempt['id']+'_request.json'),encode(body))
                 except Exception:
                     self.store.update('attempts',attempt['id'],status='rejected',actual=0)
                     self.store.update('revisions',identifier,status='review_required',error='通常APIの要求準備失敗')
@@ -59,6 +78,7 @@ class Direct(Batches):
                 # Persist intent first, including mode so Batch collection never treats it as a Batch.
                 self.store.update('attempts',attempt['id'],status='direct_submitting')
                 self.store.update('revisions',identifier,status=stage+'_submitted',error='')
+                print(f'通常API送信 {paper_label(self.store,revision)} {stage} 予約 ${amount:.4f}',flush=True)
                 try:
                     response = self.api.call('POST',endpoint,json=body,timeout=600)
                     record = {'response':{'status_code':response.status_code,'body':response.json()}}

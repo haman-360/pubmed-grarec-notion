@@ -87,6 +87,15 @@ class API:
     def retrieve(self, identifier):
         return self.call('GET','/batches/'+identifier).json()
 
+    def count_input(self, body):
+        # Counting accepts input/schema/reasoning, but no generation controls.
+        payload = {k:v for k,v in body.items() if k not in ('max_output_tokens','store')}
+        data = self.call('POST','/responses/input_tokens',json=payload,timeout=180).json()
+        count = data.get('input_tokens')
+        if type(count) is not int or count <= 0:
+            raise ValueError('入力トークン数を確認できません')
+        return count
+
     def check_models(self):
         for model in (config()['analysis_model'],config()['image_model']):
             self.call('GET','/models/'+model)
@@ -142,6 +151,8 @@ class Batches:
             # Conservative reservation, not a provider-enforced billing ceiling.
             # Bytes upper-bound text tokens; page allowance accounts for vision processing.
             tokens = info['text_bytes'] + info['pages'] * 16384 + len(review_prompt(paper).encode()) + len(encode(schema()).encode())
+            if cfg.get('mode')=='direct' and type(cfg.get('counted_input_tokens')) is int:
+                tokens = cfg['counted_input_tokens']
             if tokens > 272000:
                 raise ValueError('長文料金域のPDFは自動投入しません。原本の分割/対象指定を確認してください。')
             estimate = (tokens*rates['analysis_input'] + cfg['max_output_tokens']*rates['analysis_output']) / 1e6 * 1.5

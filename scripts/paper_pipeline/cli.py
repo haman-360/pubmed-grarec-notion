@@ -21,7 +21,7 @@ REPO = Path(__file__).resolve().parents[2]
 LABELS = {'unsearched':'未調査','manual_candidate':'無料候補あり','free_unconfirmed':'無料版未確認',
           'available':'PDF入手済み','search_error':'調査エラー','analysis_ready':'解析待ち','analysis_submitted':'解析中',
           'image_ready':'画像待ち','image_submitted':'画像中','notion_ready':'Notion待ち','completed':'処理済み',
-          'budget_wait':'予算待ち','review_required':'要確認'}
+          'budget_wait':'予算待ち','quality_wait':'品質確認待ち','review_required':'要確認'}
 
 
 def migrate(store):
@@ -200,6 +200,8 @@ def status(store, review=False):
     budget = store.setting('budget',{})
     if budget:
         print(f"予算: {'通常 $80/期間' if budget.get('production') else '初回5件/$20'} / 1版$4 / 残額確認 {budget['checked_at']} / 失効 {budget['end']}")
+        if budget.get('suspended_reason'):
+            print('生成停止中: '+budget['suspended_reason'])
     else:
         print('予算未設定：新規Batchは投入しません。')
     for a in attempts:

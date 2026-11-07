@@ -627,6 +627,7 @@ class PipelineTests(unittest.TestCase):
         p = self.paper()
         api = Mock()
         api.upload.return_value = 'pdf-file'
+        api.count_input.return_value = 30000
         api.call.side_effect = [Mock(status_code=200,json=Mock(return_value=self.analysis_body(p))),
             Mock(status_code=200,json=Mock(return_value={'data':[{'b64_json':base64.b64encode(png()).decode()}],
                 'usage':{'input_tokens':5000,'output_tokens':10000,'input_tokens_details':{'text_tokens':5000,'image_tokens':0}}}))]
@@ -641,7 +642,8 @@ class PipelineTests(unittest.TestCase):
 
     def test_direct_unknown_holds_cost_and_never_enters_batch_collection(self):
         from paper_pipeline.direct import Direct
-        p = self.paper(); api = Mock(); api.call.side_effect = TimeoutError()
+        p = self.paper(); api = Mock(); api.call.side_effect = TimeoutError(); api.count_input.return_value = 30000
+        api.upload.return_value = 'pdf-file'
         direct = Direct(self.store,api); direct.run([p['id']]); direct.run([p['id']])
         a = self.store.rows('SELECT * FROM attempts')[0]
         self.assertEqual(a['status'],'direct_unknown'); self.assertIsNone(a['actual'])
@@ -687,6 +689,31 @@ class PipelineTests(unittest.TestCase):
         info = {'first':text,'title':'Own synthetic pediatric study'}
         self.assertTrue(matches_pdf(info,{'title':'Own synthetic pediatric study','doi':'10.1016/j.test.2024.101136'}))
         self.assertFalse(matches_pdf(info,{'title':'Unrelated correction title','doi':'10.1016/j.test.2024.999999'}))
+
+    def test_token_count_preserves_file_schema_and_excludes_generation_controls(self):
+        api = API('test-only',session=Mock())
+        api.call = Mock(return_value=Mock(json=Mock(return_value={'input_tokens':50000})))
+        body = {'model':'model','input':[{'type':'input_file','file_id':'file'}],
+                'text':{'format':{'type':'json_schema'}},'reasoning':{'effort':'medium'},'store':False,'max_output_tokens':16000}
+        self.assertEqual(api.count_input(body),50000)
+        payload=api.call.call_args.kwargs['json']
+        self.assertEqual(payload['input'],body['input'])
+        self.assertEqual(payload['text'],body['text'])
+        self.assertNotIn('store',payload); self.assertNotIn('max_output_tokens',payload)
+
+    def test_provider_count_can_admit_long_pdf_without_truncation(self):
+        p=self.paper();r=self.revision(p);cfg=json.loads(r['config'])
+        cfg.update(mode='direct',counted_input_tokens=50000)
+        self.store.update('revisions',r['id'],config=encode(cfg))
+        with patch('paper_pipeline.batches.inspect_pdf',return_value={'text_bytes':148163,'pages':53}):
+            self.assertLess(self.runner.estimate(self.revision(p),'analysis'),4)
+
+    def test_quality_hold_stops_new_paid_requests_and_preserves_balance(self):
+        p=self.paper();b=self.store.setting('budget');b['suspended_reason']='Image unrelated to paper';self.store.set_setting('budget',b)
+        with self.assertRaisesRegex(ValueError,'停止中'):
+            self.store.reserve(self.revision(p),'image',1)
+        self.assertEqual(self.store.setting('budget')['remaining'],100)
+        self.assertFalse(self.store.rows('SELECT id FROM attempts'))
 
 
 if __name__ == '__main__':

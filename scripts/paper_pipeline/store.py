@@ -204,6 +204,8 @@ class Store:
 
     def reserve(self, revision, stage, amount):
         budget = self.setting("budget", {})
+        if budget.get('suspended_reason'):
+            raise ValueError('生成を停止中: '+budget['suspended_reason'])
         current = datetime.now(timezone.utc)
         try:
             start = datetime.fromisoformat(budget['start'])
@@ -231,7 +233,7 @@ class Store:
             trial_total = sum(cost(a) for a in attempts)
             limit = 80.0 if budget.get('production') else 20.0
             if period_total + amount > limit or since_check + amount > remaining or revision_total + amount > 4:
-                raise ValueError("予算上限に達するため新規Batchを停止しました")
+                raise ValueError("予算上限に達するため新規API処理を停止しました")
             if not budget.get('production'):
                 papers = {r['paper_id'] for r in self.rows("SELECT DISTINCT r.paper_id FROM attempts a JOIN revisions r ON a.revision_id=r.id")}
                 if trial_total + amount > 20 or (revision['paper_id'] not in papers and len(papers) >= 5):

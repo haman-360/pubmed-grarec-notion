@@ -234,3 +234,17 @@ Mac上の処理は `launchd` のログインユーザー用ジョブで起動で
 試験入力・ダウンロードPDF・試験台帳・ログはコミットしない。試験中の詳細は `.paper_pipeline-pilot/` に保存する。実例では取得・識別済みでも保守的な入力予約が長文閾値を超えるPDFがあり、現状は自動投入を停止する。予算・全文の扱いを確認せず、本文切り捨てや見積もり制限の緩和はしない。
 
 クレジット確認先は [API Platform Billing](https://platform.openai.com/settings/organization/billing/overview)。Usageの支出額・予算表示を無料クレジット残額と見なさない。
+
+### 通常API試験の全文トークン計数
+
+通常API試験は、PDF・プロンプト・JSONスキーマを含む実際の入力をOpenAIの `POST /responses/input_tokens` で計数してから、最大出力16,000トークンと標準料金で費用を予約する。計数要求から生成専用の `max_output_tokens` と `store` を除外する。本文は省略しない。計数失敗時や272,000入力トークン超の場合は投入せず予算待ちとする。
+
+これにより、ローカルのページ数ベース概算が長文閾値を超えても、実際の全文入力が閾値内なら通常API試験を進められる。例：53ページの試験PDFはAPI計数で134,837入力トークンだった。`prepare` のみではOpenAIへPDFを送信せず、従来の保守的な概算を表示する。
+
+公式仕様：[トークン計数](https://developers.openai.com/api/docs/guides/token-counting)、[計数API](https://developers.openai.com/api/reference/resources/responses/subresources/input_tokens/methods/count)。追加回帰テストを含め61件成功。
+
+### 試験画像が不合格の場合
+
+PNGの形式・寸法が正しくても、内容がグラレコとして採用できるとは限らない。画像を目視確認し、無関係な画像等が出た場合は自動で再生成せず、応答と入力・usageを保管して調査する。品質保留の理由は試験予算の `suspended_reason` に保存でき、この設定中は全工程の新規費用予約と通常API試験を停止する。残額の記録自体は変更しない。処理途中で止めた版は `quality_wait` として保持する。
+
+直接API要求も今後は `direct/<要求ID>_request.json` に送信前保存する（秘密鍵は含めない、Git管理外）。品質保留の解除・再生成は、原因と試験画像を確認した後に明示して行う。今回の実サービス試験の詳細・費用・採否は管理領域内の `RESULTS.md` と `pilot-report.json` に保存し、ソースのGitコミットには含めない。
