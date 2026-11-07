@@ -22,6 +22,12 @@ EUTILS = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
 DOI = re.compile(r'10\.\d{4,9}/[^\s<>"\]]+', re.I)
 
 
+def pdf_dois(text):
+    # Publisher PDFs may wrap a DOI after "10." or a numeric suffix separator.
+    unwrapped = re.sub(r'(?<=[./])\s*\n\s*(?=\d)', '', text)
+    return list(dict.fromkeys(doi_key(x.rstrip('.,;)')) for x in DOI.findall(unwrapped)))
+
+
 def error_reason(error):
     # requests errors can include an NCBI API key in the request URL.
     if isinstance(error,requests.RequestException):
@@ -69,7 +75,7 @@ def matches_pdf(info, article):
     first = re.split(r'\n\s*(?:References|Bibliography|参考文献)\s*\n', info['first'], flags=re.I)[0]
     if len(title) < 15 or title not in normalized_title(info['title'] + '\n' + first):
         return False
-    dois = {doi_key(x.rstrip('.,;)')) for x in DOI.findall(first)}
+    dois = set(pdf_dois(first))
     pmids = set(re.findall(r'\bPMID\s*[:：]?\s*(\d+)\b', first, re.I))
     return bool((article.get('doi') and doi_key(article['doi']) in dois) or
                 (article.get('pmid') and str(article['pmid']) in pmids))
@@ -137,7 +143,7 @@ class Sources:
                 matches = [p for p in papers if matches_pdf(info, p)]
                 if not matches:
                     # Candidate lookup only; never bind a reference DOI without title corroboration.
-                    for doi in list(dict.fromkeys(DOI.findall(info['first'])))[:3]:
+                    for doi in pdf_dois(info['first'])[:3]:
                         data = self.get(EUTILS + '/esearch.fcgi', params={'db':'pubmed', 'term':doi.rstrip('.,;)')+'[doi]', 'retmode':'json'}).json()
                         ids = data.get('esearchresult', {}).get('idlist', [])
                         if len(ids) == 1:

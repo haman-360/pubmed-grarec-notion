@@ -672,6 +672,22 @@ class PipelineTests(unittest.TestCase):
         self.store.update('revisions',r['id'],config=encode(cfg))
         self.assertTrue(self.runner.image_prompt(self.revision(p)).startswith('archived'))
 
+    def test_pmid_txt_accepts_header_but_rejects_invalid_data(self):
+        txt = self.root/'with-header.txt'
+        txt.write_text('PMID\n\n90000001\n90000002\n')
+        self.store.import_pmids(txt)
+        self.assertEqual(len(self.store.pending_search()),2)
+        txt.write_text('90000001\nPMID\n')
+        with self.assertRaises(ValueError): self.store.import_pmids(txt)
+
+    def test_wrapped_doi_is_matched_only_with_corresponding_title(self):
+        from paper_pipeline.sources import pdf_dois
+        text = 'Own synthetic pediatric study\nDOI of correction: 10.1016/j.test.2024.999999\nhttps://doi.org/10.\n1016/j.test.2024.\n101136'
+        self.assertEqual(pdf_dois(text),['10.1016/j.test.2024.999999','10.1016/j.test.2024.101136'])
+        info = {'first':text,'title':'Own synthetic pediatric study'}
+        self.assertTrue(matches_pdf(info,{'title':'Own synthetic pediatric study','doi':'10.1016/j.test.2024.101136'}))
+        self.assertFalse(matches_pdf(info,{'title':'Unrelated correction title','doi':'10.1016/j.test.2024.999999'}))
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -147,13 +147,17 @@ class Store:
         return rows[0]
 
     def import_pmids(self, path):
+        seen_data = False
         for line in Path(path).read_text(encoding="utf-8-sig").splitlines():
             value = line.strip()
             if not value or value.startswith("#"):
                 continue
+            if not seen_data and value.casefold() == 'pmid':
+                continue
             if not value.isdigit():
                 raise ValueError(f"PMID以外の行があります: {value[:60]}")
             self.paper(pmid=value)
+            seen_data = True
 
     def pending_search(self):
         return self.rows("SELECT * FROM papers WHERE disposition='active' AND legacy=0 AND access!='available'")
