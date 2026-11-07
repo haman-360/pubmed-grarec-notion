@@ -2,6 +2,16 @@
 
 PubMedで見つけた論文を、Notionの `PubMed Watchlist - 論文DB` にグラレコ画像つきで管理するための作業用repositoryです。
 
+## 継続台帳・二段階Batchによる自動化（現在の入口）
+
+`SetupPaperPipeline.command` でセットアップ後、`PubMedGraRecAuto.command` を起動します。
+PMID TXTと手元PDFから、未取得論文の再探索、全文の精読JSON、AIグラレコ画像、Notionへの直接添付まで進めます。
+SQLite台帳に進捗・費用予約・原本と生成版を保存し、中断後に再開できます。確認済みNotionページには未確認版を追記します。
+
+**[初回設定・操作・予算・復元手順](docs/AUTOMATION.md)** を先に確認してください。初期設定は5論文/$20の評価枠、評価後は請求期間あたり$80です。実サービスでの5件評価は未実施です。
+
+新フローは抄録への代替やGitHub Pagesへの公開を行いません。以下は旧手動運用の説明を含みます。`process_papers.py` の現行CLIは上記手順を参照してください。
+
 ## まず作るもの
 
 Notionに以下のデータベースを作成します。

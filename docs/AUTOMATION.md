@@ -1,0 +1,170 @@
+# PMID・PDFからNotionまで（継続台帳版）
+
+## 初回設定
+
+1. `SetupPaperPipeline.command` をダブルクリックする。Python 3.9以上とインターネット接続が必要。`.venv` に依存ライブラリをインストールする。
+2. 既存の `.env` に必要な設定を追記する。既存ファイルを `.env.example` で上書きしない。
+   - `OPENAI_API_KEY`
+   - `NOTION_TOKEN`、`NOTION_DATABASE_ID`
+   - `UNPAYWALL_EMAIL`、推奨：`NCBI_EMAIL`、必要なら `NCBI_API_KEY`
+   - 複数データソースがあるNotion DBのみ `NOTION_DATA_SOURCE_ID`
+3. Notionの対象DBをIntegrationに接続する。既存のプロパティ定義は `notion/database_schema.md` を参照。新自動化は最初の登録時に `Automation ID`（rich_text）を追加する。Galleryはページカバーをプレビューにする。
+4. OpenAIの請求画面で **APIに使えるクレジットの残額・期限・請求期間・購入済み残高・自動チャージ無効** を確認する。ChatGPTの契約名だけで付与額を推定しない。
+5. `PubMedGraRecAuto.command` → **5 予算設定**。請求期間開始、失効日時（例 `2026-12-01T00:00:00+09:00`）、確認した残額、他用途に確保する額を入力する。残額$100で他用途$20を確保する場合、本体は最大$80。初回は通常運用への切り替えに `n` と答え、5論文/$20枠を使う。
+
+予算設定は残額を確認した時点から24時間有効。期限まで50時間未満、確認期限切れ、残額不明では新規Batchを止める。既に送信したBatchの回収とNotion登録は続けられる。自動チャージ設定をアプリが変更することはない。モデルへのアクセスは送信前に読み取りAPIで確認し、利用不可なら停止する。
+
+初回の実サービス評価は未実施。実際のPDF取得率、文字・数値の正確さ、組織のモデル利用権限、実費、Notion接続先・容量を5件で確認してから通常運用へ進む。
+
+## 普段の操作
+
+1. `pubmed_abstract` から希望PMIDをTXTで出力する（1行1PMID）。本アプリから元リポジトリへ書き戻さない。
+2. 手元PDFは `input/pdfs/` に置く。元ファイルは移動・改名・削除しない。別フォルダはCLIの `--pdf-dir` で指定できる。
+3. `PubMedGraRecAuto.command` → **1 新規取り込み・実行**。TXTをドラッグして指定する。空欄は `input/pmids.txt`。
+4. 初めに手元PDFを照合し、未取得・非保留の全論文を再探索する。入手できた論文から見積もりを示し、予算内で解析Batch → 画像Batch → Notion登録を進める。
+5. 30分間隔で回収する。Terminalを閉じても台帳は残る。次回 **4 続きから実行** で再探索せず未完了工程を再開する。Macのスリープ中はローカルの回収が止まる。各工程24時間枠なので全体は48時間を超えうる。
+6. **3 要確認** に手動候補URL、識別待ちPDF、改訂版、エラー、未確定費用を表示する。無料候補を手動取得したら `input/pdfs/` に置き、1を実行する。
+
+最初の10件から3件を自動取得し2件を手動取得した後、20件を追加すると、探索対象は残り5件＋20件＝25件。手動2件が未取得なら27件になる。TXTに含まれない過去PMIDも消えない。取得失敗だけで「有料」と断定しない。本文PDFがなければ解析せず、抄録に置き換えない。
+
+### 識別・保留・改訂版
+
+- **6 PDF識別**：確認待ちPDFの内部IDと対応する論文PMID/内部IDを指定する。未収載論文はタイトルを確認し、PMID/DOI空欄でも登録できる。ファイル名の数字だけで自動確定しない。
+- **7 保留・解除**：`hold` は一時保留、`exclude` は対象外、`release` は再開。既に送信済みの要求はキャンセルせず結果を保管する。
+- 同じPDFはハッシュで重複防止。本文が違うPDFは別原本として保存し、再解析を自動開始しない。
+- **8 再生成**：`analysis` は全文から、`image` は既存の精読JSONから。改訂PDFの原本IDも指定可能。既存の未完了待機版は `superseded` として保存される。進行中・結果不明のOpenAI要求がある場合は再生成できない。
+- **11 旧版を対象化**：移行した旧記録は初期状態で保留。内容と旧Batchを確認した論文だけ明示的に対象化する。
+
+後日PMIDが判明した未収載論文は、内部IDを変えず識別子を追加できる。
+
+```sh
+.venv/bin/python scripts/process_papers.py link INTERNAL_ID --pmid 12345678 --doi 10.1234/example
+```
+
+識別子が別の既存論文を指す場合は自動統合せず停止する。論文・原本の内部IDは状況画面とCSVで確認できる。
+
+## CLI
+
+リポジトリ直下で実行する。`--state-dir` はサブコマンドの**前**に置く。
+
+```sh
+# 取得・照合・移行・見積もりのみ。OpenAI送信・Notion更新はしない
+.venv/bin/python scripts/process_papers.py prepare --pmids-file /path/pmids.txt --pdf-dir /path/pdfs
+
+# ネットワーク探索も省略（ローカル台帳への保存は行う）
+.venv/bin/python scripts/process_papers.py prepare --offline
+
+# 次工程のBatchを投入。予約超過なら予算待ちにする
+.venv/bin/python scripts/process_papers.py submit
+
+# 回収のみ：有料要求の新規送信なし
+.venv/bin/python scripts/process_papers.py resume
+
+# 回収して画像等の次工程を投入し、完成分をNotion登録（再探索なし）
+.venv/bin/python scripts/process_papers.py resume --advance --notion
+
+# 新規入力と再探索を含む一連の処理
+.venv/bin/python scripts/process_papers.py auto --pmids-file /path/pmids.txt
+
+# 30分ごとの回収・次工程・Notion登録を再開（再探索なし）
+.venv/bin/python scripts/process_papers.py auto --resume-only
+
+.venv/bin/python scripts/process_papers.py status
+.venv/bin/python scripts/process_papers.py review
+.venv/bin/python scripts/process_papers.py export /path/papers.csv
+.venv/bin/python scripts/process_papers.py backup /path/new-backup-folder
+```
+
+`submit` / `auto` / `resume --advance` の `--yes` は対話確認を省略するだけで、予算制限を解除しない。`--max-papers` は1巡あたりの投入上限であり、初回評価の5論文制限は台帳全体に対して適用する。`resume --no-render` は旧CLI互換で、回収のみと同じ動作。
+
+## 状態・保存場所
+
+正本は `.paper_pipeline/ledger.sqlite3`。`PAPER_PIPELINE_HOME` または `--state-dir` で変更可能。既定の管理領域はGit管理外。独自保存先はリポジトリ外のローカルフォルダを推奨する。実行中のSQLiteをOneDrive等で直接同期しない。
+
+| 場所 | 内容 |
+|---|---|
+| `ledger.sqlite3` | 論文、原本、探索履歴、処理版、API要求、費用予約、Notion対応、予算設定 |
+| `pdfs/<SHA256>.pdf` | 入手・確認した原本のコピー |
+| `artifacts/<版ID>/review.json` | 精読JSON、根拠位置、論文ID、原本ハッシュ、生成版・モデル情報 |
+| `artifacts/<版ID>/grarec.png` | 2048×1152 PNG |
+| `batches/` | 送信JSONLと受信結果。秘密鍵は含めない |
+| `legacy/` | 旧ジョブ・JSON・画像・原本・Batch結果の保存コピー |
+
+入手状況、処理状態、保留/対象外は別管理。`completed` は本文・JSON・PNGのNotion再取得確認まで済んだという意味で、医師の原著確認済みという意味ではない。全ての新生成版は `human_checked=false`。
+
+探索順はPMC Cloud Service → Unpaywall → Europe PMC → 正規出版社。PMCは公式S3 HTTPS経路を使用。候補URL、版、優先度、理由、失敗を履歴保存する。投稿稿や撤回フラグは確認待ち。暗号化・破損・HTML・49MiB超PDFは自動解析しない。OCRは行わない。
+
+## 費用と再送
+
+初期モデルは全文 `gpt-6.1-sol`（medium/high、最大出力16,000トークン）、画像 `gpt-image-2.5-sunburst`（high、2048×1152、1枚）。両方Batchで、失敗を分離するため1要求につき1Batchを作成する。モデルを黙って切り替えない。画像指示は `prompts/grarec-v1.md` を採用し、内容・ハッシュを生成版に保存する。
+
+- 初回：5論文、全体$20。通常運用：請求期間あたり$80。いずれも1処理版$4（両工程・再試行を合算）。
+- PDF予約額：抽出文字のUTF-8バイト数＋1ページ16,384トークン分＋指示/スキーマを入力規模として、出力16,000と合わせ料金表×1.5。入力概算272,000トークン超は自動投入しない。本文は切り捨てない。
+- 画像予約額：固定設定の出力余裕枠$1.50＋プロンプトのUTF-8バイト数を入力上限の近似として料金×1.5。これは実測料金でもプロバイダーによる保証上限でもない。5件評価で実測と比較する。見積もり不能時は投入しない。
+- 料金表の基準日とモデル設定を生成版に保存し、送信前にSQLiteトランザクションで予約する。使用量取得後に計算額へ置き換える。usage不明、結果欠落、結果不明は予約を保持する。
+- 請求期間を変えても未確定予約は持ち越す。他アプリの同時消費は把握できない。残額確認後の台帳内支出と未確定予約を差し引いて投入する。
+- 明確な429/5xx失敗のみ自動再試行1回。品質改善は自動反復しない。結果が不明な送信はBatch一覧の要求ID/入力ファイルIDと照合し、見つからなければ確認待ち。
+- APIリクエスト前の読取は最大3回。Notionへの追加も送信意図を先に保存し、再取得で見つかった内容を再利用する。
+
+APIのusageを取得できなかった場合、請求画面で当該要求の実費を確認できた場合だけ手動精算する。費用を精算しても、処理結果の不明状態は勝手に解消しない。
+
+```sh
+.venv/bin/python scripts/process_papers.py settle ATTEMPT_ID --actual 0.25 --note '請求画面の当該要求を照合'
+```
+
+モデル設定/料金表は `scripts/paper_pipeline/batches.py` の `config()` / `RATES` に集約。旧 `OPENAI_MODEL` 等の環境変数は新フローでは使わない。料金改定時は設定を更新し、旧予約・旧処理版は当時の設定を維持する。
+
+## Notionの保護と確認
+
+APIバージョンは `2026-03-11`。database IDから単一data sourceを解決し、Automation ID・PMID・正規化DOIで既存ページを探す。複数候補なら追加せず確認待ち。
+
+1論文1ページ内の `AI精読・未確認 [版ID]` 領域へ本文・根拠・JSON・PNGをまとめる。既存ページの確認チェック、カバー、臨床プロパティ、画像、メモを上書きしない（紐付け用Automation IDのみ補完）。新規ページだけ未確認状態とカバーを設定する。
+
+途中保存領域の本文が利用者に編集されている場合、元の領域を残して「保存版2」等を追加し、同じJSON・PNGを再利用する。再解析課金は発生しない。Notionのページ単位の `Human Checked` は以前の版の確認を指すことがあるため、新版の確認状態は版内の注記と分けて扱う。確認後の版内注記の更新は利用者がNotionで行う。
+
+直接アップロードの容量はワークスペースの制限を取得し、不明なら5MiB、初期版の単一ファイル転送は最大20MiB。超過時はNotion待ち。自動縮小・公開URLへの切り替えはしない。新自動化はGit commit/push/Pages公開処理を呼ばない。
+
+ページ・領域・本文・添付の送信結果が不明で、再取得でも見つからない場合は自動追加を止める。まずNotionと台帳の版IDを照合する。台帳の意図フラグを無闇に消すと重複しうるため、原因確認が必要。
+
+## 移行・互換・復元
+
+初回 `prepare` または `migrate` で旧ジョブ、生成JSON、Notionページ対応表、Batch manifest、画像をコピーして台帳へ登録する。元データは変更しない。移行済み論文は `legacy_review` とし、旧版を新仕様の処理済みとは判定しない。旧Batchは `resume` で結果を `legacy/results/` へ回収する。旧版の内容・費用を確認してから `activate` または `regenerate` で新版を開始する。旧記録の精読結果を新方式へ自動再投入しない。
+
+`PubMedGraRec.command` の手動JSON・画像登録は互換機能として維持する。旧手動登録にはプロパティ更新・公開操作があるので、新自動化の確認済み情報保護を使う場合は `PubMedGraRecAuto.command` を利用する。
+
+バックアップはSQLiteのbackup APIで整合したDBと管理配下の生成物を新規フォルダへコピーする。復元手順：
+
+1. 全ての実行を終了する。
+2. バックアップフォルダ全体を別のローカルフォルダへコピーする（現台帳を上書きしない）。
+3. `.env` の `PAPER_PIPELINE_HOME` をそのコピー先に変更するか、CLIに `--state-dir /path/restored` を付ける。
+4. `status` で論文・費用・未完了要求を確認し、`resume` で照合してから再開する。
+
+古いバックアップを復元した場合、バックアップ取得後に送信した要求・Notion追加が未記録の可能性がある。旧台帳とAPI履歴の照合前に新規投入しない。同じ台帳を同時使用する二重起動はロックで拒否する。
+
+## 検証と初回5件評価
+
+ローカル回帰テスト：
+
+```sh
+.venv/bin/python -m unittest discover -s tests -v
+```
+
+テストは架空PMID、生成した空白PDF、模擬APIで実行する。実アカウントの残額確認・有料呼び出し・Notion更新を伴わない。
+
+2026-11-07実装時：既存16件＋新規37件、合計53件成功。Python構文、zsh起動スクリプト、CLIヘルプも確認。Notion登録途中の応答喪失、旧ページ対応表・Batch IDの移行、画像だけの再生成、復元後SQLite整合性を含む。
+
+5件評価には短い原著、表の多い原著、レビュー、ガイドライン、手元PDFを含める。各件で記録するもの：原本ハッシュ、版ID、取り違え、主要数値/群/単位/結論、PNG日本語・数値、初回採用可否、再生成回数、Batch実費、Notionの重複・既存情報、再開結果。
+
+合格基準：全件で取り違えなし、数値等を原著と照合可能、重大な画像誤記なし、初回画像4/5以上を採用、残りも1回以内の再生成で採用、Notionの重複/消失/確認済み変更なし、中断後の完了工程再課金なし、5件$20以内かつ20件/月$80以内。未達なら通常運用へ移行しない。合格後だけ予算設定の「通常運用」を選ぶ。
+
+## 参照仕様（2026-11-07確認）
+
+- [OpenAI Batch](https://developers.openai.com/api/docs/guides/batch)
+- [OpenAI画像生成](https://developers.openai.com/api/docs/guides/image-generation)
+- [OpenAI料金](https://developers.openai.com/api/docs/pricing)
+- [ChatGPT APIクレジット](https://developers.openai.com/api/docs/guides/chatgpt-api-credits)
+- [PMC Cloud Service](https://pmc.ncbi.nlm.nih.gov/tools/pmcaws/)
+- [Notion data sources移行](https://developers.notion.com/guides/get-started/upgrade-guide-2025-09-03)
+- [Notionファイル](https://developers.notion.com/guides/data-apis/working-with-files-and-media)
+
+`pubmed.py` の書誌取得は同じ管理者の `pubmed-pdf-fetcher` から取り込み、探索・照合は新台帳向けに実装した。このリポジトリ単体で動作し、他2リポジトリの実行・import・変更は不要。

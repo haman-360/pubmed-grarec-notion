@@ -1,0 +1,5 @@
+requests>=2.31,<3
+urllib3>=1.26.20,<2
+pypdf>=5,<7
+Pillow>=11,<13
+jsonschema>=4.23,<5

@@ -16,6 +16,7 @@ IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 def main() -> None:
     print("PubMed GraRec Notion helper")
     print("==========================")
+    print("新自動化: PubMedGraRecAuto.command（継続台帳・PDF取得・二段階Batch）")
     pmid = ask_pmid()
 
     while True:
@@ -32,9 +33,9 @@ def main() -> None:
         print("9. PMID/PDFのBatch事前確認（OpenAI課金なし）")
         print("10. 半額Batchへ投入")
         print("11. Batchの状況を確認")
-        print("12. 完了結果を回収してグラレコ作成")
+        print("12. 完了Batchを回収（次の画像Batch投入は10または14）")
         print("13. 完了結果を回収してNotion登録")
-        print("14. 全自動：事前確認からNotion登録まで（おすすめ）")
+        print("14. 全自動：継続台帳・二段階Batch・Notion直接登録")
         print("15. Web版ChatGPT画像を追加（自動版を残す）")
         print("q. 終了")
         choice = input("> ").strip().lower()

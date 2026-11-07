@@ -49,6 +49,11 @@ DEFAULT_GITHUB_PAGES_BASE_URL = "https://haman-360.github.io/pubmed-grarec-notio
 
 
 def main() -> None:
+    from paper_pipeline.cli import main as pipeline_main
+    raise SystemExit(pipeline_main())
+
+
+def legacy_main() -> None:
     load_dotenv()
     parser = argparse.ArgumentParser(description="Process PubMed papers with the discounted OpenAI Batch API.")
     subparsers = parser.add_subparsers(dest="command", required=True)

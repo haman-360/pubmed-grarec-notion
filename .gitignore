@@ -5,6 +5,8 @@ __pycache__/
 .swift_module_cache/
 .build/
 *.pyc
+.venv/
+.paper_pipeline/
 output/*
 !output/.gitkeep
 .env
