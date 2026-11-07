@@ -168,3 +168,61 @@ APIバージョンは `2026-03-11`。database IDから単一data sourceを解決
 - [Notionファイル](https://developers.notion.com/guides/data-apis/working-with-files-and-media)
 
 `pubmed.py` の書誌取得は同じ管理者の `pubmed-pdf-fetcher` から取り込み、探索・照合は新台帳向けに実装した。このリポジトリ単体で動作し、他2リポジトリの実行・import・変更は不要。
+
+## 2026-11-08：Instruction v2と4件の通常API試験
+
+実装検証：57件のローカルテスト成功。通常API2工程、標準料金精算、対象上限、応答不明時の再送防止、旧指示の保持を模擬APIで確認。実アカウントによる4件の生成は対象指定・残額確認後に行う。
+
+新規生成は `prompts/grarec-v2.md` を使用する。提供されたv2.0の視覚規則（色鉛筆/水彩風、イラスト約60%、主役のイラスト、可変構図）に、旧版の入力制約・PICO・主要結果・Safety・Practice Change・医学的正確性を統合した。旧版の配色・固定的レイアウトは重ねて指示しない。既存処理版に保存されたプロンプトは保持するため、指示変更だけで旧画像を再生成しない。
+
+通常API試験は `direct` コマンドを使う。Batchは作成せず、Responses API → Images APIを順に実行する。完了工程は再利用し、曖昧な失敗は予約を保持して停止する。標準料金を使用し、初回$20・1版$4・残額確認24時間の制限は維持する。予約額は保証上限ではない。下記のPMID・パス・期間・残額は自分の値へ置き換える。
+
+1. `SetupPaperPipeline.command` を実行し、`.env` にAPIキー等を設定する。
+2. 試験用の管理領域とPDF入力フォルダを作る。PDF2件だけを `inbox` へコピーする（原本はそのまま）。
+
+```sh
+mkdir -p .paper_pipeline-pilot/inbox
+```
+
+3. PMID2件を指定し、取得・識別・見積もりだけを行う。過去の旧記録は取り込まない。
+
+```sh
+.venv/bin/python scripts/process_papers.py --state-dir .paper_pipeline-pilot prepare \
+  --skip-legacy --pmid 12345678 --pmid 23456789 --pdf-dir .paper_pipeline-pilot/inbox
+```
+
+4. `review` で4件の対応を確認する。手元PDFを自動同定できなければ `identify` を使う。PMID・DOIのないPDFもタイトルを確認すれば内部IDで扱える。PDF待ちのPMIDは試験に進まず保持する。別経路の同じ論文は1件として扱う。
+
+```sh
+.venv/bin/python scripts/process_papers.py --state-dir .paper_pipeline-pilot review
+.venv/bin/python scripts/process_papers.py --state-dir .paper_pipeline-pilot identify PDF内部ID --paper 対応PMID
+# PubMed未収載の場合
+.venv/bin/python scripts/process_papers.py --state-dir .paper_pipeline-pilot identify PDF内部ID --title '確認した論文タイトル'
+```
+
+5. 試験台帳の予算を設定する。既存運用や他アプリで消費した分を含め、請求画面の現在残額を確認する。下記日付・金額は例である。
+
+```sh
+.venv/bin/python scripts/process_papers.py --state-dir .paper_pipeline-pilot budget \
+  --start 2026-11-08 --end 2026-12-08T00:00:00+09:00 --remaining 100 --other-usage 20 \
+  --no-auto-recharge --purchased-checked
+```
+
+6. 特定した4論文を明示して通常APIで生成する。手元PDFの論文はPMIDでも内部IDでも指定可能。既存Batch履歴のある処理版は切り替えず停止する。
+
+```sh
+.venv/bin/python scripts/process_papers.py --state-dir .paper_pipeline-pilot direct \
+  --paper 12345678 --paper 23456789 --paper PDF論文1の内部ID --paper PDF論文2の内部ID
+```
+
+7. `.paper_pipeline-pilot/artifacts/<版ID>/review.json` と `grarec.png` を確認する。初回はローカル保存のみ。採用できたら同じコマンドに `--notion` を付けて再実行する。完成したJSON・画像は再課金せず、Notion登録へ進む。
+
+通常APIはBatch割引を適用しないため、同じトークン数では今回のモデル設定で料金が2倍になる。生成には数分以上かかる場合もある。タイムアウトを理由に自動再送しない。試験台帳は本体と別のため、本体台帳と費用を自動合算しない。通常運用へはこの台帳を `PAPER_PIPELINE_HOME` に指定して継続するか、試験結果の移行方針を決めてから移行する。4件を別の空台帳へ再投入すると再課金になりうる。
+
+## 将来の週次／隔週起動（設計案・未登録）
+
+Mac上の処理は `launchd` のログインユーザー用ジョブで起動できる。起動間隔は7日/14日の設定値にする。選んだPMIDの固定TXTを `pubmed_abstract` が出力し、本体が読み取る構成を第一候補とする。選択前の候補まで自動処理せず、出力元の書き戻しも行わない。出力先パスと、どの選択状態のPMIDを取り込むかは要確定。
+
+探索の起動とBatch回収は分ける。探索は週次/隔週、送信済みBatchの回収・画像Batch投入は未完了がある間だけ定期的に実行し、Notion完了で止める。回収まで週次にすると、二段階の完了に数週間かかりうる。Macの電源・ログイン・ネットワーク・スリープに左右される。常時稼働が必要なら別の実行環境を検討する。
+
+現状の「残額確認は24時間有効」という規則では、完全無人の毎週新規投入は止まる。週次起動前の残額確認を維持するか、残額を自動で確認できる手段／期限付きの専用予算運用を設計してから無人化する。今回この制限の緩和・OSジョブ登録・自動起動は行っていない。

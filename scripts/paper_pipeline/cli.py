@@ -118,12 +118,17 @@ def parser():
     result = argparse.ArgumentParser(description='PMID/PDF → 精読JSON → AIグラレコ → Notion（継続台帳）')
     result.add_argument('--state-dir',default=os.getenv('PAPER_PIPELINE_HOME') or str(REPO/'.paper_pipeline'))
     commands = result.add_subparsers(dest='command',required=True)
+    p = commands.add_parser('direct',help='指定した最大4論文を通常APIで試験（Batchなし）')
+    p.add_argument('--paper',action='append',required=True,help='PMIDまたは論文内部ID、繰り返し指定')
+    p.add_argument('--yes',action='store_true')
+    p.add_argument('--notion',action='store_true',help='完成後にNotionにも登録（省略時はローカルのみ）')
     for name in ('prepare','auto'):
         p = commands.add_parser(name)
         p.add_argument('--pmids-file',default=str(REPO/'input/pmids.txt'))
         p.add_argument('--pmid',action='append')
         p.add_argument('--pdf-dir',default=str(REPO/'input/pdfs'))
         p.add_argument('--offline',action='store_true',help='ネットワーク探索せず既存台帳・PDFを確認')
+        p.add_argument('--skip-legacy',action='store_true',help='独立した試験台帳で旧記録を移行しない')
         p.add_argument('--max-papers',type=int,default=5)
         p.add_argument('--yes',action='store_true')
         p.add_argument('--interval-minutes',type=float,default=30)
@@ -198,13 +203,14 @@ def status(store, review=False):
     else:
         print('予算未設定：新規Batchは投入しません。')
     for a in attempts:
-        if a['status'] in ('unknown','review_required'):
+        if a['status'] in ('unknown','review_required','direct_submitting','direct_unknown'):
             print(f"API要確認 {a['id']} {a['status']}")
     print(f"未回収の旧Batch: {len(legacy_pending(store))}")
 
 
 def prepare(store,args):
-    migrate(store)
+    if not args.skip_legacy:
+        migrate(store)
     if args.pmid:
         for pmid in args.pmid:
             store.paper(pmid=pmid)
@@ -279,7 +285,22 @@ def main(argv=None):
 
 def dispatch(store,args):
     cmd = args.command
-    if cmd == 'menu':
+    if cmd == 'direct':
+        from .direct import Direct
+        if not args.yes and input('通常API料金で最大4論文を生成しますか？ [y/N]: ').strip().lower() not in ('y','yes'):
+            return
+        api = API(os.getenv('OPENAI_API_KEY',''))
+        api.check_models()
+        Direct(store,api).run(args.paper)
+        if args.notion:
+            # Restrict Notion registration to the selected papers as well.
+            client = Notion(store,NotionAPI(os.getenv('NOTION_TOKEN','')),os.getenv('NOTION_DATABASE_ID'),os.getenv('NOTION_DATA_SOURCE_ID'))
+            for value in args.paper:
+                paper = store.resolve(value)
+                for revision in store.rows("SELECT * FROM revisions WHERE paper_id=? AND status='notion_ready'",(paper['id'],)):
+                    client.sync(revision)
+        status(store)
+    elif cmd == 'menu':
         menu(store)
     elif cmd == 'budget':
         start = datetime.fromisoformat(args.start)
@@ -333,7 +354,7 @@ def dispatch(store,args):
         Batches(store,None).prepare_revisions()
     elif cmd == 'regenerate':
         paper = store.resolve(args.paper)
-        if store.rows("SELECT a.id FROM attempts a JOIN revisions r ON r.id=a.revision_id WHERE r.paper_id=? AND a.status IN ('reserved','submitting','unknown','submitted')",(paper['id'],)):
+        if store.rows("SELECT a.id FROM attempts a JOIN revisions r ON r.id=a.revision_id WHERE r.paper_id=? AND a.status IN ('reserved','submitting','unknown','submitted','direct_submitting','direct_unknown')",(paper['id'],)):
             raise ValueError('進行中/結果不明の要求があります。先に回収・照合してください。')
         sources = store.rows("SELECT * FROM sources WHERE paper_id=? ORDER BY created_at DESC",(paper['id'],))
         source = store.one('sources',args.source) if args.source else next((s for s in sources if s['status']=='confirmed'),None)

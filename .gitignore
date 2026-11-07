@@ -7,6 +7,7 @@ __pycache__/
 *.pyc
 .venv/
 .paper_pipeline/
+.paper_pipeline-pilot/
 output/*
 !output/.gitkeep
 .env

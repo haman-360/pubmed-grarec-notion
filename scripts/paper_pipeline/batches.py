@@ -14,7 +14,7 @@ from .sources import inspect_pdf
 from .store import atomic_write, digest, encode, now
 
 REPO = Path(__file__).resolve().parents[2]
-PROMPT = REPO / 'prompts' / 'grarec-v1.md'
+PROMPT = REPO / 'prompts' / 'grarec-v2.md'
 RATES = {'analysis_input':1.0, 'analysis_output':5.0, 'image_text':2.5, 'image_input':4.0, 'image_output':15.0,
          'as_of':'2026-11-07', 'currency':'USD', 'processing':'batch'}
 
@@ -62,9 +62,10 @@ class API:
         self.session.headers.update({'Authorization':'Bearer '+key})
 
     def call(self, method, path, **kwargs):
+        timeout = kwargs.pop('timeout',120)
         for retry in range(3 if method == 'GET' else 1):
             try:
-                r = self.session.request(method, 'https://api.openai.com/v1'+path, timeout=120, **kwargs)
+                r = self.session.request(method, 'https://api.openai.com/v1'+path, timeout=timeout, **kwargs)
                 if r.status_code >= 400:
                     # Do not include provider error bodies (may contain source text).
                     raise RuntimeError(f'OpenAI HTTP {r.status_code}; request_id={r.headers.get("x-request-id", "unknown")}')
@@ -145,13 +146,30 @@ class Batches:
                 raise ValueError('長文料金域のPDFは自動投入しません。原本の分割/対象指定を確認してください。')
             estimate = (tokens*rates['analysis_input'] + cfg['max_output_tokens']*rates['analysis_output']) / 1e6 * 1.5
         else:
-            estimate = 1.5 + len(self.image_prompt(revision).encode()) * rates['image_text'] / 1e6 * 1.5
+            estimate = (3.0 if cfg.get('mode')=='direct' else 1.5) + len(self.image_prompt(revision).encode()) * rates['image_text'] / 1e6 * 1.5
         return round(estimate, 6)
+
+    def request_body(self, revision, stage):
+        cfg = json.loads(revision['config'])
+        if stage == 'analysis':
+            source = self.store.one('sources',revision['source_id'])
+            file_id = self.api.upload(self.store.root / source['path'], 'user_data')
+            paper = self.store.one('papers',revision['paper_id'])
+            body = {'model':cfg['analysis_model'], 'input':[{'role':'user','content':[
+                {'type':'input_text','text':review_prompt(paper)}, {'type':'input_file','file_id':file_id,'detail':cfg['detail']}]}],
+                'reasoning':{'effort':cfg['effort']}, 'max_output_tokens':cfg['max_output_tokens'], 'store':False,
+                'text':{'format':{'type':'json_schema','name':'paper_review','strict':True,'schema':schema()}}}
+        else:
+            body = {'model':cfg['image_model'], 'prompt':self.image_prompt(revision), 'size':cfg['size'],
+                    'quality':cfg['quality'],'n':1,'output_format':'png'}
+        return body
 
     def submit(self, limit=5):
         count = 0
         revisions = self.store.rows("SELECT r.* FROM revisions r JOIN papers p ON p.id=r.paper_id WHERE p.disposition='active' AND r.status IN ('analysis_ready','image_ready','budget_wait') ORDER BY r.created_at")
         for revision in revisions:
+            if json.loads(revision['config']).get('mode') == 'direct':
+                continue
             stage = 'image' if revision['summary'] else 'analysis'
             previous = self.store.rows('SELECT * FROM attempts WHERE revision_id=? AND stage=?', (revision['id'],stage))
             if any(a['status'] not in ('failed','rejected') for a in previous):
@@ -168,19 +186,8 @@ class Batches:
                 self.store.update('revisions',revision['id'],status='budget_wait',error=str(error))
                 print(f"{revision['id']}: {error}")
                 continue
-            cfg = json.loads(revision['config'])
             try:
-                if stage == 'analysis':
-                    source = self.store.one('sources',revision['source_id'])
-                    file_id = self.api.upload(self.store.root / source['path'], 'user_data')
-                    paper = self.store.one('papers',revision['paper_id'])
-                    body = {'model':cfg['analysis_model'], 'input':[{'role':'user','content':[
-                        {'type':'input_text','text':review_prompt(paper)}, {'type':'input_file','file_id':file_id,'detail':cfg['detail']}]}],
-                        'reasoning':{'effort':cfg['effort']}, 'max_output_tokens':cfg['max_output_tokens'], 'store':False,
-                        'text':{'format':{'type':'json_schema','name':'paper_review','strict':True,'schema':schema()}}}
-                else:
-                    body = {'model':cfg['image_model'], 'prompt':self.image_prompt(revision), 'size':cfg['size'],
-                            'quality':cfg['quality'],'n':1,'output_format':'png'}
+                body = self.request_body(revision, stage)
                 request = {'custom_id':attempt['id'],'method':'POST','url':'/v1/responses' if stage=='analysis' else '/v1/images/generations','body':body}
                 path = self.store.root / 'batches' / (attempt['id']+'.jsonl')
                 atomic_write(path, encode(request)+'\n')
@@ -204,6 +211,8 @@ class Batches:
     def collect(self):
         attempts = self.store.rows("SELECT * FROM attempts WHERE status IN ('reserved','submitting','unknown','submitted','legacy_submitted')")
         for attempt in attempts:
+            if json.loads(attempt['details']).get('mode') == 'direct':
+                continue
             if attempt['status'] == 'reserved':
                 # Never reached the create intent; safe to release a reservation after a crash.
                 self.store.update('attempts',attempt['id'],status='rejected',actual=0)

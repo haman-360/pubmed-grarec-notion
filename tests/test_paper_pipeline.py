@@ -622,5 +622,56 @@ class PipelineTests(unittest.TestCase):
         self.assertNotIn('private-example',reason)
 
 
+    def test_direct_uses_standard_prices_and_never_creates_batch(self):
+        from paper_pipeline.direct import Direct
+        p = self.paper()
+        api = Mock()
+        api.upload.return_value = 'pdf-file'
+        api.call.side_effect = [Mock(status_code=200,json=Mock(return_value=self.analysis_body(p))),
+            Mock(status_code=200,json=Mock(return_value={'data':[{'b64_json':base64.b64encode(png()).decode()}],
+                'usage':{'input_tokens':5000,'output_tokens':10000,'input_tokens_details':{'text_tokens':5000,'image_tokens':0}}}))]
+        direct = Direct(self.store,api)
+        direct.run([p['id']]); direct.run([p['id']])
+        self.assertEqual([c.args[:2] for c in api.call.call_args_list],[('POST','/responses'),('POST','/images/generations')])
+        api.create.assert_not_called()
+        self.assertEqual(self.revision(p)['status'],'notion_ready')
+        self.assertAlmostEqual(sum(a['actual'] for a in self.store.rows('SELECT * FROM attempts')),0.545)
+        self.runner.collect(); self.runner.submit()
+        self.assertEqual(self.api.posts,0)
+
+    def test_direct_unknown_holds_cost_and_never_enters_batch_collection(self):
+        from paper_pipeline.direct import Direct
+        p = self.paper(); api = Mock(); api.call.side_effect = TimeoutError()
+        direct = Direct(self.store,api); direct.run([p['id']]); direct.run([p['id']])
+        a = self.store.rows('SELECT * FROM attempts')[0]
+        self.assertEqual(a['status'],'direct_unknown'); self.assertIsNone(a['actual'])
+        self.runner.collect(); self.runner.submit()
+        self.assertEqual(api.call.call_count,1)
+        with self.assertRaises(ValueError):
+            cli.dispatch(self.store,cli.parser().parse_args(['regenerate',p['id']]))
+
+    def test_direct_rejects_five_targets_and_old_batch_work(self):
+        from paper_pipeline.direct import Direct
+        papers = [self.paper(str(90000000+i)) for i in range(5)]
+        api = Mock()
+        with self.assertRaises(ValueError): Direct(self.store,api).run([p['id'] for p in papers])
+        self.runner.submit(limit=1)
+        with self.assertRaises(ValueError): Direct(self.store,api).run([papers[0]['id']])
+        api.call.assert_not_called()
+
+    def test_prompt_v2_retains_medical_rules_and_frozen_old_revision(self):
+        from paper_pipeline.batches import PROMPT
+        text = PROMPT.read_text()
+        self.assertIn('画面の約60%',text)
+        self.assertIn('## 10. 医学的正確性',text)
+        self.assertNotIn('青・緑・グレーを基本色',text)
+        p = self.paper(); r = self.ready_notion(p)
+        cfg = json.loads(r['config']); cfg['image_prompt_text'] = 'archived';
+        from paper_pipeline.store import digest
+        cfg['image_prompt_hash'] = digest(b'archived')
+        self.store.update('revisions',r['id'],config=encode(cfg))
+        self.assertTrue(self.runner.image_prompt(self.revision(p)).startswith('archived'))
+
+
 if __name__ == '__main__':
     unittest.main()
