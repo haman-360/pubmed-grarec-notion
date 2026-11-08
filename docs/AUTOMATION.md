@@ -118,6 +118,25 @@ PNG取り込み・保存が完了した時点で `IMAGE_REVIEW_REQUIRED` を永�
 
 PDFから直接作成されたPMID 41064908のWeb画像は1672×941pxだったため、高さ換算1px以内の16:9の丸め差を許容した。画像の変形・再生成はしない。境界値、4:3等の拒否、原本のバイト一致、承認待ち維持を検証し、全93テスト成功。JSONを入力に使っていない既存画像は、保存済み精読JSON・原文との一致を人が確認してから承認する。
 
+### 品質停止を維持した1論文の精読再試験
+
+画像の品質停止中に精読だけを再試験する場合は、対象1件を明示し、manual_webの新版を作成してから限定再開する。
+
+```sh
+.venv/bin/python scripts/process_papers.py --state-dir .paper_pipeline-pilot regenerate 39678704 --stage analysis
+.venv/bin/python scripts/process_papers.py --state-dir .paper_pipeline-pilot direct \
+  --paper 39678704 --resume-analysis-only
+```
+
+通常料金の精読APIを使用する。`--resume-analysis-only` は1論文のみで、`--allow-image-api` / `--notion` と併用できない。
+台帳の `suspended_reason` は消さず、指定版の精読予約だけを許可する。残額確認24時間、期間、1版$4、初回5論文/$20等の制限は維持し、限定再開と保持した停止理由を要求履歴へ記録する。
+完了後はWeb用ファイル準備までで停止する。画像生成・画像承認・Notion送信は別工程。
+2026-11-08：通常停止、限定再開、画像/Notion/複数対象の拒否、停止設定と予算制限の維持を含め95テスト成功。
+
+同日、PMID 39678704（MT-12、13ページのOriginal Article）を通常APIで1回精読。入力32,733／出力10,589トークン、設定単価からの計算費用$0.171356（請求画面未照合）。fulltext-v4/hybrid-v1の実応答がスキーマ・書誌・結果19件の根拠対応検証を通過し、単一テーマmain、OverviewなしでREADY_FOR_WEBに到達した。PDFの患者フロー・主要評価図・安全性表をスポット確認したが、全文の医学的承認ではない。
+
+Web用一式は `output/PMID_39678704/web-trial-v1/`、実行前バックアップは `output/PMID_39678704/before-analysis-trial/`。既存生成物のハッシュと予算・品質停止設定の不変、新たな画像API要求0件を確認。Notion実送信なし。画像品質はWeb生成後に評価する。この論文はReviewではないため、長いReviewでJSONからの画像生成が失敗するという仮説は今回の結果だけでは検証できない。
+
 ### ハイブリッド改修時の検証記録
 
 92件のローカルテスト成功。既存67件を新しい承認手順に合わせて更新し、A〜E、分割/統合、条件・根拠の保持、API抑止、画像差し替え、改変検知、部分Notion同期、再開、旧DBバックアップ、全文計数を追加検証した。APIは模擬応答。

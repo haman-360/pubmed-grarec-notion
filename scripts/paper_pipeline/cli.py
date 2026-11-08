@@ -126,6 +126,7 @@ def parser():
     p.add_argument('--yes',action='store_true')
     p.add_argument('--notion',action='store_true',help='承認済み画像をNotionへ実送信する')
     p.add_argument('--allow-image-api',action='store_true',help='api設定の版のみ有料画像APIを許可')
+    p.add_argument('--resume-analysis-only',action='store_true',help='品質停止を保持し、指定した1論文の精読のみ明示再開')
     for name in ('prepare','auto'):
         p = commands.add_parser(name)
         p.add_argument('--pmids-file',default=str(REPO/'input/pmids.txt'))
@@ -352,11 +353,13 @@ def dispatch(store,args):
             client.sync(revision)
     elif cmd == 'direct':
         from .direct import Direct
+        if args.resume_analysis_only and (args.notion or args.allow_image_api or len(args.paper) != 1):
+            raise ValueError('限定再開は1論文の精読のみです。画像API・Notionは併用できません')
         if not args.yes and input('通常API料金で最大4論文を精読しますか（画像APIは明示許可時のみ）？ [y/N]: ').strip().lower() not in ('y','yes'):
             return
         api = API(os.getenv('OPENAI_API_KEY',''),audit_dir=store.root/'http_audit')
         api.check_models(include_images=getattr(args,'allow_image_api',False))
-        Direct(store,api,allow_image_api=args.allow_image_api).run(args.paper)
+        Direct(store,api,allow_image_api=args.allow_image_api).run(args.paper,resume_analysis_only=args.resume_analysis_only)
         if args.notion:
             # Restrict Notion registration to the selected papers as well.
             client = Notion(store,NotionAPI(os.getenv('NOTION_TOKEN','')),os.getenv('NOTION_DATABASE_ID'),os.getenv('NOTION_DATA_SOURCE_ID'))

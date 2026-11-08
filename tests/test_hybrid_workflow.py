@@ -167,6 +167,44 @@ class HybridTests(unittest.TestCase):
         self.assertEqual([c.args[:2] for c in api.call.call_args_list],[('POST','/responses')])
         self.assertEqual(self.store.one('revisions',revision['id'])['status'],'READY_FOR_WEB')
 
+    def test_explicit_analysis_resume_retains_quality_hold_and_never_generates_image(self):
+        from datetime import datetime,timedelta,timezone
+        revision,data=self.paper()
+        self.store.update('revisions',revision['id'],summary=None,status='analysis_ready')
+        current=datetime.now(timezone.utc)
+        budget={'start':(current-timedelta(days=1)).isoformat(),'end':(current+timedelta(days=20)).isoformat(),
+            'checked_at':current.isoformat(),'remaining':100,'other_usage':20,'production':False,
+            'no_auto_recharge':True,'purchased_checked':True,'suspended_reason':'Unrelated image'}
+        self.store.set_setting('budget',budget)
+        api=Mock(); api.upload.return_value='synthetic-pdf'; api.count_input.return_value=100
+        payload={k:data[k] for k in master_schema()['properties']}
+        api.call.return_value=Mock(status_code=200,json=Mock(return_value={'status':'completed',
+            'output':[{'type':'message','content':[{'type':'output_text','text':encode(payload)}]}],
+            'usage':{'input_tokens':100,'output_tokens':100}}))
+        with self.assertRaisesRegex(ValueError,'停止'):
+            Direct(self.store,api).run(['41064908'])
+        Direct(self.store,api).run(['41064908'],resume_analysis_only=True)
+        self.assertEqual([c.args[:2] for c in api.call.call_args_list],[('POST','/responses')])
+        self.assertEqual(self.store.setting('budget'),budget)
+        attempt=self.store.rows('SELECT * FROM attempts')[0]
+        self.assertTrue(json.loads(attempt['details'])['resume_analysis_only'])
+        with self.assertRaisesRegex(ValueError,'精読のみ'):
+            self.store.reserve(revision,'image',1,resume_analysis_only=True)
+        with self.assertRaisesRegex(ValueError,'停止中'):
+            self.store.reserve(revision,'analysis',1)
+        stale=dict(budget,checked_at=(current-timedelta(days=2)).isoformat())
+        self.store.set_setting('budget',stale)
+        with self.assertRaisesRegex(ValueError,'24時間'):
+            self.store.reserve(revision,'analysis',1,resume_analysis_only=True)
+
+    def test_scoped_resume_rejects_notion_images_and_multiple_targets_before_network(self):
+        for options in (['--notion'],['--allow-image-api'],['--paper','42835691']):
+            args=cli.parser().parse_args(['direct','--paper','41064908','--yes','--resume-analysis-only']+options)
+            with patch.object(cli,'API',side_effect=AssertionError('network')), self.assertRaisesRegex(ValueError,'精読のみ'):
+                cli.dispatch(self.store,args)
+        with self.assertRaisesRegex(ValueError,'併用'):
+            Direct(self.store,Mock(),allow_image_api=True).run(['41064908'],resume_analysis_only=True)
+
     def test_old_api_config_does_not_bypass_default_gate(self):
         revision,_ = self.paper()
         cfg = json.loads(revision['config']); cfg['image_generation_mode'] = 'api'

@@ -215,9 +215,12 @@ class Store:
                              encode(config), summary, now()))
         return self.one("revisions", identifier)
 
-    def reserve(self, revision, stage, amount):
+    def reserve(self, revision, stage, amount, resume_analysis_only=False):
         budget = self.setting("budget", {})
-        if budget.get('suspended_reason'):
+        scoped_analysis = resume_analysis_only and stage == 'analysis' and json.loads(revision['config']).get('image_generation_mode') == 'manual_web'
+        if resume_analysis_only and not scoped_analysis:
+            raise ValueError('限定再開はmanual_web版の精読のみです')
+        if budget.get('suspended_reason') and not scoped_analysis:
             raise ValueError('生成を停止中: '+budget['suspended_reason'])
         current = datetime.now(timezone.utc)
         try:
