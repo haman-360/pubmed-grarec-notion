@@ -247,6 +247,21 @@ class HybridTests(unittest.TestCase):
         self.assertEqual(self.rows(revision)[0]['status'],'IMAGE_REVIEW_REQUIRED')
         self.assertTrue((self.store.root/old['image_path']).exists())
 
+    def test_web_png_pixel_rounding_preserves_original_and_requires_review(self):
+        revision,_=self.paper()
+        prepare_web(self.store,revision)
+        for size in ((1672,941),(1600,901),(1600,899)):
+            with self.subTest(size=size):
+                path=self.image(size=size)
+                raw=path.read_bytes()
+                row=import_image(self.store,revision,'main',path)
+                self.assertEqual((self.store.root/row['image_path']).read_bytes(),raw)
+                self.assertEqual(path.read_bytes(),raw)
+                self.assertEqual(row['status'],'IMAGE_REVIEW_REQUIRED')
+        for size in ((1672,942),(1600,902),(1536,1024)):
+            with self.subTest(size=size), self.assertRaisesRegex(ValueError,'16:9'):
+                import_image(self.store,revision,'main',self.image(size=size))
+
     def test_modified_image_json_or_master_blocks_all_notion_calls(self):
         revision,_=self.paper()
         prepare_web(self.store,revision); self.approve(revision)
