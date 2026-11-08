@@ -1,3 +1,133 @@
+# ハイブリッド運用：API精読 → Web画像生成 → 承認 → Notion
+
+## 2026-11-08 現行の操作
+
+既定は `manual_web`。解析モデル・画像のデザイン指示v2は維持し、医学的内容と画像生成の責務を分離した。
+`auto` は画像待ちで終了する。Notionへの送信は `sync-notion`、または明示的な `--notion` 指定時のみ。
+これ以降の例はリポジトリ直下で実行する。`--state-dir` はサブコマンドの前に置く。
+独立試験台帳を使っていた場合は、必ず同じ `--state-dir` を指定する。省略すると別の既定台帳になる。
+
+### 新しい論文
+
+1. `SetupPaperPipeline.command` で環境を準備し、下段の初回設定に従ってAPI・予算を設定する。
+2. `PubMedGraRecAuto.command` の1でPDF/PMIDを取り込み、精読Batchを開始する。画像生成APIは使わない。
+3. 精読結果が検証されるとMaster、Graphic、Web用Markdown、manifestを自動出力する。
+4. メニュー2で状態と出力先を確認する。メニュー12で利用しやすい新規フォルダへ書き出すこともできる。
+5. ChatGPT Webの「グラレコ作成」Projectに、該当する `ready_for_web/*_prompt.md` の内容を渡す。このMarkdownには対象Graphic JSONが埋め込まれている。複数テーマを一度に混ぜず、1依頼につき1枚を生成する。
+6. PNGを保存し、メニュー13でPMID・topic_id・ファイルを明示して取り込む。
+7. 原文・JSON・画像を人が照合し、メニュー14で承認／却下と確認内容を記録する。
+8. メニュー15で対象論文の承認済み画像だけをNotionへ送る。生成・保存しただけでは送信しない。
+
+分類と分割案は精読と同じAPI要求で生成する。Originalは原則1枚、Systematic Reviewは単一疑問なら長文でも1枚、Narrative/Scoping ReviewとGuideline/Consensusは独立した臨床テーマを使う。ページ数で分割しない。Overviewは任意、テーマ数は固定しない。
+保守的なページ換算が入力上限を超える場合は、既存の全文トークン計数経路で実入力を確認する。実入力も上限超過なら停止し、PDFを自動切り捨てしない。
+
+### 保存済みJSONを再利用する（API不要）
+
+```sh
+.venv/bin/python scripts/process_papers.py --state-dir .paper_pipeline-pilot prepare-web \
+  --paper 41064908 --export output/PMID_41064908/web-v1
+```
+
+`--export` は任意。既存の出力先には上書きしない。出力コピーのmanifestは書き出し時点の状態であり、進捗の正本はSQLite台帳。
+`--revision` で版IDを固定でき、省略時は最新の処理版を使う。元の `review.json`、PDF、不合格PNG、API履歴を変更しない。
+旧JSONの不足フィールドは空欄／未確認として扱い、根拠の引用を新しく作らない。
+旧Originalは1枚分を準備するが、Review/Consensusや分類不明は `structure_review_required` で止め、Masterと分割設定のたたき台だけを出す。
+
+管理領域の構造：
+
+```text
+artifacts/<revision_id>/
+  review.json                 既存精読結果（保持）
+  web/<bundle_hash>/
+    master.json               論文全体・章構造・根拠・分割方針
+    plan.json                 編集用の分割設定
+    graphics/00_main.json     画像1枚の入力
+    ready_for_web/00_main_prompt.md
+    images/PMID_<pmid>_<topic_id>_<hash>.png
+    manifest.json
+```
+
+### 分割・統合の変更
+
+`plan.json` を管理領域外へコピーし、`topics` と `visualization_strategy` を編集する。
+`topics` の `result_indices` / `recommendation_indices` はMaster内の0始まりの番号。すべての結果・声明を少なくとも1テーマへ割り当てる。
+`source_sections` は `document_structure.section_id` を参照する。テーマごとに中心メッセージとPractice Changeの判断を保持する。
+複数テーマは `mode: topics`、1テーマは `mode: single`。`include_overview` で俯瞰画像を選択する。
+分類・章構造が未確認なら、原文を確認して `paper_type`、`classification_reason`、`document_structure` も修正する。
+
+```sh
+.venv/bin/python scripts/process_papers.py --state-dir .paper_pipeline-pilot prepare-web \
+  --paper 42835691 --plan /path/to/edited-plan.json
+```
+
+新しいMasterを明示的に取り込む場合は `--master /path/to/master.json`。書誌情報・原本ハッシュを照合し、旧JSONを上書きしない。
+Masterには `schema_version: hybrid-v1`、5種の `paper_type`、章構造、臨床疑問、結果と根拠、推奨・専門家合意、Overview、テーマ、分割理由を持つ。
+非該当PICOと論文全体に付与できないPractice Changeはnullを許容する。Yes/No/Unclearの意味は変更しない。
+推奨の対象・条件・例外・合意率・エビデンスの強さは別フィールド。Delphiの同意率を治療効果量や確実性に変換しない。
+
+計画を再適用しても、同じ内容のGraphic・承認済みPNGは再利用する。内容が変わったGraphicだけ新規扱いにする。
+削除されたテーマは非アクティブになり、ファイル・承認履歴は残る。Notionへ既に送った旧版は削除しない。
+
+### PNGの取り込み・確認
+
+```sh
+.venv/bin/python scripts/process_papers.py --state-dir .paper_pipeline-pilot import-image \
+  --paper 41064908 --topic main --source '/path/to/ChatGPT Image.png'
+
+# 原文・JSON・画像を人が照合した後だけ実行する
+.venv/bin/python scripts/process_papers.py --state-dir .paper_pipeline-pilot review-image \
+  --paper 41064908 --topic main --approve --reviewer '確認者名' \
+  --note '論文対応・数値・解析集団・条件・限界・画像品質を確認'
+
+# 別論文の混入などがあれば却下する
+.venv/bin/python scripts/process_papers.py --state-dir .paper_pipeline-pilot review-image \
+  --paper 41064908 --topic main --reject --reviewer '確認者名' --note '別論文の内容が混入'
+```
+
+PNG実形式・破損・横長16:9・重複を確認する。2048×1152や1600×900などを許容し、自動切り抜きや変形はしない。
+元画像はコピーで保持。差し替え時はハッシュ付き別名で保存し、旧画像を上書きしない。同一PNGを別Graphicへ流用する操作は拒否する。
+承認はGraphic JSONとPNGのハッシュの組に結び付く。差し替えは再承認が必要。管理ファイルを直接編集した場合は送信を止める。
+ファイル検証は画像内の医学的正確性を保証しない。人による確認は必須。
+
+状態は `READY_FOR_WEB → IMAGE_REVIEW_REQUIRED → IMAGE_APPROVED → COMPLETED`。
+PNG取り込み・保存が完了した時点で `IMAGE_REVIEW_REQUIRED` を永続化する。不合格は `IMAGE_REJECTED`。
+`COMPLETED` はNotion上の添付を再取得して確認した状態で、医学的な妥当性の保証ではない。
+
+### Notion登録（実送信する操作）
+
+```sh
+.venv/bin/python scripts/process_papers.py --state-dir .paper_pipeline-pilot sync-notion --paper 41064908
+```
+
+1論文1ページを維持し、承認済みテーマごとに版領域を追記する。Master JSON、Graphic JSON、PNGと出典を添付する。
+未承認・却下画像は送らず、部分承認なら承認済み分だけを送る。全テーマの同期が終わるまで論文全体を完了にしない。
+既存のページカバー・臨床プロパティ・手書きメモ・Human Checkedは保護する。新規ページのプロパティはMasterに基づき、最初の承認画像をカバーに使う。
+画像承認を論文全体の確認と見なさず、ページのHuman Checkedは自動でオンにしない。
+`Automation ID` がなければ停止し、DBプロパティを自動追加しない。新しいDBや画像ごとの別ページは不要。
+
+### 保持・再開・API画像生成
+
+- 初めて旧SQLite台帳を開いたとき、`schema_backups/` にDBのコピーを作ってから画像管理テーブルを追加する。原本・生成物・費用履歴は保持する。
+- 通常の `backup` はDBと管理ファイルをまとめてコピーする。復元手順は下段を参照。
+- 画像の履歴と承認記録はSQLite、対応表はmanifestに保存。CLIエラーは `errors/` に原因を残す。
+- `quality_wait` や費用の停止設定を勝手に解除しない。ローカルの `prepare-web` はAPIを呼ばないため、精読結果が既にあれば利用できる。
+- 画像APIコードと通信監査は残す。利用には `regenerate ... --stage image --image-generation-mode api` と、実行時の `--allow-image-api` の両方が必要。有料。現在のAPI経路は1画像のみで、複数テーマはmanual_webを使う。API画像にも同じ人の承認を要求する。
+- 旧手動スクリプトは互換機能として残るが、新しい画像承認ゲートを通らない。ハイブリッド運用は上記コマンド／メニュー12〜15を使う。
+
+### 今回の検証記録
+
+92件のローカルテスト成功。既存67件を新しい承認手順に合わせて更新し、A〜E、分割/統合、条件・根拠の保持、API抑止、画像差し替え、改変検知、部分Notion同期、再開、旧DBバックアップ、全文計数を追加検証した。APIは模擬応答。
+PMID 41064908の保存済み8結果から1Graphicを準備。PMID 42835691は初期状態で構造確認待ち、保存済み10結果を7テーマに再編成する試験案ではすべての結果・根拠を保持した。
+実データの試験は `output/hybrid-evaluation-20261108/` の独立台帳で行い、元PDF・JSON・試験台帳のハッシュ不変を確認。試験案は全文の章立て・全声明の網羅性を保証しない。生成物はGit対象外。
+実APIでの新スキーマ抽出、画像の医学的妥当性、Web画像品質、ライブNotion連携は未検証。今回の有料生成・Notion実送信は0件。
+画像失敗を論文長のせいと確定していない。過去の `input_tokens=8` と送信・応答対応の問題は独立した未解決課題として保持する。
+
+---
+
+## 従来の設定詳細・試験記録
+
+以下には改修前の二段階Batch等の記録を含む。現行の既定動作・承認手順・実送信条件は上記を優先する。
+
 # PMID・PDFからNotionまで（継続台帳版）
 
 ## 初回設定
@@ -8,7 +138,7 @@
    - `NOTION_TOKEN`、`NOTION_DATABASE_ID`
    - `UNPAYWALL_EMAIL`、推奨：`NCBI_EMAIL`、必要なら `NCBI_API_KEY`
    - 複数データソースがあるNotion DBのみ `NOTION_DATA_SOURCE_ID`
-3. Notionの対象DBをIntegrationに接続する。既存のプロパティ定義は `notion/database_schema.md` を参照。新自動化は最初の登録時に `Automation ID`（rich_text）を追加する。Galleryはページカバーをプレビューにする。
+3. Notionの対象DBをIntegrationに接続する。既存のプロパティ定義は `notion/database_schema.md` を参照。現行版は `Automation ID`（rich_text）の存在を確認し、なければ停止する。DB構造は自動変更しない。Galleryはページカバーをプレビューにする。
 4. OpenAIの請求画面で **APIに使えるクレジットの残額・期限・請求期間・購入済み残高・自動チャージ無効** を確認する。ChatGPTの契約名だけで付与額を推定しない。
 5. `PubMedGraRecAuto.command` → **5 予算設定**。請求期間開始、失効日時（例 `2026-12-01T00:00:00+09:00`）、確認した残額、他用途に確保する額を入力する。残額$100で他用途$20を確保する場合、本体は最大$80。初回は通常運用への切り替えに `n` と答え、5論文/$20枠を使う。
 
@@ -21,7 +151,7 @@
 1. `pubmed_abstract` から希望PMIDをTXTで出力する（1行1PMID）。本アプリから元リポジトリへ書き戻さない。
 2. 手元PDFは `input/pdfs/` に置く。元ファイルは移動・改名・削除しない。別フォルダはCLIの `--pdf-dir` で指定できる。
 3. `PubMedGraRecAuto.command` → **1 新規取り込み・実行**。TXTをドラッグして指定する。空欄は `input/pmids.txt`。
-4. 初めに手元PDFを照合し、未取得・非保留の全論文を再探索する。入手できた論文から見積もりを示し、予算内で解析Batch → 画像Batch → Notion登録を進める。
+4. 初めに手元PDFを照合し、未取得・非保留の全論文を再探索する。入手できた論文から見積もりを示し、予算内で解析Batch → Web用ファイル準備を進める。画像生成・承認・Notion送信は冒頭の現行手順に従う。
 5. 30分間隔で回収する。Terminalを閉じても台帳は残る。次回 **4 続きから実行** で再探索せず未完了工程を再開する。Macのスリープ中はローカルの回収が止まる。各工程24時間枠なので全体は48時間を超えうる。
 6. **3 要確認** に手動候補URL、識別待ちPDF、改訂版、エラー、未確定費用を表示する。無料候補を手動取得したら `input/pdfs/` に置き、1を実行する。
 
@@ -60,7 +190,7 @@
 # 回収のみ：有料要求の新規送信なし
 .venv/bin/python scripts/process_papers.py resume
 
-# 回収して画像等の次工程を投入し、完成分をNotion登録（再探索なし）
+# 回収して次の精読工程を投入し、承認済み画像のみNotion登録（実送信あり）
 .venv/bin/python scripts/process_papers.py resume --advance --notion
 
 # 新規入力と再探索を含む一連の処理
@@ -175,7 +305,7 @@ APIバージョンは `2026-03-11`。database IDから単一data sourceを解決
 
 新規生成は `prompts/grarec-v2.md` を使用する。提供されたv2.0の視覚規則（色鉛筆/水彩風、イラスト約60%、主役のイラスト、可変構図）に、旧版の入力制約・PICO・主要結果・Safety・Practice Change・医学的正確性を統合した。旧版の配色・固定的レイアウトは重ねて指示しない。既存処理版に保存されたプロンプトは保持するため、指示変更だけで旧画像を再生成しない。
 
-通常API試験は `direct` コマンドを使う。Batchは作成せず、Responses API → Images APIを順に実行する。完了工程は再利用し、曖昧な失敗は予約を保持して停止する。標準料金を使用し、初回$20・1版$4・残額確認24時間の制限は維持する。予約額は保証上限ではない。下記のPMID・パス・期間・残額は自分の値へ置き換える。
+以下は改修前の試験記録。現行の `direct` はResponses API → Web用ファイル準備が既定で、Images APIには明示的な設定と許可が必要。完了工程は再利用し、曖昧な失敗は予約を保持して停止する。標準料金を使用し、初回$20・1版$4・残額確認24時間の制限は維持する。予約額は保証上限ではない。下記のPMID・パス・期間・残額は自分の値へ置き換える。
 
 1. `SetupPaperPipeline.command` を実行し、`.env` にAPIキー等を設定する。
 2. 試験用の管理領域とPDF入力フォルダを作る。PDF2件だけを `inbox` へコピーする（原本はそのまま）。

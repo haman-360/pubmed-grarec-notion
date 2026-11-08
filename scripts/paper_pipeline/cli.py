@@ -9,19 +9,22 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from jsonschema.exceptions import ValidationError
 
 import requests
 
 from .batches import API, Batches, config
 from .notion import Notion, NotionAPI
-from .sources import Sources, inspect_pdf
+from .sources import Sources, inspect_pdf, error_reason
 from .store import Store, atomic_write, encode, now
 
 REPO = Path(__file__).resolve().parents[2]
 LABELS = {'unsearched':'未調査','manual_candidate':'無料候補あり','free_unconfirmed':'無料版未確認',
           'available':'PDF入手済み','search_error':'調査エラー','analysis_ready':'解析待ち','analysis_submitted':'解析中',
           'image_ready':'画像待ち','image_submitted':'画像中','notion_ready':'Notion待ち','completed':'処理済み',
-          'budget_wait':'予算待ち','quality_wait':'品質確認待ち','review_required':'要確認'}
+          'budget_wait':'予算待ち','quality_wait':'品質確認待ち','review_required':'要確認',
+          'structure_review_required':'章立て・分割確認待ち','READY_FOR_WEB':'Web画像生成待ち',
+          'IMAGE_REVIEW_REQUIRED':'画像の確認待ち','IMAGE_REJECTED':'画像却下・再生成待ち'}
 
 
 def migrate(store):
@@ -115,13 +118,14 @@ def collect_legacy(store, api):
 
 
 def parser():
-    result = argparse.ArgumentParser(description='PMID/PDF → 精読JSON → AIグラレコ → Notion（継続台帳）')
+    result = argparse.ArgumentParser(description='PMID/PDF → 精読JSON → ChatGPT Web → 画像承認 → Notion')
     result.add_argument('--state-dir',default=os.getenv('PAPER_PIPELINE_HOME') or str(REPO/'.paper_pipeline'))
     commands = result.add_subparsers(dest='command',required=True)
     p = commands.add_parser('direct',help='指定した最大4論文を通常APIで試験（Batchなし）')
     p.add_argument('--paper',action='append',required=True,help='PMIDまたは論文内部ID、繰り返し指定')
     p.add_argument('--yes',action='store_true')
-    p.add_argument('--notion',action='store_true',help='完成後にNotionにも登録（省略時はローカルのみ）')
+    p.add_argument('--notion',action='store_true',help='承認済み画像をNotionへ実送信する')
+    p.add_argument('--allow-image-api',action='store_true',help='api設定の版のみ有料画像APIを許可')
     for name in ('prepare','auto'):
         p = commands.add_parser(name)
         p.add_argument('--pmids-file',default=str(REPO/'input/pmids.txt'))
@@ -135,10 +139,14 @@ def parser():
         p.add_argument('--timeout-hours',type=float,default=72)
         if name=='auto':
             p.add_argument('--resume-only',action='store_true',help='PMID取り込み・PDF再探索をせず未完了工程を続行')
+            p.add_argument('--notion',action='store_true')
+            p.add_argument('--allow-image-api',action='store_true')
     p = commands.add_parser('submit')
+    p.add_argument('--allow-image-api',action='store_true')
     p.add_argument('--max-papers',type=int,default=5)
     p.add_argument('--yes',action='store_true')
     p = commands.add_parser('resume')
+    p.add_argument('--allow-image-api',action='store_true')
     p.add_argument('--notion',action='store_true')
     p.add_argument('--advance',action='store_true',help='回収後、予算内で次工程のBatchを投入')
     p.add_argument('--yes',action='store_true')
@@ -161,6 +169,7 @@ def parser():
     p = commands.add_parser('regenerate')
     p.add_argument('paper')
     p.add_argument('--stage',choices=['analysis','image'],default='analysis')
+    p.add_argument('--image-generation-mode',choices=['manual_web','api'],default='manual_web')
     p.add_argument('--source')
     for name in ('export','backup'):
         p = commands.add_parser(name)
@@ -177,6 +186,24 @@ def parser():
     p.add_argument('attempt')
     p.add_argument('--actual',type=float,required=True,help='請求画面で確認した実費')
     p.add_argument('--note',required=True)
+    for name in ('prepare-web','import-image','review-image','sync-notion'):
+        p = commands.add_parser(name)
+        p.add_argument('--paper',required=True,help='PMIDまたは論文内部ID')
+        p.add_argument('--revision',help='省略時は最新の処理版')
+        if name == 'prepare-web':
+            p.add_argument('--master',help='新Master JSON（既存精読結果を上書きしない）')
+            p.add_argument('--plan',help='編集したplan.json')
+            p.add_argument('--export',help='新しい出力フォルダへWeb用一式をコピー')
+        elif name == 'import-image':
+            p.add_argument('--topic',required=True)
+            p.add_argument('--source',required=True,help='PNGの明示的なパス')
+        elif name == 'review-image':
+            p.add_argument('--topic',required=True)
+            choice = p.add_mutually_exclusive_group(required=True)
+            choice.add_argument('--approve',action='store_true')
+            choice.add_argument('--reject',action='store_true')
+            p.add_argument('--reviewer',required=True)
+            p.add_argument('--note',required=True,help='原文・JSON・画像の確認内容、または却下理由')
     return result
 
 
@@ -192,6 +219,8 @@ def status(store, review=False):
                     print(f"  {c.get('priority','')} {c.get('evidence','')} {c['url']} {c.get('reason','')}")
             for r in store.rows("SELECT id,error FROM revisions WHERE paper_id=? AND error!=''",(p['id'],)):
                 print(f"  生成版 {r['id']}: {r['error']}")
+    for graphic in store.rows('SELECT * FROM graphics WHERE active=1 ORDER BY revision_id,position'):
+        print(f"  Graphic {graphic['revision_id']} / {graphic['topic_id']}: {graphic['status']}  {graphic['json_path']}")
     for source in store.rows("SELECT * FROM sources WHERE status!='confirmed'"):
         details = json.loads(source['details'])
         print(f"PDF要確認 {source['id']} {source['status']} {source['original']} {details.get('error') or details.get('method','')} 論文候補={details.get('expected_paper','-')}")
@@ -274,8 +303,10 @@ def main(argv=None):
     try:
         with store.lock():
             dispatch(store,args)
-    except (ValueError,RuntimeError,requests.RequestException) as error:
-        print(f'停止: {error}',file=sys.stderr)
+    except (ValueError,RuntimeError,OSError,ValidationError,requests.RequestException) as error:
+        reason = ('JSONスキーマ不一致: '+error.message if isinstance(error,ValidationError) else error_reason(error))
+        atomic_write(store.root/'errors'/f'{time.time_ns()}.json',encode({'at':now(),'command':args.command,'error_type':type(error).__name__,'reason':reason[:500]}))
+        print(f'停止: {reason}',file=sys.stderr)
         return 1
     except KeyboardInterrupt:
         print('\n中断しました。台帳を保持しています。次回「続きから実行」で再開できます。')
@@ -287,13 +318,45 @@ def main(argv=None):
 
 def dispatch(store,args):
     cmd = args.command
-    if cmd == 'direct':
+    if cmd in ('prepare-web','import-image','review-image','sync-notion'):
+        from .graphics import prepare_web, import_image, review_image
+        paper = store.resolve(args.paper)
+        revisions = store.rows('SELECT * FROM revisions WHERE paper_id=? ORDER BY created_at DESC,rowid DESC',(paper['id'],))
+        revision = store.one('revisions',args.revision) if args.revision else (revisions[0] if revisions else None)
+        if not revision or revision['paper_id'] != paper['id']:
+            raise ValueError('対応する処理版がありません')
+        if cmd == 'prepare-web' and store.rows("SELECT id FROM attempts WHERE revision_id=? AND status IN ('reserved','submitting','unknown','submitted','direct_submitting','direct_unknown')",(revision['id'],)):
+            raise ValueError('送信中・結果不明の要求があります。回収・照合後に準備してください')
+        if cmd == 'prepare-web':
+            master = json.loads(Path(args.master).read_text()) if args.master else None
+            plan = json.loads(Path(args.plan).read_text()) if args.plan else None
+            folder = prepare_web(store,revision,master,plan)
+            if args.export:
+                destination = Path(args.export).expanduser().resolve()
+                if destination.exists() or store.root == destination or store.root in destination.parents:
+                    raise ValueError('書き出し先は管理領域外の新規フォルダにしてください')
+                shutil.copytree(folder,destination)
+                print('Web用コピー: '+str(destination))
+            print('Web準備: '+str(folder))
+            print('状態: '+store.one('revisions',revision['id'])['status'])
+        elif cmd == 'import-image':
+            row = import_image(store,revision,args.topic,Path(args.source).expanduser())
+            print(row['status']+': '+row['image_path'])
+        elif cmd == 'review-image':
+            review_image(store,revision,args.topic,args.approve,args.reviewer,args.note)
+            print('画像承認を記録しました' if args.approve else '画像を却下しました。Notionへは送信しません')
+        else:
+            if paper['disposition'] != 'active' or paper['blocker'] or revision['status'] == 'superseded':
+                raise ValueError('保留・識別確認待ち・旧処理版は送信できません')
+            client = Notion(store,NotionAPI(os.getenv('NOTION_TOKEN','')),os.getenv('NOTION_DATABASE_ID'),os.getenv('NOTION_DATA_SOURCE_ID'))
+            client.sync(revision)
+    elif cmd == 'direct':
         from .direct import Direct
-        if not args.yes and input('通常API料金で最大4論文を生成しますか？ [y/N]: ').strip().lower() not in ('y','yes'):
+        if not args.yes and input('通常API料金で最大4論文を精読しますか（画像APIは明示許可時のみ）？ [y/N]: ').strip().lower() not in ('y','yes'):
             return
         api = API(os.getenv('OPENAI_API_KEY',''),audit_dir=store.root/'http_audit')
-        api.check_models()
-        Direct(store,api).run(args.paper)
+        api.check_models(include_images=getattr(args,'allow_image_api',False))
+        Direct(store,api,allow_image_api=args.allow_image_api).run(args.paper)
         if args.notion:
             # Restrict Notion registration to the selected papers as well.
             client = Notion(store,NotionAPI(os.getenv('NOTION_TOKEN','')),os.getenv('NOTION_DATABASE_ID'),os.getenv('NOTION_DATA_SOURCE_ID'))
@@ -372,8 +435,14 @@ def dispatch(store,args):
         store.update('sources',source['id'],status='confirmed')
         store.update('papers',paper['id'],legacy=0,blocker='')
         with store.db:
-            store.db.execute("UPDATE revisions SET status='superseded' WHERE paper_id=? AND status IN ('analysis_ready','image_ready','budget_wait','review_required','notion_ready')",(paper['id'],))
-        revision = store.revision(paper,source,config(),force=True,summary=summary)
+            store.db.execute("UPDATE revisions SET status='superseded' WHERE paper_id=? AND status IN ('analysis_ready','image_ready','budget_wait','quality_wait','review_required','notion_ready','READY_FOR_WEB','IMAGE_REVIEW_REQUIRED','IMAGE_REJECTED','structure_review_required')",(paper['id'],))
+        cfg = config()
+        cfg['image_generation_mode'] = args.image_generation_mode
+        if summary:
+            old_data = json.loads((store.root/summary).read_text())
+            if old_data.get('schema_version') != 'hybrid-v1':
+                cfg['review_version'] = 'fulltext-v3'
+        revision = store.revision(paper,source,cfg,force=True,summary=summary)
         if summary:
             data = json.loads((store.root/summary).read_text())
             data.update(revision_id=revision['id'],human_checked=False)
@@ -392,12 +461,12 @@ def dispatch(store,args):
             prepare(store,args)
         if cmd == 'prepare':
             return
-        if cmd=='auto' and (not os.getenv('NOTION_TOKEN') or not os.getenv('NOTION_DATABASE_ID')):
+        if cmd=='auto' and args.notion and (not os.getenv('NOTION_TOKEN') or not os.getenv('NOTION_DATABASE_ID')):
             raise ValueError('自動処理にはNOTION_TOKENとNOTION_DATABASE_IDの初期設定が必要です')
         api = API(os.getenv('OPENAI_API_KEY',''),audit_dir=store.root/'http_audit')
-        runner = Batches(store,api)
+        runner = Batches(store,api,allow_image_api=getattr(args,'allow_image_api',False))
         if (cmd in ('submit','auto') or cmd=='resume' and args.advance) and not args.yes:
-            if input('予算内で解析・画像Batchを投入しますか？ [y/N]: ').strip().lower() not in ('y','yes'):
+            if input('予算内で精読Batch（明示許可時のみ画像API）を投入しますか？ [y/N]: ').strip().lower() not in ('y','yes'):
                 return
         if cmd == 'resume':
             collect_legacy(store,api)
@@ -405,7 +474,7 @@ def dispatch(store,args):
             if args.advance:
                 if legacy_pending(store):
                     raise ValueError('旧Batchの回収完了を待ってください')
-                api.check_models()
+                api.check_models(include_images=getattr(args,'allow_image_api',False))
                 runner.prepare_revisions()
                 runner.submit()
             if args.notion:
@@ -416,7 +485,7 @@ def dispatch(store,args):
             collect_legacy(store,api)
             if legacy_pending(store):
                 raise ValueError('旧Batchが未回収です。完了を待ってresumeで回収してください。')
-        api.check_models()
+        api.check_models(include_images=getattr(args,'allow_image_api',False))
         runner.collect()
         runner.prepare_revisions()
         runner.submit(max(1,args.max_papers))
@@ -425,7 +494,8 @@ def dispatch(store,args):
             while True:
                 runner.collect()
                 runner.submit(max(1,args.max_papers))
-                sync_notion(store)
+                if args.notion:
+                    sync_notion(store)
                 pending = store.rows("SELECT id FROM attempts WHERE status='submitted'")
                 if not pending:
                     status(store)
@@ -455,6 +525,7 @@ def menu(store):
     while True:
         print('\n1 新規取り込み・実行 / 2 状況 / 3 要確認 / 4 続きから実行（再検索なし） / 5 予算設定')
         print('6 PDF識別 / 7 保留・解除 / 8 再生成 / 9 CSV / 10 バックアップ / 11 旧版を対象化 / q 終了')
+        print('12 Web用ファイル準備 / 13 PNG取り込み / 14 画像承認・却下 / 15 承認済み画像をNotionへ送信')
         choice = ask('番号')
         if choice == 'q':
             return
@@ -500,10 +571,30 @@ def menu(store):
             command = ['export' if choice=='9' else 'backup',path_input('保存先の絶対パス')]
         elif choice == '11':
             command = ['activate',ask('旧版を再解析対象にするPMID/内部ID')]
+        elif choice == '12':
+            command = ['prepare-web','--paper',ask('PMID/内部ID')]
+            plan = path_input('編集した分割設定plan.json（通常は空欄）')
+            destination = path_input('Web用コピーの新規フォルダ（管理領域のみなら空欄）')
+            if plan:
+                command += ['--plan',plan]
+            if destination:
+                command += ['--export',destination]
+        elif choice == '13':
+            command = ['import-image','--paper',ask('PMID/内部ID'),'--topic',ask('topic_id（原著の通常値はmain）'),
+                       '--source',path_input('保存したPNGのパス')]
+        elif choice == '14':
+            paper, topic = ask('PMID/内部ID'), ask('topic_id')
+            print('原文・JSON・画像の対応、数値、条件、限界、別論文の混入、画像品質を確認してください。')
+            decision = ask('approve 承認 / reject 却下')
+            if decision in ('approve','reject'):
+                command = ['review-image','--paper',paper,'--topic',topic,'--'+decision,
+                           '--reviewer',ask('確認者'),'--note',ask('確認内容／却下理由')]
+        elif choice == '15':
+            command = ['sync-notion','--paper',ask('Notionへ実送信する論文のPMID/内部ID')]
         if command:
             try:
                 dispatch(store,parser().parse_args(command))
-            except (ValueError,RuntimeError,requests.RequestException) as error:
+            except (ValueError,RuntimeError,OSError,ValidationError,requests.RequestException) as error:
                 print(f'保留: {error}')
 
 

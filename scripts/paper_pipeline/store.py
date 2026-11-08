@@ -51,6 +51,12 @@ class Store:
         self.root.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(self.root / "ledger.sqlite3")
         self.db.row_factory = sqlite3.Row
+        tables = {r[0] for r in self.db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        if 'revisions' in tables and 'graphics' not in tables:
+            destination = self.root / 'schema_backups'
+            destination.mkdir(exist_ok=True)
+            with sqlite3.connect(destination / ('before-hybrid-'+uid()+'.sqlite3')) as target:
+                self.db.backup(target)
         self.db.execute("PRAGMA foreign_keys=ON")
         self.db.executescript('''
         CREATE TABLE IF NOT EXISTS papers (
@@ -78,6 +84,13 @@ class Store:
           checked_at TEXT NOT NULL, result TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS legacy (path TEXT PRIMARY KEY, data TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS graphics (
+          id TEXT PRIMARY KEY, revision_id TEXT NOT NULL REFERENCES revisions(id),
+          topic_id TEXT NOT NULL, position INTEGER NOT NULL, active INTEGER NOT NULL DEFAULT 1,
+          json_path TEXT NOT NULL, json_hash TEXT NOT NULL, master_hash TEXT NOT NULL,
+          image_path TEXT, image_hash TEXT, status TEXT NOT NULL DEFAULT 'READY_FOR_WEB',
+          approval TEXT NOT NULL DEFAULT '{}', notion TEXT NOT NULL DEFAULT '{}',
+          history TEXT NOT NULL DEFAULT '[]', created_at TEXT NOT NULL);
         ''')
 
     def close(self):

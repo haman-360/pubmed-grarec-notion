@@ -58,8 +58,7 @@ class Notion:
             raise ValueError('データソースが指定データベースに属していません')
         schema = self.api.call('GET','/data_sources/'+self.data_source_id)
         if 'Automation ID' not in schema['properties']:
-            self.api.call('PATCH','/data_sources/'+self.data_source_id,json={'properties':{'Automation ID':{'rich_text':{}}}})
-            schema = self.api.call('GET','/data_sources/'+self.data_source_id)
+            raise ValueError('Automation ID（rich_text）が必要です。DB構造は自動変更しません')
         self.properties = schema['properties']
         if self.properties['Automation ID']['type'] != 'rich_text':
             raise ValueError('Automation IDはrich_text型が必要です')
@@ -114,7 +113,7 @@ class Notion:
         return next(iter(matches.values())) if matches else None
 
     def save(self, revision, state):
-        self.store.update('revisions',revision['id'],notion=encode(state))
+        self.store.update('graphics',revision['_graphic_id'],notion=encode(state))
 
     def children(self, identifier):
         return self.all_results('/blocks/'+identifier+'/children')
@@ -148,6 +147,29 @@ class Notion:
         return entry
 
     def sync(self, revision):
+        from .graphics import active_graphics, check_graphic, refresh_manifest
+        paper = self.store.one('papers',revision['paper_id'])
+        if revision['status'] == 'superseded' or paper['disposition'] != 'active' or paper['blocker']:
+            raise ValueError('旧版・保留・識別未確認の論文は送信できません')
+        rows = active_graphics(self.store, revision['id'])
+        approved = [r for r in rows if r['status'] in ('IMAGE_APPROVED','COMPLETED')]
+        if not approved:
+            raise ValueError('承認済み画像がありません。prepare-web、import-image、review-imageを実行してください')
+        # Validate all selected files before the first external operation.
+        for row in approved:
+            check_graphic(self.store, row, approved=True)
+        for row in approved:
+            if row['status'] == 'COMPLETED':
+                continue
+            data = check_graphic(self.store, row, approved=True)
+            proxy = dict(revision, id=revision['id']+':'+row['topic_id']+':'+row['json_hash'][:12]+':'+row['image_hash'][:12],
+                         summary=row['json_path'], image=row['image_path'], notion=row['notion'],
+                         _graphic_id=row['id'], _topic_title=data['topic_title'],
+                         _master=str(Path(row['json_path']).parent.parent/'master.json'))
+            self._sync_one(proxy)
+            refresh_manifest(self.store, revision['id'])
+
+    def _sync_one(self, revision):
         if self.properties is None:
             self.setup()
         paper = self.store.one('papers',revision['paper_id'])
@@ -158,7 +180,8 @@ class Notion:
             if state.get('page_intent'):
                 raise ValueError('Notionページ作成結果が不明です。重複防止のため再作成を保留します')
             from upload_to_notion import build_chatgpt_summary_payload
-            payload = build_chatgpt_summary_payload(summary,self.database_id,{'properties':self.properties})
+            master = json.loads((self.store.root/revision['_master']).read_text())
+            payload = build_chatgpt_summary_payload(master,self.database_id,{'properties':self.properties})
             payload['parent'] = {'data_source_id':self.data_source_id}
             payload['children'] = []
             payload['properties']['Automation ID'] = {'rich_text':rich(paper['id'])}
@@ -176,7 +199,7 @@ class Notion:
         self.store.update('papers',paper['id'],page_id=page['id'])
         state['page_id'] = page['id']
         self.save(revision,state)
-        marker = f"AI精読・未確認 [{revision['id']}]"
+        marker = f"AI精読・画像承認済み {revision['_topic_title']} [{revision['id']}]"
         if state.get('section_copy',0):
             marker += f" 保存版{state['section_copy']+1}"
         sections = [b for b in self.children(page['id']) if b['type']=='toggle' and plain(b)==marker]
@@ -193,9 +216,14 @@ class Notion:
         state['section_id'] = section_id
         self.save(revision,state)
         from upload_to_notion import chatgpt_summary_children
-        blocks = [{'object':'block','type':'paragraph','paragraph':{'rich_text':rich('この生成版はAIによる未確認の下読みです。ページのHuman Checkedは以前の版を指す場合があります。')}}]
+        blocks = [{'object':'block','type':'paragraph','paragraph':{'rich_text':rich('画像はローカルで人が承認済み。AI精読全体の確認とは区別します。ページのHuman Checkedは以前の版を指す場合があります。')}}]
         blocks += chatgpt_summary_children(summary)
-        for index, evidence in enumerate(summary.get('result_evidence', [])):
+        for rec in summary.get('recommendations', []):
+            text = '\n'.join(f'{k}: {rec[k]}' for k in ('kind','text','population','conditions','exceptions','agreement','evidence_strength'))
+            text += '\n' + '\n'.join(e['location']+' / '+e['supporting_text'] for e in rec['evidence_references'])
+            for start in range(0,len(text),1800):
+                blocks.append({'object':'block','type':'paragraph','paragraph':{'rich_text':rich(text[start:start+1800])}})
+        for index, evidence in enumerate(summary.get('evidence_references', [])):
             text = f"根拠 {index+1}: {evidence['location']} / {evidence['supporting_text']}"
             for start in range(0,len(text),1800):
                 blocks.append({'object':'block','type':'paragraph','paragraph':{'rich_text':rich(text[start:start+1800])}})
@@ -208,7 +236,7 @@ class Notion:
                     previous = state.get('previous_sections',[]) + [{'section_id':section_id,'content_hash':state.get('content_hash')}]
                     state = {'page_id':page['id'],'previous_sections':previous,'section_copy':state.get('section_copy',0)+1}
                     self.save(revision,state)
-                    return self.sync(self.store.one('revisions',revision['id']))
+                    return self._sync_one(dict(revision, notion=encode(state)))
                 continue
             if state.get('text_intent') == index:
                 raise ValueError('本文追加結果が不明です。再送せず次回照合します')
@@ -217,7 +245,8 @@ class Notion:
             self.api.call('PATCH','/blocks/'+section_id+'/children',json={'children':[block]})
             state.pop('text_intent',None)
             self.save(revision,state)
-        for kind,relative in (('json',revision['summary']),('image',revision['image'])):
+        attachments = (('json',revision['summary']),('master',revision['_master']),('image',revision['image']))
+        for kind,relative in attachments:
             marker = f"{kind}:{revision['id']}"
             children = self.children(section_id)
             matched = [b for b in children if b['type'] in ('file','image') and
@@ -231,9 +260,9 @@ class Notion:
             if state.get(kind+'_attach_intent'):
                 raise ValueError('添付追加結果が不明です。再送せず次回照合します')
             upload = self.upload(revision,state,kind,self.store.root/relative)
-            block_type = 'file' if kind=='json' else 'image'
+            block_type = 'image' if kind=='image' else 'file'
             item = {'object':'block','type':block_type,block_type:{'type':'file_upload','file_upload':{'id':upload['id']},'caption':rich(marker)}}
-            if kind=='json':
+            if kind!='image':
                 item['file']['name'] = upload['name']
             state[kind+'_attach_intent'] = True
             self.save(revision,state)
@@ -249,10 +278,10 @@ class Notion:
                 self.api.call('PATCH','/pages/'+page['id'],json={'cover':{'type':'file_upload','file_upload':{'id':image_upload['id']}}})
         verified = self.children(section_id)
         ids = {b['id'] for b in verified}
-        if not all(state.get(kind+'_block') in ids for kind in ('json','image')):
+        if not all(state.get(kind+'_block') in ids for kind,_ in attachments):
             raise ValueError('Notion添付の再取得確認に失敗しました')
         if len(verified) < len(blocks) or any(plain(a)!=plain(b) or a['type']!=b['type'] for a,b in zip(verified,blocks)):
             raise ValueError('Notion本文の再取得確認に失敗しました')
         state['content_hash'] = digest(blocks)
         state['verified'] = True
-        self.store.update('revisions',revision['id'],notion=encode(state),status='completed',error='')
+        self.store.update('graphics',revision['_graphic_id'],notion=encode(state),status='COMPLETED')

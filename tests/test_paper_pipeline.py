@@ -34,7 +34,7 @@ def sample_summary(paper):
         return 0
     result = value(schema())
     result.update({k:paper[k] or '' for k in ('pmid','doi','title')})
-    result.update(journal='',year='',main_results=['群A 10%、群B 20%'],
+    result.update(journal='',year='',study_type='Original Article RCT',main_results=['群A 10%、群B 20%'],
                   result_evidence=[{'result_index':0,'location':'p.2 Table 1','supporting_text':'10% vs 20%'}])
     return result
 
@@ -176,7 +176,7 @@ class PipelineTests(unittest.TestCase):
         self.root = Path(self.temporary.name)
         self.store = Store(self.root/'state')
         self.api = FakeOpenAI()
-        self.runner = Batches(self.store,self.api)
+        self.runner = Batches(self.store,self.api,allow_image_api=True)
         self.budget()
 
     def tearDown(self):
@@ -201,6 +201,10 @@ class PipelineTests(unittest.TestCase):
             writer.write(path)
             self.store.source(path,p['id'])
             self.runner.prepare_revisions()
+            revision = self.revision(p)
+            cfg = json.loads(revision['config'])
+            cfg.update(review_version='fulltext-v3',image_generation_mode='api')
+            self.store.update('revisions',revision['id'],config=encode(cfg))
         return self.store.one('papers',p['id'])
 
     def revision(self,paper):
@@ -220,7 +224,16 @@ class PipelineTests(unittest.TestCase):
         atomic_write(self.store.root/path,encode(sample_summary(paper)))
         atomic_write(self.store.root/image,png())
         self.store.update('revisions',revision['id'],summary=path,image=image,status='notion_ready')
+        from paper_pipeline.graphics import prepare_web, import_image, review_image
+        r = self.revision(paper)
+        prepare_web(self.store,r)
+        import_image(self.store,r,'main',self.store.root/image)
+        review_image(self.store,r,'main',True,'Synthetic reviewer','Synthetic facts checked')
         return self.revision(paper)
+
+    def graphic(self, revision):
+        from paper_pipeline.graphics import active_graphics
+        return active_graphics(self.store,revision['id'])[0]
 
     def test_additive_queue_25_or_27_and_dedup(self):
         txt = self.root/'pmids.txt'
@@ -323,11 +336,13 @@ class PipelineTests(unittest.TestCase):
         body = {'data':[{'b64_json':base64.b64encode(png()).decode()}],
                 'usage':{'input_tokens':5000,'output_tokens':10000,'input_tokens_details':{'text_tokens':5000,'image_tokens':0}}}
         self.api.complete(a,body)
-        self.store.close(); self.store = Store(self.root/'state'); self.runner = Batches(self.store,self.api)
+        self.store.close(); self.store = Store(self.root/'state'); self.runner = Batches(self.store,self.api,allow_image_api=True)
         self.runner.collect(); self.runner.submit(); self.runner.collect()
         self.assertEqual(self.api.posts,2)
-        self.assertEqual(self.revision(p)['status'],'notion_ready')
+        self.assertEqual(self.revision(p)['status'],'IMAGE_REVIEW_REQUIRED')
         self.assertAlmostEqual(sum(a['actual'] for a in self.store.rows('SELECT * FROM attempts')),0.2725)
+        from paper_pipeline.graphics import review_image
+        review_image(self.store,self.revision(p),'main',True,'Synthetic reviewer','Checked')
         n = FakeNotion(); Notion(self.store,n,'db').sync(self.revision(p))
         self.assertEqual(self.revision(p)['status'],'completed')
         self.assertEqual(len(n.pages),1)
@@ -464,7 +479,7 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(api.pages[page['id']],before)
         self.assertEqual(len(api.blocks[page['id']]),2)
         self.assertEqual(plain(api.blocks[page['id']][0]),'確認済み本文')
-        self.assertEqual(len(api.uploads),2)
+        self.assertEqual(len(api.uploads),3)
 
     def test_notion_duplicate_pages_stop_without_write(self):
         r = self.ready_notion(); p = self.store.one('papers',r['paper_id']); api = FakeNotion()
@@ -493,10 +508,11 @@ class PipelineTests(unittest.TestCase):
 
     def test_edited_generated_section_is_retained_and_copy_appended(self):
         r = self.ready_notion(); api = FakeNotion(); client = Notion(self.store,api,'db'); client.sync(r)
-        r = self.store.one('revisions',r['id']); state = json.loads(r['notion'])
+        r = self.store.one('revisions',r['id']); state = json.loads(self.graphic(r)['notion'])
         api.blocks[state['section_id']][0]['paragraph']['rich_text'] = rich('利用者による編集')
+        self.store.update('graphics',self.graphic(r)['id'],status='IMAGE_APPROVED')
         client.sync(r)
-        new = json.loads(self.store.one('revisions',r['id'])['notion'])
+        new = json.loads(self.graphic(r)['notion'])
         self.assertNotEqual(new['section_id'],state['section_id'])
         self.assertEqual(plain(api.blocks[state['section_id']][0]),'利用者による編集')
         self.assertEqual(len(api.blocks[state['page_id']]),2)
@@ -507,12 +523,12 @@ class PipelineTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'上限'): client.sync(r)
         self.assertEqual(len(api.uploads),0)
         client.file_limit = 5*1024*1024
-        r = self.store.one('revisions',r['id']); state = json.loads(r['notion'])
+        r = self.store.one('revisions',r['id']); state = json.loads(self.graphic(r)['notion'])
         upload = api.call('POST','/file_uploads',json={}); api.uploads[upload['id']]['status'] = 'expired'
         state['json_upload'] = {'id':upload['id'],'send_intent':True}
-        self.store.update('revisions',r['id'],notion=encode(state))
+        self.store.update('graphics',self.graphic(r)['id'],notion=encode(state))
         client.sync(self.store.one('revisions',r['id']))
-        self.assertEqual(len(api.uploads),3)
+        self.assertEqual(len(api.uploads),4)
 
     def test_migration_is_read_only_idempotent_and_does_not_recharge(self):
         repo = self.root/'oldrepo'; path = repo/'output/jobs/PMID_90000001.json'; path.parent.mkdir(parents=True)
@@ -560,7 +576,8 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(new['status'],'image_ready')
         self.assertEqual(self.store.one('revisions',old['id'])['status'],'superseded')
         self.runner.submit()
-        self.assertEqual([a['stage'] for a in self.store.rows('SELECT * FROM attempts')],['image'])
+        self.assertEqual([a['stage'] for a in self.store.rows('SELECT * FROM attempts')],[])
+        self.assertEqual(self.revision(p)['status'],'READY_FOR_WEB')
 
     def test_notion_text_timeout_and_attachment_timeout_reconcile(self):
         r = self.ready_notion(); api = FakeNotion(); client = Notion(self.store,api,'db')
@@ -587,9 +604,9 @@ class PipelineTests(unittest.TestCase):
         with self.assertRaises(TimeoutError): client.sync(self.store.one('revisions',r['id']))
         api.call = original
         client.sync(self.store.one('revisions',r['id']))
-        state = json.loads(self.store.one('revisions',r['id'])['notion'])
+        state = json.loads(self.graphic(r)['notion'])
         self.assertEqual(sum(b['type']=='image' for b in api.blocks[state['section_id']]),1)
-        self.assertEqual(len(api.uploads),2)
+        self.assertEqual(len(api.uploads),3)
 
     def test_resuming_does_not_repeat_pdf_search_or_publish_git(self):
         self.paper()
@@ -631,11 +648,11 @@ class PipelineTests(unittest.TestCase):
         api.call.side_effect = [Mock(status_code=200,json=Mock(return_value=self.analysis_body(p))),
             Mock(status_code=200,json=Mock(return_value={'data':[{'b64_json':base64.b64encode(png()).decode()}],
                 'usage':{'input_tokens':5000,'output_tokens':10000,'input_tokens_details':{'text_tokens':5000,'image_tokens':0}}}))]
-        direct = Direct(self.store,api)
+        direct = Direct(self.store,api,allow_image_api=True)
         direct.run([p['id']]); direct.run([p['id']])
         self.assertEqual([c.args[:2] for c in api.call.call_args_list],[('POST','/responses'),('POST','/images/generations')])
         api.create.assert_not_called()
-        self.assertEqual(self.revision(p)['status'],'notion_ready')
+        self.assertEqual(self.revision(p)['status'],'IMAGE_REVIEW_REQUIRED')
         self.assertAlmostEqual(sum(a['actual'] for a in self.store.rows('SELECT * FROM attempts')),0.545)
         self.runner.collect(); self.runner.submit()
         self.assertEqual(self.api.posts,0)

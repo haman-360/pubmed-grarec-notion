@@ -25,7 +25,7 @@ class Direct(Batches):
             if json.loads(revision['config']).get('mode') != 'direct':
                 if attempts:
                     raise ValueError('Batch履歴のある版は通常APIに切り替えません。新版を明示作成してください')
-                cfg = config()
+                cfg = json.loads(revision['config'])
                 rates = dict(cfg['rates'])
                 for key in ('analysis_input','analysis_output','image_text','image_input','image_output'):
                     rates[key] *= 2
@@ -37,6 +37,8 @@ class Direct(Batches):
         for identifier in selected:
             for _ in range(2):
                 revision = self.store.one('revisions',identifier)
+                if revision['summary'] and revision['status'] in ('image_ready','budget_wait','quality_wait') and self.manual_handoff(revision):
+                    break
                 if revision['status'] not in ('analysis_ready','image_ready','budget_wait','quality_wait'):
                     break
                 stage = 'image' if revision['summary'] else 'analysis'

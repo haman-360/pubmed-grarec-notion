@@ -2,17 +2,30 @@
 
 PubMedで見つけた論文を、Notionの `PubMed Watchlist - 論文DB` にグラレコ画像つきで管理するための作業用repositoryです。
 
-## 継続台帳・二段階Batchによる自動化（現在の入口）
+## ハイブリッド運用（現在の入口）
 
 `SetupPaperPipeline.command` でセットアップ後、`PubMedGraRecAuto.command` を起動します。
-PMID TXTと手元PDFから、未取得論文の再探索、全文の精読JSON、AIグラレコ画像、Notionへの直接添付まで進めます。
-SQLite台帳に進捗・費用予約・原本と生成版を保存し、中断後に再開できます。確認済みNotionページには未確認版を追記します。
 
-**[初回設定・操作・予算・復元手順](docs/AUTOMATION.md)** を先に確認してください。初期設定は5論文/$20の評価枠、評価後は請求期間あたり$80です。実サービスでの5件評価は未実施です。
+```text
+PMID／PDF → APIで全文精読・論文分類・章立て解析
+→ Master JSON／画像単位のGraphic JSON／Web用依頼文
+→ ChatGPT Webで手動画像生成
+→ PNG取り込み → 人による承認 → 明示操作でNotionへ直接添付
+```
 
-画像Instructionはv2を採用しています。4件以内の通常API試験は `direct` コマンドで実施できます。[試験手順と将来の週次起動案](docs/AUTOMATION.md#2026-11-08instruction-v2と4件の通常api試験)も同じ説明書にあります。
+既定は `image_generation_mode = manual_web`。画像APIは既定では呼びません。
+`auto` はWeb用ファイルの準備まで進み、Notion送信はメニュー15または `sync-notion` で明示します。
+原著は原則1枚、Review／Consensusは独立した臨床疑問・章立てに応じて分割し、Overviewは任意です。
 
-新フローは抄録への代替やGitHub Pagesへの公開を行いません。以下は旧手動運用の説明を含みます。`process_papers.py` の現行CLIは上記手順を参照してください。
+**[現行の操作・分割設定・承認・復元手順](docs/AUTOMATION.md)** を参照してください。
+既存のPDF、精読JSON、画像、API履歴を保持し、SQLite台帳の追加テーブルで画像単位の進捗を管理します。
+新規解析には従来の予算制限を適用します。手動生成の準備・PNG取り込み・承認はローカル処理です。
+
+2026-11-08：ローカルテスト92件成功。実際の新スキーマによるAPI精読、Web画像品質、ライブNotion同期は未検証です。
+PMID 41064908と42835691の保存済みJSONによるローカル変換を確認しました。Consensusの全文構造の網羅性は未確認です。
+
+以下は旧手動運用・旧自動化の参考説明です。現在のCLIの挙動と安全な承認経路は上記の現行手順を優先してください。
+旧スクリプトにはGitHub Pages公開・Notion直接更新機能があり、新しい画像承認台帳を経由しません。
 
 ## まず作るもの
 
