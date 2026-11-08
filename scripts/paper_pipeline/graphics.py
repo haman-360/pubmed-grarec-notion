@@ -341,10 +341,12 @@ def import_image(store, revision, topic_id, source):
     raw = Path(source).read_bytes()
     import io
     with Image.open(io.BytesIO(raw)) as im:
-        # Pixel dimensions are integers; allow at most one pixel of height
-        # rounding from 16:9 (e.g. Web output 1672x941), without resampling.
-        if im.format != 'PNG' or im.width <= im.height or abs(im.width * 9 - im.height * 16) > 16:
-            raise ValueError('PNG・横長16:9（高さの丸め差1px以内）が必要です。自動変形や切り抜きはしません')
+        # Accept landscape Web output at 16:9 or 3:2, allowing at most one
+        # pixel of height rounding for either ratio, without resampling.
+        supported_ratio = any(abs(im.width * height - im.height * width) <= width
+                              for width, height in ((16, 9), (3, 2)))
+        if im.format != 'PNG' or im.width <= im.height or not supported_ratio:
+            raise ValueError('PNG・横長16:9または3:2（高さの丸め差1px以内）が必要です。自動変形や切り抜きはしません')
         im.verify()
     sha = digest(raw)
     duplicates = store.rows('SELECT id FROM graphics WHERE image_hash=? AND id!=?', (sha, row['id']))

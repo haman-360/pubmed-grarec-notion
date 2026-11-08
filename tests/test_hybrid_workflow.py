@@ -350,8 +350,32 @@ class HybridTests(unittest.TestCase):
                 self.assertEqual((self.store.root/row['image_path']).read_bytes(),raw)
                 self.assertEqual(path.read_bytes(),raw)
                 self.assertEqual(row['status'],'IMAGE_REVIEW_REQUIRED')
-        for size in ((1672,942),(1600,902),(1536,1024)):
+        for size in ((1672,942),(1600,902),(1600,1200)):
             with self.subTest(size=size), self.assertRaisesRegex(ValueError,'16:9'):
+                import_image(self.store,revision,'main',self.image(size=size))
+
+    def test_three_two_png_keeps_bytes_history_and_remains_unapproved(self):
+        revision,_=self.paper()
+        prepare_web(self.store,revision)
+        self.approve(revision)
+        previous=self.rows(revision)[0]
+        for size in ((1536,1024),(1536,1023),(1536,1025)):
+            with self.subTest(size=size):
+                path=self.image(size=size); raw=path.read_bytes()
+                row=import_image(self.store,revision,'main',path)
+                self.assertEqual((self.store.root/row['image_path']).read_bytes(),raw)
+                self.assertEqual(path.read_bytes(),raw)
+                self.assertEqual(row['status'],'IMAGE_REVIEW_REQUIRED')
+                self.assertEqual(json.loads(row['approval']),{})
+                self.assertEqual(json.loads(row['notion']),{})
+                self.assertTrue((self.store.root/previous['image_path']).exists())
+                api=FakeNotion()
+                with self.assertRaises(ValueError):
+                    Notion(self.store,api,'db').sync(self.store.one('revisions',revision['id']))
+                self.assertEqual(api.calls,[])
+        self.assertTrue(any(h.get('image_hash')==previous['image_hash'] for h in json.loads(row['history'])))
+        for size in ((1536,1022),(1536,1026),(1024,1536),(1200,1200)):
+            with self.subTest(size=size), self.assertRaisesRegex(ValueError,'3:2'):
                 import_image(self.store,revision,'main',self.image(size=size))
 
     def test_modified_image_json_or_master_blocks_all_notion_calls(self):
