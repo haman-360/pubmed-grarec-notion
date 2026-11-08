@@ -205,6 +205,60 @@ class HybridTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'併用'):
             Direct(self.store,Mock(),allow_image_api=True).run(['41064908'],resume_analysis_only=True)
 
+    def test_scoped_image_resume_generates_once_retains_hold_and_requires_review(self):
+        import base64
+        from datetime import datetime,timedelta,timezone
+        revision,_=self.paper()
+        cfg=json.loads(revision['config']); cfg['image_generation_mode']='api'
+        self.store.update('revisions',revision['id'],config=encode(cfg))
+        current=datetime.now(timezone.utc)
+        budget={'start':(current-timedelta(days=1)).isoformat(),'end':(current+timedelta(days=20)).isoformat(),
+            'checked_at':current.isoformat(),'remaining':100,'other_usage':20,'production':False,
+            'no_auto_recharge':True,'purchased_checked':True,'suspended_reason':'Unrelated image'}
+        self.store.set_setting('budget',budget)
+        api=Mock()
+        api.call.return_value=Mock(status_code=200,json=Mock(return_value={
+            'data':[{'b64_json':base64.b64encode(png()).decode()}],
+            'usage':{'input_tokens':100,'output_tokens':100,'input_tokens_details':{'text_tokens':100,'image_tokens':0}}}))
+        runner=Direct(self.store,api,allow_image_api=True)
+        with self.assertRaisesRegex(ValueError,'停止'):
+            runner.run(['41064908'])
+        runner.run(['41064908'],resume_image_only=True)
+        runner.run(['41064908'],resume_image_only=True)
+        self.assertEqual([c.args[:2] for c in api.call.call_args_list],[('POST','/images/generations')])
+        api.upload.assert_not_called(); api.count_input.assert_not_called()
+        self.assertEqual(self.store.setting('budget'),budget)
+        revision=self.store.one('revisions',revision['id'])
+        self.assertEqual(revision['status'],'IMAGE_REVIEW_REQUIRED')
+        self.assertEqual(self.rows(revision)[0]['status'],'IMAGE_REVIEW_REQUIRED')
+        self.assertTrue(json.loads(self.store.rows('SELECT * FROM attempts')[0]['details'])['resume_image_only'])
+        with self.assertRaises(ValueError):
+            Notion(self.store,Mock(),'db').sync(revision)
+        with self.assertRaisesRegex(ValueError,'画像のみ'):
+            self.store.reserve(revision,'analysis',1,resume_image_only=True)
+        with self.assertRaisesRegex(ValueError,'停止中'):
+            self.store.reserve(revision,'image',1)
+        self.store.set_setting('budget',dict(budget,checked_at=(current-timedelta(days=2)).isoformat()))
+        with self.assertRaisesRegex(ValueError,'24時間'):
+            self.store.reserve(revision,'image',1,resume_image_only=True)
+
+    def test_scoped_image_resume_rejects_wrong_scope_before_network(self):
+        base=['direct','--paper','41064908','--yes','--resume-image-only']
+        for options in ([],['--allow-image-api','--notion'],['--allow-image-api','--resume-analysis-only'],
+                        ['--allow-image-api','--paper','42835691']):
+            args=cli.parser().parse_args(base+options)
+            with patch.object(cli,'API',side_effect=AssertionError('network')), self.assertRaisesRegex(ValueError,'画像限定'):
+                cli.dispatch(self.store,args)
+        revision,_=self.paper()
+        api=Mock()
+        with self.assertRaisesRegex(ValueError,'api版'):
+            Direct(self.store,api,allow_image_api=True).run(['41064908'],resume_image_only=True)
+        cfg=json.loads(revision['config']); cfg['image_generation_mode']='api'
+        self.store.update('revisions',revision['id'],config=encode(cfg),summary=None)
+        with self.assertRaisesRegex(ValueError,'api版'):
+            Direct(self.store,api,allow_image_api=True).run(['41064908'],resume_image_only=True)
+        api.call.assert_not_called()
+
     def test_old_api_config_does_not_bypass_default_gate(self):
         revision,_ = self.paper()
         cfg = json.loads(revision['config']); cfg['image_generation_mode'] = 'api'

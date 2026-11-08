@@ -6,10 +6,12 @@ from .store import atomic_write, digest, encode
 
 
 class Direct(Batches):
-    def run(self, identifiers, resume_analysis_only=False):
+    def run(self, identifiers, resume_analysis_only=False, resume_image_only=False):
+        if resume_image_only and (resume_analysis_only or len(identifiers) != 1 or not self.allow_image_api):
+            raise ValueError('画像限定再開は1論文・画像API明示許可が必要です。精読再開は併用できません')
         if resume_analysis_only and (len(identifiers) != 1 or self.allow_image_api):
             raise ValueError('限定再開は明示した1論文の精読のみです。画像APIは併用できません')
-        if self.store.setting('budget',{}).get('suspended_reason') and not resume_analysis_only:
+        if self.store.setting('budget',{}).get('suspended_reason') and not (resume_analysis_only or resume_image_only):
             raise ValueError('生成品質の確認待ちです。新規要求を停止しています。')
         papers = {self.store.resolve(value)['id']:self.store.resolve(value) for value in identifiers}
         if not 1 <= len(papers) <= 4:
@@ -25,6 +27,8 @@ class Direct(Batches):
             revision = revisions[0]
             if resume_analysis_only and json.loads(revision['config']).get('image_generation_mode') != 'manual_web':
                 raise ValueError('manual_webの新版をregenerateで作成してください')
+            if resume_image_only and (not revision['summary'] or json.loads(revision['config']).get('image_generation_mode') != 'api'):
+                raise ValueError('画像限定再開は精読JSONのあるapi版が必要です')
             attempts = self.store.rows('SELECT * FROM attempts WHERE revision_id=?',(revision['id'],))
             if json.loads(revision['config']).get('mode') != 'direct':
                 if attempts:
@@ -67,7 +71,7 @@ class Direct(Batches):
                         break
                 try:
                     amount = self.estimate(revision,stage)
-                    attempt = self.store.reserve(revision,stage,amount,resume_analysis_only=resume_analysis_only)
+                    attempt = self.store.reserve(revision,stage,amount,resume_analysis_only=resume_analysis_only,resume_image_only=resume_image_only)
                 except ValueError as error:
                     self.store.update('revisions',identifier,status='budget_wait',error=str(error))
                     print(str(error))
@@ -75,6 +79,8 @@ class Direct(Batches):
                 details = {'mode':'direct'}
                 if resume_analysis_only:
                     details.update(resume_analysis_only=True,retained_quality_hold=self.store.setting('budget',{}).get('suspended_reason',''))
+                if resume_image_only:
+                    details.update(resume_image_only=True,retained_quality_hold=self.store.setting('budget',{}).get('suspended_reason',''))
                 self.store.update('attempts',attempt['id'],details=encode(details))
                 try:
                     body = prepared_body if prepared_body is not None else self.request_body(revision,stage)

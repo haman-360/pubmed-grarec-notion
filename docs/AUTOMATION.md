@@ -21,6 +21,23 @@
 分類と分割案は精読と同じAPI要求で生成する。Originalは原則1枚、Systematic Reviewは単一疑問なら長文でも1枚、Narrative/Scoping ReviewとGuideline/Consensusは独立した臨床テーマを使う。ページ数で分割しない。Overviewは任意、テーマ数は固定しない。
 保守的なページ換算が入力上限を超える場合は、既存の全文トークン計数経路で実入力を確認する。実入力も上限超過なら停止し、PDFを自動切り捨てしない。
 
+### 品質停止中の1論文だけを画像APIで試す
+
+有料画像生成を明示して承認した場合に限り、既存の精読JSONから新版を作成して1枚生成できる。
+
+```sh
+.venv/bin/python scripts/process_papers.py --state-dir .paper_pipeline-pilot regenerate 39678704 \
+  --stage image --image-generation-mode api
+.venv/bin/python scripts/process_papers.py --state-dir .paper_pipeline-pilot direct \
+  --paper 39678704 --allow-image-api --resume-image-only --yes
+```
+
+`--resume-image-only` は1論文・既存JSON・api設定・画像API明示許可が必要。品質停止設定を保持し、通常の予算・残額確認期限を適用する。精読API、複数論文、`--notion`、`--resume-analysis-only` は併用不可。失敗・応答不明を含め、同じ版の画像要求を自動再送しない。`regenerate` を繰り返すと別の有料生成となるため、再試行目的では実行しない。
+
+画像は `artifacts/<版ID>/grarec.png` に保存し、Web画像と同じ承認待ちに進む。人が原文・JSON・PNGを確認して `review-image --approve` した後、`sync-notion` で登録する。実際に送信した要求と応答は `http_audit/` に記録する。
+
+2026-11-08：PMID 39678704の既存fulltext-v4 JSONから、通常画像APIを1回実行。HTTP 200・指定寸法PNGを得たが、返却画像は論文と無関係な寝室の写真でIMAGE_REJECTEDとした。20,237文字のプロンプトの送信前後の本文一致を監査記録で確認した一方、応答usageの入力は8 tokens。設定単価による画像費用計算は$0.04243（請求額の独立確認ではない）。短い原著でも内容不一致が再現したが、サーバー内部の原因は未確定。追加生成・Notion書き込みなし。Notion接続の読み取り確認ではAutomation ID項目がなく、スキーマは変更していない。元の生成物15ファイルのハッシュ・予算・品質停止設定の不変を確認した。詳細はGit管理外の `output/PMID_39678704/api-image-trial-v1/trial-report.json`。ローカルテスト97件成功。
+
 ### 保存済みJSONを再利用する（API不要）
 
 ```sh
