@@ -291,7 +291,7 @@ def dispatch(store,args):
         from .direct import Direct
         if not args.yes and input('通常API料金で最大4論文を生成しますか？ [y/N]: ').strip().lower() not in ('y','yes'):
             return
-        api = API(os.getenv('OPENAI_API_KEY',''))
+        api = API(os.getenv('OPENAI_API_KEY',''),audit_dir=store.root/'http_audit')
         api.check_models()
         Direct(store,api).run(args.paper)
         if args.notion:
@@ -394,7 +394,7 @@ def dispatch(store,args):
             return
         if cmd=='auto' and (not os.getenv('NOTION_TOKEN') or not os.getenv('NOTION_DATABASE_ID')):
             raise ValueError('自動処理にはNOTION_TOKENとNOTION_DATABASE_IDの初期設定が必要です')
-        api = API(os.getenv('OPENAI_API_KEY',''))
+        api = API(os.getenv('OPENAI_API_KEY',''),audit_dir=store.root/'http_audit')
         runner = Batches(store,api)
         if (cmd in ('submit','auto') or cmd=='resume' and args.advance) and not args.yes:
             if input('予算内で解析・画像Batchを投入しますか？ [y/N]: ').strip().lower() not in ('y','yes'):

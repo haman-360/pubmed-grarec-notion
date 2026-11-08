@@ -80,8 +80,12 @@ class Direct(Batches):
                 self.store.update('revisions',identifier,status=stage+'_submitted',error='')
                 print(f'通常API送信 {paper_label(self.store,revision)} {stage} 予約 ${amount:.4f}',flush=True)
                 try:
-                    response = self.api.call('POST',endpoint,json=body,timeout=600)
+                    response = self.api.call('POST',endpoint,json=body,timeout=600,
+                        audit_context={'attempt_id':attempt['id'],'revision_id':identifier})
                     record = {'response':{'status_code':response.status_code,'body':response.json()}}
+                    audit_id = getattr(response,'paper_pipeline_audit_id',None)
+                    if isinstance(audit_id,str):
+                        record['transport_audit_id'] = audit_id
                     path = self.store.root/'direct'/(attempt['id']+'.json')
                     atomic_write(path,encode(record))
                 except Exception:

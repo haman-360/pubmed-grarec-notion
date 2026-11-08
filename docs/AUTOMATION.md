@@ -248,3 +248,15 @@ Mac上の処理は `launchd` のログインユーザー用ジョブで起動で
 PNGの形式・寸法が正しくても、内容がグラレコとして採用できるとは限らない。画像を目視確認し、無関係な画像等が出た場合は自動で再生成せず、応答と入力・usageを保管して調査する。品質保留の理由は試験予算の `suspended_reason` に保存でき、この設定中は全工程の新規費用予約と通常API試験を停止する。残額の記録自体は変更しない。処理途中で止めた版は `quality_wait` として保持する。
 
 直接API要求も今後は `direct/<要求ID>_request.json` に送信前保存する（秘密鍵は含めない、Git管理外）。品質保留の解除・再生成は、原因と試験画像を確認した後に明示して行う。今回の実サービス試験の詳細・費用・採否は管理領域内の `RESULTS.md` と `pilot-report.json` に保存し、ソースのGitコミットには含めない。
+
+### 画像APIの送受信記録
+
+通常APIによる画像生成では、Requestsの `prepare_request()` で確定したJSONバイト列を先に保存し、同じPreparedRequestを `Session.send()` で一度だけ送信する。`X-Client-Request-Id` は要求ごとのUUIDとし、リダイレクトは無効。応答後は `response.request.body` と送信前本文をバイト単位で照合し、最終URLの変更・リダイレクト・本文不一致で停止する。
+
+保存先は管理領域の `http_audit/<client-request-id>/`。要求本文・文字数・SHA-256・メソッド・送信先・Content-Type/Length、attempt/revision ID、応答本文・usage・generation ID・画像SHA-256、受信時刻、サーバーの `x-request-id` / `openai-processing-ms` / `openai-version` 等を保存する。存在しないヘッダーは推測せずnullとして記録する。ディレクトリは0700、ファイルは0600。認証・Cookieヘッダーは保存せず、応答ヘッダーは許可リスト方式。応答URLのuserinfo/queryも記録しない。
+
+タイムアウトではClient Request IDと例外クラスを保存し、自動再送しない。監査保存先はGit管理外。これらはクライアント側の送信証拠であり、サーバー内部の処理まで証明するものではない。
+
+2026-11-08：元の失敗attemptに対応する `_request.json` が残っていないことを再確認。送信前保存処理の追加前の事象だった。現在のコードに記録処理があることを、当時の送信証拠があることと混同しない。追加生成なしで67件のテスト成功（正しい本文・ID照合、秘密情報の非記録、ファイル権限、302停止、本文改変停止、タイムアウト非再送を含む）。
+
+参照：[OpenAIの要求IDによるデバッグ](https://developers.openai.com/api/reference/overview#debugging-requests)。

@@ -55,17 +55,25 @@ main_results各項目についてresult_evidenceに0始まりのresult_index、P
 
 class API:
     """No automatic retries of billable mutations. Errors never echo request data/keys."""
-    def __init__(self, key, session=None):
+    def __init__(self, key, session=None, audit_dir=None):
         if not key:
             raise ValueError('OPENAI_API_KEYが未設定です')
         self.session = session or requests.Session()
+        self.audit_dir = audit_dir
         self.session.headers.update({'Authorization':'Bearer '+key})
 
     def call(self, method, path, **kwargs):
         timeout = kwargs.pop('timeout',120)
+        context = kwargs.pop('audit_context',None)
         for retry in range(3 if method == 'GET' else 1):
             try:
-                r = self.session.request(method, 'https://api.openai.com/v1'+path, timeout=timeout, **kwargs)
+                if method=='POST' and path=='/images/generations' and self.audit_dir is not None:
+                    if set(kwargs) != {'json'}:
+                        raise ValueError('画像監査はJSON要求のみを受け付けます')
+                    from .transport_audit import send_image
+                    r = send_image(self.session,'https://api.openai.com/v1'+path,kwargs['json'],self.audit_dir,timeout,context)
+                else:
+                    r = self.session.request(method, 'https://api.openai.com/v1'+path, timeout=timeout, **kwargs)
                 if r.status_code >= 400:
                     # Do not include provider error bodies (may contain source text).
                     raise RuntimeError(f'OpenAI HTTP {r.status_code}; request_id={r.headers.get("x-request-id", "unknown")}')
