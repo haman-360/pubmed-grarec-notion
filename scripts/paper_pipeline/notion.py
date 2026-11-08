@@ -271,6 +271,16 @@ class Notion:
             self.save(revision,state)
         # Never change an existing page's cover or clinical properties.
         fresh_page = self.api.call('GET','/pages/'+page['id'])
+        # The existing gallery uses this files property rather than page cover.
+        # Fill only an empty slot; preserve images chosen by the user.
+        if self.properties.get('Graphic Image',{}).get('type') == 'files' and not fresh_page['properties'].get('Graphic Image',{}).get('files'):
+            image_upload = state.get('image_upload')
+            if image_upload:
+                self.api.call('PATCH','/pages/'+page['id'],json={'properties':{'Graphic Image':{'files':[
+                    {'name':image_upload['name'],'type':'file_upload','file_upload':{'id':image_upload['id']}}]}}})
+                fresh_page = self.api.call('GET','/pages/'+page['id'])
+                if not fresh_page['properties'].get('Graphic Image',{}).get('files'):
+                    raise ValueError('ギャラリー画像の再取得確認に失敗しました')
         checked = fresh_page['properties'].get('Human Checked',{}).get('checkbox',False)
         if state.get('created_new') and not checked and not fresh_page.get('cover'):
             image_upload = state.get('image_upload')

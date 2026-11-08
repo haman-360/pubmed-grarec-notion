@@ -378,6 +378,29 @@ class HybridTests(unittest.TestCase):
             with self.subTest(size=size), self.assertRaisesRegex(ValueError,'3:2'):
                 import_image(self.store,revision,'main',self.image(size=size))
 
+    def test_gallery_image_fills_empty_property_and_preserves_existing_image(self):
+        from paper_pipeline.notion import rich
+        for existing in ([],[{'name':'User image','type':'external','external':{'url':'https://example.test/user.png'}}]):
+            with self.subTest(existing=bool(existing)):
+                revision,_=self.paper(pmid='41064908' if not existing else '39678704',pages=1 if not existing else 2)
+                prepare_web(self.store,revision); self.approve(revision,color='white' if not existing else 'blue')
+                paper=self.store.one('papers',revision['paper_id'])
+                api=FakeNotion(); api.properties['Graphic Image']={'type':'files'}
+                page=api.call('POST','/pages',json={'parent':{'data_source_id':'ds'},'properties':{
+                    'PMID':{'rich_text':rich(paper['pmid'])},'Automation ID':{'rich_text':rich(paper['id'])},
+                    'Human Checked':{'checkbox':False},'Graphic Image':{'files':copy.deepcopy(existing)}}})
+                client=Notion(self.store,api,'db'); client.sync(revision)
+                saved=api.pages[page['id']]['properties']
+                self.assertFalse(saved['Human Checked']['checkbox'])
+                if existing:
+                    self.assertEqual(saved['Graphic Image']['files'],existing)
+                else:
+                    state=json.loads(self.rows(revision)[0]['notion'])
+                    self.assertEqual(saved['Graphic Image']['files'][0]['file_upload']['id'],state['image_upload']['id'])
+                    self.assertEqual(len(api.uploads),3)
+                calls=len(api.calls); client.sync(self.store.one('revisions',revision['id']))
+                self.assertEqual(len(api.calls),calls)
+
     def test_modified_image_json_or_master_blocks_all_notion_calls(self):
         revision,_=self.paper()
         prepare_web(self.store,revision); self.approve(revision)
