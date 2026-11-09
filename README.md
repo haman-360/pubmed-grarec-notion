@@ -1,391 +1,153 @@
 # PubMed GraRec Notion
 
-PubMedで見つけた論文を、Notionの `PubMed Watchlist - 論文DB` にグラレコ画像つきで管理するための作業用repositoryです。
+PMIDから論文本文を取得し、精読JSONを作り、**ChatGPT Webで自分が生成したグラレコを確認してNotionに保存する**ためのリポジトリです。
 
-## ハイブリッド運用（現在の入口）
-
-`SetupPaperPipeline.command` でセットアップ後、`PubMedGraRecAuto.command` を起動します。
+## 現在の流れ
 
 ```text
-PMID／PDF → APIで全文精読・論文分類・章立て解析
-→ Master JSON／画像単位のGraphic JSON／Web用依頼文
-→ ChatGPT Webで手動画像生成
-→ PNG取り込み → 人による承認 → 明示操作でNotionへ直接添付
+pubmed_abstractで「入手希望」を保存 → 希望PMIDをTXT出力
+  ↓ TXTをこのアプリに指定
+手元PDFの照合 → 無料本文の探索・PDF取得 → 成否・候補・エラーを台帳に記録
+  ↓ 本文を入手・識別できた論文
+APIで精読・論文分類 → Master JSON → 画像ごとのGraphic JSON・Web依頼文
+  ↓ Web依頼文を1テーマずつChatGPT Webへ渡す
+自分で画像生成 → PNG取り込み → 原文・JSON・画像を確認して承認 → 明示操作でNotionへ
 ```
 
-既定は `image_generation_mode = manual_web`。画像APIは既定では呼びません。
-`auto` はWeb用ファイルの準備まで進み、Notion送信はメニュー15または `sync-notion` で明示します。
-原著は原則1枚、Review／Consensusは独立した臨床疑問・章立てに応じて分割し、Overviewは任意です。
+既定は `manual_web`。画像APIは使いません。精読には別途API利用料がかかります。
+無料本文の探索はPMC → Unpaywall → Europe PMC → 出版社の順です。一般の検索エンジンを横断する仕組みではなく、すべての本文を取得できるとは限りません。候補のみ・取得エラー・無料版未確認を区別して履歴を残します。
+本文がない論文をAbstractだけで全文精読したことにはしません。取得結果は `pubmed_abstract` の「入手済み」へ自動で書き戻しません。
 
-**[現行の操作・分割設定・承認・復元手順](docs/AUTOMATION.md)** を参照してください。
-既存のPDF、精読JSON、画像、API履歴を保持し、SQLite台帳の追加テーブルで画像単位の進捗を管理します。
-新規解析には従来の予算制限を適用します。手動生成の準備・PNG取り込み・承認はローカル処理です。
+## Reviewと原著でプロンプトは違う？
 
-2026-11-08：ローカルテスト99件成功。PMID 39678704（MT-12）の実API精読・JSON出力は成功。既存JSONから画像APIを1回試しましたが、論文と無関係な写真が返ったため却下しました。Web画像（3:2）は原本のまま取り込み、ユーザー承認後に既存Notion論文DBへ登録済みです。Graphic Image欄にも設定し、既存ギャラリーの表示対象として画像ありで取得できることを確認しました。
-PMID 41064908と42835691の保存済みJSONによるローカル変換を確認しました。Consensusの全文構造の網羅性は未確認です。
+**精読の指示は論文種別に応じて内容を変え、画像のデザイン指示は共通にしています。自分でReview用・原著用のプロンプトファイルを選ぶ必要はありません。**
 
-以下は旧手動運用・旧自動化の参考説明です。現在のCLIの挙動と安全な承認経路は上記の現行手順を優先してください。
-旧スクリプトにはGitHub Pages公開・Notion直接更新機能があり、新しい画像承認台帳を経由しません。
+| JSONの `paper_type` | 種類 | 精読・分割の扱い |
+|---|---|---|
+| `original_article` | 原著 | PICO・解析集団・主要結果を保持。原則1枚 |
+| `systematic_review` | 系統的レビュー／メタ解析 | 該当するPICO・統合効果量・異質性・確実性。単一疑問なら長文でも1枚 |
+| `narrative_review` | ナラティブ／スコーピングレビュー | 章立て・臨床疑問を重視。独立テーマがあれば複数枚。PICOは強制しない |
+| `guideline_consensus` | ガイドライン／コンセンサス | 推奨の対象・条件・例外・根拠の強さ・合意率を区別。テーマ別に分割可能 |
+| `other_unknown` | その他・判別不確か | 分類・章立ての確認まで画像準備を止める |
 
-## まず作るもの
+新規精読ではAIが本文から分類し、Master JSONの `classification_reason` に理由を保存します。自動判定なので人が原文と照合します。
+**Master JSONと各Graphic JSONの両方に `paper_type` が入ります。** Review専用フォルダやファイル名で区別する方式ではありません。
 
-Notionに以下のデータベースを作成します。
+| ファイル | 用途 |
+|---|---|
+| `master.json` | 論文全体・分類理由・章立て・分割方針を確認する |
+| `graphics/00_main.json` など | 画像1枚分。`pmid`・`paper_type`・`topic_id` で対応を確認する |
+| **`ready_for_web/00_main_prompt.md`** など | **Webへ渡すもの**。対象Graphic JSONとデザイン指示がすでに含まれる |
+| `plan.json` | 分割・統合を変更するときの設定。通常は編集不要 |
 
-- データベース名: `PubMed Watchlist - 論文DB`
-- メインビュー: Table
-- 追加ビュー: Gallery
-- Gallery名: `画像ギャラリー`
-- Galleryのカードプレビュー: `Graphic Image` またはページカバー
+Web向けのデザインは [grarec-v2.md](prompts/grarec-v2.md) を共用し、種類別の独立した画像テンプレートには分かれていません。依頼文はPICOがnullなら作らない、合意率を治療効果と混同しない等を指示します。構図まで種類別に固定する実装ではありません。
+旧JSONは `study_type`／`study_design` から暫定分類します。旧Review／Consensus・分類不明は `structure_review_required` で止まり、原文を確認して分割設定を指定する必要があります。手順は [分割・統合の変更](docs/AUTOMATION.md#分割統合の変更) を参照してください。
 
-詳しいプロパティ定義は [notion/database_schema.md](notion/database_schema.md) を参照してください。
+## 保存先の早見表
 
-## 最初の運用
+以下のパスは、それぞれのリポジトリ直下からの相対パスです。
+このMacではPMID出力側が `/Users/thama/Documents/GitHub/pubmed_abstract`、グラレコ側が `/Users/thama/Documents/GitHub/pubmed-grarec-notion` です。
 
-1. PubMedで論文を選ぶ。
-2. PMIDを [input/pmids.txt](input/pmids.txt) に記録する。
-3. AI要約とグラレコ用プロンプトを作る。
-4. グラレコ画像を `images/YYYY/MM/PMID_xxxxxxxx.png` に保存する。
-5. 画像を公開URL化する。
-6. Notion DBに論文ページを作り、画像URLと要約を入れる。
-7. 医師が原文確認後、`Human Checked` をオンにする。
-8. 処理が終わった精読JSONは `input/chatgpt_summaries/done/` に移す。
+| 対象 | 保存先・操作 |
+|---|---|
+| 希望PMIDのTXT（Mac出力） | **pubmed_abstract側の** `ledger_private/exports/pmids-日時-識別子.txt`。`希望PMIDを出力.command` で保存するとフォルダが開く |
+| 希望PMIDのTXT（旧GAS画面） | `pmids.txt` をブラウザーでダウンロード。保存場所はブラウザー設定による（通常はDownloads） |
+| このアプリへ渡すPMID | 上記TXTをメニュー1で指定。コピー不要。空欄時だけ `input/pmids.txt` を使う |
+| 自分で入手したPDF | `input/pdfs/` に置く。別フォルダは `--pdf-dir` で指定。元ファイルは移動・改名・削除しない |
+| 自動取得したPDF | `<台帳フォルダ>/downloads/<URLのハッシュ>.pdf` |
+| PDFの管理コピー | `<台帳フォルダ>/pdfs/<内容のSHA256>.pdf`。元パスと論文との対応は台帳に記録 |
+| 精読結果 | `<台帳フォルダ>/artifacts/<版ID>/review.json` |
+| Master・Graphic・Web依頼文 | `<台帳フォルダ>/artifacts/<版ID>/web/<内容ハッシュ>/` 以下。下図を参照 |
+| 見やすいWeb用コピー | メニュー12で、例えば **`output/PMID_12345678/web-v1/`** を指定。自動の既定先ではなく、自分で指定するコピー先 |
+| 自分が生成したグラレコ | まずDownloads等へPNG保存 → メニュー13で指定するとWeb用管理領域の `images/` へコピー |
+| 取得成否・候補・エラー・承認履歴 | `<台帳フォルダ>/ledger.sqlite3`。メニュー2「状況」、3「要確認」、9「CSV」で確認 |
+| 以前の手動運用のデータ | `input/chatgpt_summaries/pending/`・`done/`、`output/summaries/`、`images/YYYY/MM/`。現行台帳とは別の旧保存先 |
 
-運用の詳細は [docs/workflow.md](docs/workflow.md) を参照してください。
-
-## 自動化のMVP
-
-このrepositoryには、PMIDを入力すると以下を半自動で行うPythonスクリプトを入れています。
-
-- PubMedからタイトル、abstract、journal、year、DOIを取得
-- 日本語要約とグラレコ用プロンプトを生成
-- 手動指定した画像URLをNotionへ登録
-- Notionページのカバー画像または画像プロパティにグラレコを設定
-
-APIキーは `.env` に保存し、GitHubには送信しません。必要な環境変数は [.env.example](.env.example) を参照してください。
-
-## 半額BatchでPMID/PDFから自動処理
-
-急がない論文精読はOpenAI Batch APIへ送り、通常APIより50%安い料金で処理します。処理は原則24時間以内です。
-「半額になる時間帯」を待つ方式ではなく、24時間枠の非同期Batchとして明示的に送ることで割引が適用されます。ChatGPTの契約とは別にOpenAI APIキーとAPI利用料金が必要です。
-
-標準フロー:
+JSONは**論文種別ごとではなく、処理版と画像テーマごと**に保存します。
+`output/` の書き出しはスナップショットです。後からPNGを取り込んでも以前のコピーは更新されず、進捗の正本は台帳です。
 
 ```text
-PMIDまたはPDF
-→ PubMed/PMC取得とNotion重複確認（OpenAI課金なし）
-→ gpt-5.6-terraのBatchへ投入
-→ 翌日に結果回収
-→ JSON駆動のグラレコPNGを生成
-→ PMIDでNotionをupsertし、PNGをNotionへ直接アップロード
+<台帳フォルダ>/
+  ledger.sqlite3                 取得・処理・画像・承認・費用等の正本
+  downloads/                     Webから取得したPDF
+  pdfs/                          PDFの管理コピー
+  artifacts/<版ID>/
+    review.json                  精読結果
+    web/<内容ハッシュ>/
+      master.json                論文全体（paper_type・分類理由もここ）
+      plan.json                  分割設定
+      graphics/00_main.json      画像1枚分（paper_type・topic_id付き）
+      ready_for_web/00_main_prompt.md  Webへ渡す依頼文（JSON込み）
+      images/PMID_<PMID>_<topic_id>_<hash>.png  取り込んだPNG
+      manifest.json              画像の対応・進捗
 ```
 
-1. [.env.example](.env.example)をコピーして`.env`を作り、`OPENAI_API_KEY`、`NOTION_TOKEN`、`NOTION_DATABASE_ID`を設定します。
-2. PMIDは [input/pmids.txt](input/pmids.txt) に1行1件で書きます。
-3. 手元のPDFを使う場合は `input/pdfs/PMID_42115808.pdf` のような名前で置きます。
+### このMacでは試験台帳と既定台帳が別です
 
-まず、OpenAI APIを呼ばずに取得可否、Notion重複、推定Batch料金を確認します。
+2026-11-10の読み取り確認では、前回の試験記録は **`.paper_pipeline-pilot/`** にあり、既定の **`.paper_pipeline/` は未作成**でした。PMID 39678704の最新処理版には、承認・Notion同期済みのWeb画像が記録されています。通常のAPI生成は品質確認のため停止中です。
 
-```bash
-python3 scripts/process_papers.py prepare
+`PubMedGraRecAuto.command` は、設定がなければ `.paper_pipeline/` を使います。**前回の続きには、リポジトリ直下のTerminalで次を実行してください。**
+
+```sh
+.venv/bin/python scripts/process_papers.py --state-dir .paper_pipeline-pilot menu
 ```
 
-問題なければ半額Batchへ投入します。既定では最大5論文、1論文の推定上限は`$0.50`です。
-
-```bash
-python3 scripts/process_papers.py submit
-```
-
-既定の料金設定（入力 `$1.00`/100万token、出力 `$6.00`/100万token）では、入力3万token・出力上限8千tokenの例は約`$0.078`です。料金改定時は`.env`の単価を変更してください。実料金は完了後のusageから記録されます。
-
-`prepare`の論文探索はPubMed/PMCだけを使うためOpenAI APIキーを消費しません。取得元がない論文は`NO_SOURCE`、Notionに画像付きで存在する論文は`SKIP_EXISTS`となり、Batchへ入りません。`submit`にも最大件数、論文ごとの推定額上限、最終確認があります。
-
-後から状況を確認します。
-
-```bash
-python3 scripts/process_papers.py status
-```
-
-完了結果を回収し、グラレコを作成します。ここまではNotionを変更しません。
-
-```bash
-python3 scripts/process_papers.py resume
-```
-
-Notionまで登録・更新する場合:
-
-```bash
-python3 scripts/process_papers.py resume --notion
-```
-
-### 一度の実行でNotionまで自動反映する
-
-事前確認、Batch投入、完了待機、要約JSONの回収、グラレコPNG生成、GitHub Pages公開、Notion登録と画像アップロードまでを一度に実行できます。公開後のURLはNotionの `Graphic URL` に保存されます。
-
-```bash
-python3 scripts/process_papers.py auto
-```
-
-最も簡単な方法は、repository直下の `PubMedGraRecAuto.command` をダブルクリックすることです。既存の `PubMedGraRec.command` を開き、`14. 全自動：事前確認からNotion登録まで` を選ぶこともできます。料金見積りを確認してBatch投入を承認した後は、30分ごとに完了を確認します。
-
-待機中はTerminalを閉じないでください。Macを閉じてスリープしても処理状態は保たれ、Macを再び起動すると確認を再開します。Batchが完了していれば、グラレコ作成とNotion登録まで進みます。生成物はこのMacにも残り、Notionへアップロードされた結果はiPadやほかのMacから確認できます。
-
-Macを再起動した、またはTerminalを閉じた場合は、次のコマンドで完了済みBatchを回収してNotionへ登録できます。
-
-```bash
-python3 scripts/process_papers.py resume --notion
-```
-
-同じPMIDがNotionにあり、すでに画像もある場合は既定でスキップします。画像がない既存ページは新規作成せず更新します。再精読したい場合は次のように準備します。
-
-```bash
-python3 scripts/process_papers.py prepare --update-existing
-```
-
-Batchジョブの状態、実トークン数、実料金は `output/jobs/PMID_<id>.json` に保存されます。Batchの結果順序が変わっても、PMID、PDFハッシュ、プロンプト版を含む`custom_id`で対応付けます。
-
-グラレコは画像生成AIではなく、精読JSONをSwift/AppKitテンプレートへ流し込んで作ります。これにより日本語と数値を確定的に描画し、画像生成API料金を発生させません。
-
-自動精読JSONは、Web版ChatGPTでより高度なグラレコを作る際の入力にも使えるよう、`pico`をP/I(C)/O別のobject、`main_results`、`limitations`、`tomorrow_action`を配列で保存します。`summary_jp`には研究目的、対象・方法、主要結果、安全性・限界、診療への意味を含む400〜800字の日本語解説を保存します。Notionページでは、この日本語解説を折りたたみ外のコールアウトにも表示します。
-
-### 自動版を残してWeb版グラレコを追加する
-
-より高度なグラレコが必要な論文では、自動版を削除せずWeb版ChatGPTの画像を追加できます。`PubMedGraRec.command`を開き、対象PMIDを選んで`15. Web版ChatGPT画像を追加（自動版を残す）`を実行します。Downloads内の最新画像、または入力した画像パスを次の名前で保存・公開し、Notionまで更新します。
-
-```text
-PMID_42526949_grarec_web.png  Web版（先頭・ページカバー）
-PMID_42526949_grarec.png      自動版（2枚目・比較用）
-```
-
-Notionの`Graphic Image`には2枚が入り、クリックして切り替えて確認できます。ギャラリーとページカバーにはWeb版が表示されます。その後に自動処理を再実行しても、repositoryにWeb版があればWeb版優先を維持します。画像生成APIは使わないため、この追加処理自体にOpenAI API料金はかかりません（Web版ChatGPTの利用条件は契約プランに従います）。
-
-コマンドで行う場合:
-
-```bash
-python3 scripts/rename_latest_grarec.py --pmid 42526949 --variant web --source "/path/to/ChatGPT Image.png"
-python3 scripts/update_graphic_url.py --pmid 42526949 --prefer-web
-```
-
-## 実行方法
-
-PMID 41733080 は [input/pmids.txt](input/pmids.txt) に入れてあります。
-
-コマンドを覚えずに進めたい場合は、repository直下の `PubMedGraRec.command` をダブルクリックします。
-基本は、PMIDを選んだあとに上から順番に進めます。
-
-```text
-1. Notion登録前プレビュー
-2. 精読JSONをNotionへ登録/更新
-3. ChatGPT画像をPMID名に整理
-4. 画像をGitHub Pagesへ公開
-5. グラレコ画像をNotionに表示
-6. この精読JSONを処理済み(done)へ移動
-8. pending全件を一括処理
-```
-
-ただし、3以降はChatGPTでグラレコ画像を作ってから実行します。
-まず精読JSONだけ登録したい場合は、1と2までで完了です。
-複数件をまとめて処理する場合は、JSONを `input/chatgpt_summaries/pending/` に入れ、グラレコ画像を `images/YYYY/MM/` に保存したあと、8を選びます。
-
-Notionへ登録せず、要約JSONとグラレコプロンプトだけ作る場合:
-
-```bash
-python3 scripts/run_mvp.py
-```
-
-特定PMIDだけを指定する場合:
-
-```bash
-python3 scripts/run_mvp.py --pmid 41733080
-```
-
-画像URLを指定してNotionへ登録する場合:
-
-```bash
-python3 scripts/run_mvp.py --pmid 41733080 --graphic-url "https://example.com/PMID_41733080.png" --notion
-```
-
-`.env` に `NOTION_TOKEN` と `NOTION_DATABASE_ID` がない場合、`--notion` は使わず、まずローカル出力だけ確認してください。
-
-出力先:
-
-- `output/summaries/PMID_41733080.json`
-- `output/prompts/PMID_41733080_graphic_prompt.txt`
-
-## GitHub Pagesで画像をNotionへ反映する
-
-GitHub Pagesを `main` ブランチの `/root` から公開すると、repository内の画像は以下のURLで参照できます。
-
-```text
-https://haman-360.github.io/pubmed-grarec-notion/images/2026/05/PMID_41733080_grarec.png
-```
-
-既存のNotionページに画像URLとページカバーを反映する場合:
-
-```bash
-python3 scripts/update_graphic_url.py --pmid 41733080
-```
-
-このスクリプトは [output/notion_pages.json](output/notion_pages.json) からNotionページIDを探し、`Graphic URL`、`Graphic Image`、ページカバーを更新します。Notion DBに `Graphic Image` プロパティがない場合は、存在するプロパティだけ更新します。
-
-## ChatGPT精読JSONをNotionへ登録する
-
-ChatGPTの「小児アップデート」プロジェクトで作成した精読JSONは、まず `input/chatgpt_summaries/pending/` に保存します。
-ファイル名の例:
-
-```text
-input/chatgpt_summaries/pending/PMID_41733080_chatgpt.json
-```
-
-ファイル名は `PMID_41733080_chatgpt.json` が分かりやすいですが、`41733080.json` のような名前でもJSON内に `pmid` または `PMID` があれば読み取れます。
-すでに `input/chatgpt_summaries/` 直下に置いたJSONも読み取れます。
-
-まずNotionへ送る内容をローカルで確認します。
-これはNotion登録前プレビューで、Notionはまだ変更されません。
-
-```bash
-python3 scripts/import_chatgpt_summary.py --pmid 41733080 --dry-run
-```
-
-問題なければNotion DBへ登録します。DB内に同じ `PMID` のページがある場合は新規作成せず更新します。
-
-```bash
-python3 scripts/import_chatgpt_summary.py --pmid 41733080 --notion
-python3 scripts/import_chatgpt_summary.py --file input/chatgpt_summaries/PMID_41733080_chatgpt.json --notion
-```
-
-JSON内の `PMID`, `title`, `journal`, `year`, `doi`, `topic`, `one_line_summary`, `practice_change`, `human_checked` はNotion DBのプロパティへ登録します。
-`one_line_summary` は既存DBの `Take Home Message` に入ります。
-`topic` は配列でも文字列でも使えます。文字列の場合は `,`、`、`、`;`、`；` で区切るとNotionのmulti-selectに分割して登録します。
-`summary_jp`はNotionページ上で常に見える日本語要約として表示します。`PICO`, `figure_table_summary`, `main_results`, `safety`, `limitations`, `applicability_to_japanese_pediatric_clinic`, `tomorrow_action` は、折りたたみ可能な詳細レビュー内に見出し付きで追加します。
-`graphic_url` がある場合は `Graphic URL`, `Graphic Image`, ページカバーへ反映します。
-
-処理が終わったJSONは `PubMedGraRec.command` の `6. この精読JSONを処理済み(done)へ移動` で `input/chatgpt_summaries/done/` に移します。
-`done/` に移すと、次回以降の候補一覧には出にくくなりますが、元データとして残ります。
-
-## ChatGPTとCodexの役割分担
-
-この運用では、ChatGPTとCodexを以下のように使い分けます。
-
-- ChatGPT: 論文精読JSONを作成する。
-- ChatGPT: 精読JSONや論文内容をもとに、グラレコ画像を作成する。
-- Codex: JSONファイルをrepositoryへ保存し、dry-runでNotion送信内容を確認する。
-- Codex: Notion DBへ精読結果を登録し、既存PMIDがあれば更新する。
-- Codex: グラレコ画像URLを `Graphic URL`, `Graphic Image`, ページカバーへ反映する。
-
-グラレコをChatGPTへ依頼するときの例:
-
-```text
-この論文精読JSONをもとに、小児科医がNotionで一覧したときに内容を一目で把握できるグラレコ画像を作成してください。
-
-条件:
-- 横長 16:9
-- 日本語
-- 論文タイトル、PMID、Journal、Yearを入れる
-- PICO、主な結果、診療への示唆、注意点を視覚的に整理する
-- 数値やカットオフはJSONの内容に忠実にする
-- 誇張した結論にしない
-- 小児クリニックでの実用性が伝わる構成にする
-```
-
-ChatGPTで画像を作成したら、PNGとしてrepository内の `images/YYYY/MM/` に保存し、CodexでNotionへ反映します。
-ChatGPTが作る画像ファイル名は `ChatGPT Image ...png` のような名前でかまいません。
-Codex側でPMIDベースの名前へ整えます。
-
-## pending全件を一括処理する
-
-複数論文をまとめて登録する場合は、以下の流れにすると手作業を減らせます。
-
-```text
-1. Web版ChatGPTでPDFから精読JSONを作る
-2. JSONを input/chatgpt_summaries/pending/ に保存する
-3. Web版ChatGPTでJSONからグラレコ画像を作る
-4. 画像を images/YYYY/MM/ に保存する
-5. PubMedGraRec.command の 8. pending全件を一括処理 を選ぶ
-```
-
-一括処理では、まずdry-runで対象PMID、JSON、画像候補、Notion登録予定を表示します。
-確認後に、画像のPMID名整理、GitHub Pages公開、Notion登録/更新、画像URL反映、JSONの `done/` 移動をまとめて行います。
-
-手動で確認する場合:
-
-```bash
-python3 scripts/batch_process_grarec.py --dry-run
-```
-
-手動で実行する場合:
-
-```bash
-python3 scripts/batch_process_grarec.py --yes
-```
-
-## ChatGPT精読ページに後からグラレコを追加する
-
-ChatGPT精読JSONを先にNotionへ登録し、あとからグラレコ画像を追加する場合の流れです。
-`PubMedGraRec.command` を使う場合は、以下の順番で進めます。
-
-```text
-JSONを input/chatgpt_summaries/pending/ に入れる
--> 1. Notion登録前プレビュー
--> 2. 精読JSONをNotionへ登録/更新
--> ChatGPTでグラレコ画像を作る
--> 画像をDownloadsまたはimages/に保存
--> 3. ChatGPT画像をPMID名に整理
--> 4. 画像をGitHub Pagesへ公開
--> 5. グラレコ画像をNotionに表示
--> 6. この精読JSONを処理済み(done)へ移動
-```
-
-1. グラレコ画像をrepository内へ保存する。
-
-```text
-images/2026/05/PMID_42115808_grarec.png
-```
-
-ChatGPTが作成した画像を `Downloads` や `images/` に保存したあと、以下で最新画像をPMID名へリネームできます。
-
-```bash
-python3 scripts/rename_latest_grarec.py --pmid 42115808
-```
-
-特定の画像ファイルを指定する場合:
-
-```bash
-python3 scripts/rename_latest_grarec.py \
-  --pmid 42115808 \
-  --source "images/2026/05/ChatGPT Image May 20, 2026, 08_08_04 PM.png"
-```
-
-2. GitHub Pagesなどで画像を公開する。
-
-`PubMedGraRec.command` の `4. 画像をGitHub Pagesへ公開` を選ぶと、PMID名に整理した画像だけを `git add`、`commit`、`push` します。
-GitHub Pagesへの反映には少し時間がかかることがあります。
-
-公開URLの例:
-
-```text
-https://haman-360.github.io/pubmed-grarec-notion/images/2026/05/PMID_42115808_grarec.png
-```
-
-3. 既存のNotionページへ画像URLを反映する。
-
-`PubMedGraRec.command` の `5. グラレコ画像をNotionに表示` を選ぶと、PMIDからNotionページを探して画像URLを反映します。
-手動で実行する場合は以下のコマンドでも同じことができます。
-
-PMID 42115808 の例:
-
-```bash
-python3 scripts/update_graphic_url.py \
-  --pmid 42115808 \
-  --image-path images/2026/05/PMID_42115808_grarec.png
-```
-
-このコマンドは既存ページの `Graphic URL`, `Graphic Image`, ページカバーを更新します。
-PMIDからNotionページを探すため、通常は `--page-id` は不要です。
-画像ファイルをGitHub Pagesの標準URL以外で公開している場合は、`--base-url` を指定します。
-
-```bash
-python3 scripts/update_graphic_url.py \
-  --pmid 42115808 \
-  --image-path images/2026/05/PMID_42115808_grarec.png \
-  --base-url https://example.com/pubmed-grarec-notion
-```
+すべての操作で同じ台帳を使います。CLIの `--state-dir` はサブコマンドより前に置きます。別台帳を開いても既存データは消えませんが、前回の記録が表示されません。
+台帳指定の優先順は `--state-dir` → `PAPER_PIPELINE_HOME`（環境変数／`.env`）→ 既定の `.paper_pipeline/` です。
+通常起動も試験台帳に揃える場合は、既存 `.env` の他の行を保持し、`PAPER_PIPELINE_HOME=.paper_pipeline-pilot` を設定できます。今回の整理では設定を変更していません。
+
+既定台帳、試験台帳、`output/` はGit管理外です。**Git pushだけではPDF・JSON・画像・台帳は別のMacへ移りません。** メニュー10のバックアップを使います。管理領域の直接編集・移動ではなく、コピー書き出しと取り込みを使ってください。
+
+## 普段の操作
+
+初回環境準備は `SetupPaperPipeline.command`。API・予算設定は [初回設定](docs/AUTOMATION.md#初回設定) を参照してください。
+新規環境の通常起動は `PubMedGraRecAuto.command`、このMacで既存記録を続ける場合は上記の試験台帳指定で起動します。
+
+| 順番 | 操作 | 結果・確認すること |
+|---|---|---|
+| 1 | pubmed_abstractの `希望PMIDを出力.command` → Googleログイン → 「希望PMIDをTXTへ保存」 | `ledger_private/exports/` が開く。保存済みの入手希望を出力する |
+| 2 | グラレコ側の **1 新規取り込み・実行** → TXTをドラッグして指定 | PDF照合・探索・履歴保存。予算・停止状態に問題がなければAPI精読へ進む |
+| 3 | **2 状況**／**3 要確認** | PDF未取得、PDF識別待ち、API待ち・品質停止などを確認する |
+| 4 | 精読後、**12 Web用ファイル準備** → PMID → 分割設定は通常空欄 → 新規コピー先を指定 | `output/PMID_<PMID>/web-v1` 等へ書き出す。既存フォルダは上書きしない |
+| 5 | **`ready_for_web/*_prompt.md` の内容をChatGPT Webへ渡す** | JSONの追加貼付は不要。複数テーマなら1依頼につき1ファイル・1枚 |
+| 6 | 画像をPNG保存 → **13 PNG取り込み** | PMID・`topic_id`・PNGパスを指定。topic_idはGraphic JSON／manifestで確認（原著は通常 `main`） |
+| 7 | 原文・JSON・PNGの対応、数値、条件、限界を照合 → **14 画像承認・却下** | 確認者と確認内容を記録。保存だけでは承認されない |
+| 8 | Notionに登録する場合だけ **15 承認済み画像をNotionへ送信** | 同じ論文DBへ直接添付。GitHub Pagesでの画像公開は不要 |
+
+PNGは横長16:9または3:2に対応し、自動加工しません。元画像は残り、差し替えには再承認が必要です。
+画像の承認とNotionの `Human Checked`（論文全体の確認）は別で、画像承認だけでは自動でオンになりません。
+既存JSONはメニュー12から再利用できます。未取得PDFの精読や品質停止の解除が自動で行われるわけではありません。
+
+## プログラムの役割
+
+普段の入口は **`PubMedGraRecAuto.command`**。旧プログラムは互換用に残しています。既存PDF・JSON・画像の場所は変えていません。
+
+| ファイル／フォルダ | 役割・使いどころ |
+|---|---|
+| `SetupPaperPipeline.command` | 初回のPython環境準備 |
+| `PubMedGraRecAuto.command` | **現行メニューの起動**（使う台帳に注意） |
+| `scripts/process_papers.py` | 現行CLIの入口。`paper_pipeline/cli.py` へ転送。旧処理の関数も互換用に同居 |
+| `scripts/paper_pipeline/cli.py` | メニュー、取り込み・再開・書き出し等の司令役 |
+| `scripts/paper_pipeline/sources.py`・`pubmed.py` | 書誌照合、無料本文の探索、PDF取得 |
+| `scripts/paper_pipeline/batches.py`・`direct.py` | API精読。Batch処理と通常API試験 |
+| `scripts/paper_pipeline/graphics.py` | 分類・分割用スキーマ、Master／Graphic／Web依頼文、PNG取り込み・承認 |
+| `scripts/paper_pipeline/store.py` | 台帳、原本コピー、履歴、予算、CSV、バックアップ |
+| `scripts/paper_pipeline/notion.py` | 承認済み画像・JSONをNotionへ同期 |
+| `scripts/paper_pipeline/transport_audit.py` | 画像API通信の診断用。通常のWeb運用では操作不要 |
+| `prompts/grarec-v2.md` | 現行の共通画像デザイン指示。v1は旧版 |
+| `PubMedGraRec.command`・`scripts/workflow_assistant.py` | **旧手動メニュー**。現行メニューとは番号・意味が異なる |
+| `scripts/import_chatgpt_summary.py`・`rename_latest_grarec.py`・`update_graphic_url.py`・`batch_process_grarec.py` | 旧JSON取り込み、画像整理・公開・Notion更新。現行の承認台帳を通らない経路を含む |
+| `scripts/run_mvp.py`・`generate_summary.py`・`fetch_pubmed.py`・`openai_batch.py`・`upload_to_notion.py`・`render_grarec.swift` | 旧MVP・旧描画と共通部品。現行コードから参照するものもあり、まとめて削除・移動しない |
+| `tests/` | ローカル回帰テスト。通常の操作時は実行不要 |
+
+## 詳細資料・確認状況
+
+- [AUTOMATION.md](docs/AUTOMATION.md)：初回設定、CLI、分割変更、承認、Notion同期、復元、過去の試験・調査記録。
+- [旧手動運用・旧Batch方式](docs/LEGACY_WORKFLOWS.md)：旧READMEを退避。現行操作の案内としては使いません。
+- [workflow.md](docs/workflow.md)：旧手動運用の背景・確認項目。
+- [Notionプロパティ定義](notion/database_schema.md)、[環境変数の例](.env.example)。既存 `.env` を上書きしないでください。
+- `pubmed_notion_grarec_handoff.md`：初期の引き継ぎ資料。現在の操作はこのREADMEとAUTOMATION.mdを優先します。
+
+2026-11-08までの確認では、ローカルテスト99件成功。PMID 39678704の実API精読、Web画像の取り込み・承認・既存Notionギャラリー登録を確認済みです。
+画像APIが無関係な写真を返した原因は未解決で、画像APIの自動運用は停止を維持しています。Review／Consensusの全文・全声明の網羅性や、画像の医学的正確性は別途、人による確認が必要です。
+2026-11-10の整理では案内文書のみ変更し、有料API実行・Notion更新・データ移動・停止解除は行っていません。

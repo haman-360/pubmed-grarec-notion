@@ -1,5 +1,14 @@
 # ハイブリッド運用：API精読 → Web画像生成 → 承認 → Notion
 
+操作と保存先を最初に確認する場合は [README](../README.md) を参照してください。このページは詳細設定・CLI・試験記録を含みます。旧手動・旧Batch方式の旧READMEは [LEGACY_WORKFLOWS.md](LEGACY_WORKFLOWS.md) に保存しています。
+
+## 2026-11-10 運用案内の整理
+
+READMEを現行の操作順・保存先・論文分類・JSON用途・プログラム役割の案内に整理した。旧READMEの手順はLEGACY_WORKFLOWS.mdへ移し、既存の相対リンクを修正した。実装・プロンプト・設定・データの変更はない。
+pubmed_abstractの現行Mac出力コードを読み、希望PMIDの保存先が `ledger_private/exports/pmids-日時-識別子.txt` であることを確認した。旧GAS画面の `pmids.txt` ダウンロードとは区別する。
+このMacでは既存台帳が `.paper_pipeline-pilot/`、既定の `.paper_pipeline/` は未作成。試験台帳の最新PMID 39678704はWeb画像の承認・Notion同期済みとして記録され、通常のAPI生成停止設定は維持されている。今回のNotionライブ再確認、有料API実行、停止解除は行っていない。
+検証：関連するハイブリッド運用の既存テスト32件成功（通信は模擬応答）。更新文書4件の相対リンク、旧READMEの退避内容の保全、`git diff --check` を確認した。
+
 ## 2026-11-08 現行の操作
 
 既定は `manual_web`。解析モデル・画像のデザイン指示v2は維持し、医学的内容と画像生成の責務を分離した。
