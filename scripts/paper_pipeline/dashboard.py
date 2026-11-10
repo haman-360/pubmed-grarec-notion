@@ -9,7 +9,7 @@ from pathlib import Path
 from .store import Store, digest
 from .sources import Sources
 from .batches import API, Batches
-from .graphics import active_graphics, check_graphic, import_image, review_image
+from .graphics import active_graphics, check_graphic, import_image, review_image, read_web_prompt
 from .notion import Notion, NotionAPI
 from .library import expose_library
 from .workspace import remember_state_dir
@@ -88,7 +88,13 @@ class Dashboard:
             counts['json_ready']+=int(bool(r and r['summary']))
             counts['png_synced']+=sum(g['status']=='COMPLETED' for g in graphics)
             counts['png_pending']+=sum(bool(g['image_path']) and g['status']!='COMPLETED' for g in graphics)
-            rows.append({'pmid':p['pmid'] or p['id'],'title':p['title'],'access':LABELS.get(p['access'],p['access']),
+            web_topics=[]
+            for g in graphics:
+                try:
+                    title=json.loads((store.root/g['json_path']).read_text()).get('topic_title') or g['topic_id']
+                except (OSError,ValueError): title=g['topic_id']
+                web_topics.append({'id':g['id'],'topic':g['topic_id'],'title':title,'revision':r['id'],'json_hash':g['json_hash']})
+            rows.append({'web_topics':web_topics,'pmid':p['pmid'] or p['id'],'title':p['title'],'access':LABELS.get(p['access'],p['access']),
                          'category':category,'json_target':target,'unsearched':unsearched,
                          'progress':LABELS.get(r['status'],r['status']) if r else ('JSON作成待ち' if target else 'PDF取得待ち'),
                          'error':(r['error'] if r else '') or p['blocker'], 'topics':','.join(g['topic_id'] for g in graphics)})
@@ -142,6 +148,22 @@ class Dashboard:
             sent=runner.submit(len(selected),revision_ids=[r['id'] for r in revisions])
             labels=[store.one('papers',pid)['pmid'] or pid for pid in selected]
             return f'選択した{len(selected)}件（PMID: {", ".join(labels)}）のうち{sent}件を依頼しました。残りは一覧の理由を確認してください。依頼済み分は「精読結果を回収」で更新できます。'
+        if action=='copy-prompt':
+            paper=store.resolve(data.get('pmid',''))
+            revision=self.latest(store,paper)
+            rows=active_graphics(store,revision['id']) if revision else []
+            graphic=next((g for g in rows if g['id']==data.get('graphic_id')),None)
+            if not graphic or any(data.get(k)!=v for k,v in (
+                    ('revision',revision['id']),('topic',graphic['topic_id']),('json_hash',graphic['json_hash']))):
+                raise ValueError('論文・テーマが変わりました。一覧を更新して選び直してください')
+            prompt=read_web_prompt(store,revision,graphic)
+            title=json.loads((store.root/graphic['json_path']).read_text()).get('topic_title') or graphic['topic_id']
+            try:
+                subprocess.run(['/usr/bin/pbcopy'],input=prompt.encode('utf-8'),check=True,timeout=10,
+                               env=dict(os.environ,LANG='en_US.UTF-8',LC_ALL='en_US.UTF-8'),capture_output=True)
+            except (OSError,subprocess.SubprocessError) as error:
+                raise ValueError('クリップボードへコピーできませんでした。もう一度お試しください') from error
+            return f'コピーしました：PMID {paper["pmid"] or paper["id"]} ／ {title}。WebのChatGPTに ⌘V で貼り付けてください。'
         if action=='prepare':
             dispatch(store,parser().parse_args(['prepare-web','--paper',data['pmid']]))
             return 'Web用依頼文を準備しました。論文フォルダのready_for_webを使ってください。'

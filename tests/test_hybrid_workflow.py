@@ -13,7 +13,7 @@ from paper_pipeline import cli
 from paper_pipeline.batches import Batches, config, schema, review_prompt
 from paper_pipeline.direct import Direct
 from paper_pipeline.graphics import (active_graphics, adapt_legacy, check_graphic, import_image,
-    master_schema, prepare_web, review_image, validate_master)
+    master_schema, prepare_web, review_image, validate_master, read_web_prompt)
 from paper_pipeline.notion import Notion
 from paper_pipeline.store import Store, atomic_write, encode, digest
 from test_paper_pipeline import FakeNotion, FakeOpenAI, sample_summary, png
@@ -77,6 +77,20 @@ class HybridTests(unittest.TestCase):
     def approve(self, revision, topic='main', color='white'):
         import_image(self.store,revision,topic,self.image(color))
         review_image(self.store,revision,topic,True,'Synthetic clinician','Synthetic paper/JSON/numbers checked')
+
+    def test_each_topic_prompt_contains_only_its_own_graphic_json(self):
+        revision,data=self.paper(kind='narrative_review',topics=2)
+        folder=prepare_web(self.store,revision)
+        before=list(self.store.db.iterdump())
+        for g in self.rows(revision):
+            text=read_web_prompt(self.store,revision,g)
+            path=self.store.root/g['json_path']
+            self.assertEqual(text,(folder/'ready_for_web'/(path.stem+'_prompt.md')).read_text())
+            copied=json.loads(text.split('```json\n',1)[1].rsplit('\n```',1)[0])
+            self.assertEqual(copied['topic_id'],g['topic_id'])
+            self.assertEqual(len(copied['main_results']),1)
+            self.assertEqual(copied['main_results'][0],data['main_results'][g['position']])
+        self.assertEqual(list(self.store.db.iterdump()),before)
 
     def test_case_a_original_one_graphic_preserves_pico_results_and_evidence(self):
         revision, data = self.paper(pages=11)

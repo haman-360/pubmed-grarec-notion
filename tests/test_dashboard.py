@@ -128,6 +128,43 @@ class DashboardTests(unittest.TestCase):
             self.dash.run('auto',{},self.store)
             api.assert_not_called()
 
+    def copy_item(self):
+        p=self.dash.snapshot(self.store)['papers'][0]
+        t=p['web_topics'][0]
+        return dict(pmid=p['pmid'],graphic_id=t['id'],revision=t['revision'],topic=t['topic'],json_hash=t['json_hash'])
+
+    def test_copy_prompt_matches_prepared_file_and_preserves_approval(self):
+        item=self.copy_item()
+        expected=(self.f.bundle/'ready_for_web/00_main_prompt.md').read_bytes()
+        before=list(self.store.db.iterdump())
+        with patch('paper_pipeline.dashboard.subprocess.run') as copy:
+            result=self.dash.run('copy-prompt',item,self.store)
+        self.assertEqual(copy.call_args.args[0],['/usr/bin/pbcopy'])
+        self.assertEqual(copy.call_args.kwargs['input'],expected)
+        self.assertIn('コピーしました：PMID 90000001',result)
+        self.assertEqual(list(self.store.db.iterdump()),before)
+
+    def test_copy_rejects_stale_topic_and_modified_prompt_before_clipboard(self):
+        item=self.copy_item()
+        with patch('paper_pipeline.dashboard.subprocess.run') as copy:
+            for key in ('graphic_id','revision','topic','json_hash','pmid'):
+                with self.assertRaises(ValueError):
+                    self.dash.run('copy-prompt',dict(item,**{key:'stale'}),self.store)
+            (self.f.bundle/'ready_for_web/00_main_prompt.md').write_text('wrong paper')
+            with self.assertRaisesRegex(ValueError,'一致しません'):
+                self.dash.run('copy-prompt',item,self.store)
+            copy.assert_not_called()
+
+    def test_copy_missing_file_and_clipboard_failure_report_error(self):
+        item=self.copy_item()
+        with patch('paper_pipeline.dashboard.subprocess.run',side_effect=OSError('unavailable')):
+            with self.assertRaisesRegex(ValueError,'コピーできません'):
+                self.dash.run('copy-prompt',item,self.store)
+        (self.f.bundle/'ready_for_web/00_main_prompt.md').unlink()
+        with patch('paper_pipeline.dashboard.subprocess.run') as copy, self.assertRaisesRegex(ValueError,'Web用準備'):
+            self.dash.run('copy-prompt',item,self.store)
+        copy.assert_not_called()
+
     def test_api_requires_token_and_loopback_host(self):
         app=Application(self.f.repo,self.store.root)
         server=ThreadingHTTPServer(('127.0.0.1',0),Handler);server.app=app
