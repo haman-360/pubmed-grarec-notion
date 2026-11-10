@@ -12,3 +12,5 @@ __pycache__/
 output/*
 !output/.gitkeep
 .env
+/PubMed-grareko-notion.app/
+/input/web_images/
