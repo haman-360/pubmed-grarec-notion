@@ -37,6 +37,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUIDelega
     func webView(_ webView: WKWebView, runOpenPanelWith parameters: WKOpenPanelParameters, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping ([URL]?) -> Void) {
         let panel = NSOpenPanel(); panel.canChooseDirectories = false; panel.allowsMultipleSelection = false
         panel.allowedFileTypes = ["txt"]
+        panel.title = "PubMed Abstractから出力した希望PMIDのTXTを選択"
+        panel.message = "希望PMIDを出力.commandで作成した pmids-日時-識別子.txt を選んでください。"
+        let repo = Bundle.main.bundleURL.deletingLastPathComponent()
+        let exports = repo.deletingLastPathComponent().appendingPathComponent("pubmed_abstract/ledger_private/exports", isDirectory: true)
+        if FileManager.default.fileExists(atPath: exports.path) { panel.directoryURL = exports }
+        else { panel.directoryURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first }
         panel.beginSheetModal(for: window) { response in completionHandler(response == .OK ? panel.urls : nil) }
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }

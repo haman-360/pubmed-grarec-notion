@@ -215,6 +215,10 @@ class Store:
                              encode(config), summary, now()))
         return self.one("revisions", identifier)
 
+    def suspension_reason(self, stage):
+        budget = self.setting('budget', {})
+        return budget.get('suspended_reason') or budget.get(stage + '_suspended_reason', '')
+
     def reserve(self, revision, stage, amount, resume_analysis_only=False, resume_image_only=False):
         budget = self.setting("budget", {})
         scoped_analysis = resume_analysis_only and stage == 'analysis' and json.loads(revision['config']).get('image_generation_mode') == 'manual_web'
@@ -225,6 +229,8 @@ class Store:
             raise ValueError('画像限定再開は精読JSONのあるapi版の画像のみです')
         if budget.get('suspended_reason') and not (scoped_analysis or scoped_image):
             raise ValueError('生成を停止中: '+budget['suspended_reason'])
+        if budget.get(stage + '_suspended_reason'):
+            raise ValueError('この工程を停止中: '+budget[stage + '_suspended_reason'])
         current = datetime.now(timezone.utc)
         try:
             start = datetime.fromisoformat(budget['start'])

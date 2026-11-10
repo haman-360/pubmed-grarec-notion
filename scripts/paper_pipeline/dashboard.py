@@ -63,7 +63,7 @@ class Dashboard:
         counts['inbox_pending']=sum(not c.get('synced') and not c['error'] for c in candidates)
         budget=store.setting('budget',{})
         return {'counts':counts,'papers':rows,'candidates':candidates,'inbox':str(self.inbox),
-                'stop':budget.get('suspended_reason',''),'budget_checked':budget.get('checked_at','未設定'),
+                'stop':store.suspension_reason('analysis'),'image_stop':store.suspension_reason('image'),'budget_checked':budget.get('checked_at','未設定'),
                 'budget_end':budget.get('end','未設定')}
 
     def run(self, action, data, store):
@@ -89,8 +89,7 @@ class Dashboard:
             runner=Batches(store,api,allow_image_api=False)
             runner.collect()
             if action!='collect':
-                budget=store.setting('budget',{})
-                if budget.get('suspended_reason'): raise ValueError('JSON作成は品質確認のため停止中です: '+budget['suspended_reason'])
+                if store.suspension_reason('analysis'): raise ValueError('JSON作成は品質確認のため停止中です: '+store.suspension_reason('analysis'))
                 api.check_models(include_images=False)
                 runner.prepare_revisions(); runner.submit(5)
             return '精読結果を回収しました。新規依頼は予算内で最大5論文です。API待ちは画面の自動回収で更新されます。'
@@ -122,13 +121,10 @@ class Dashboard:
                 except Exception as e: failures.append(item['name']+': '+type(e).__name__+' '+str(e)[:180])
             return f'{completed}件のPNGを登録しました。'+ ('\n要確認:\n'+'\n'.join(failures) if failures else '')
         if action=='budget':
-            held=store.setting('budget',{}).get('suspended_reason')
             if data.get('confirmed') is not True: raise ValueError('請求画面で残額・期限・自動チャージ無効を確認してください')
             args=['budget','--start',data['start'],'--end',data['end'],'--remaining',str(data['remaining']),
                   '--other-usage',str(data.get('other',0)),'--no-auto-recharge','--purchased-checked']
             dispatch(store,parser().parse_args(args))
-            if held:
-                budget=store.setting('budget'); budget['suspended_reason']=held; store.set_setting('budget',budget)
             return '予算情報を更新しました。品質停止設定は保持しています。'
         if action in ('folder','inbox','notion','preview'):
             if action=='inbox': target=str(self.inbox)

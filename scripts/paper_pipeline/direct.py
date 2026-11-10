@@ -50,6 +50,9 @@ class Direct(Batches):
                 if revision['status'] not in ('analysis_ready','image_ready','budget_wait','quality_wait'):
                     break
                 stage = 'image' if revision['summary'] else 'analysis'
+                if self.store.setting('budget',{}).get(stage + '_suspended_reason'):
+                    self.store.update('revisions',identifier,status='quality_wait',error=self.store.suspension_reason(stage))
+                    break
                 previous = self.store.rows('SELECT * FROM attempts WHERE revision_id=? AND stage=?',(identifier,stage))
                 if previous:  # Explicit regeneration/review required; never retry an ambiguous paid POST.
                     break

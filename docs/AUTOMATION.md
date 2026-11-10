@@ -2,6 +2,20 @@
 
 操作と保存先を最初に確認する場合は [README](../README.md) を参照してください。このページは詳細設定・CLI・試験記録を含みます。旧手動・旧Batch方式の旧READMEは [LEGACY_WORKFLOWS.md](LEGACY_WORKFLOWS.md) に保存しています。
 
+## 2026-11-10 JSON作成と画像API停止の分離・Abstract TXT選択
+
+予算設定に `analysis_suspended_reason`／`image_suspended_reason` を追加。前者はJSON作成、後者は画像APIだけを止める。従来の `suspended_reason` は全工程の停止として引き続き有効。通常の画面・Batch・Directで工程別の停止を適用し、予算更新時も3種類の停止理由を保持する。画像APIを止めてもmanual_webのJSON作成とWeb依頼文準備は進む。残額確認24時間・期間・予約額・1版$4等の制限は変更していない。
+
+利用者のJSON再開指示に基づき、このMacの既存台帳をバックアップして、既知の画像品質問題による全工程停止を画像工程だけの停止へ変更した。変更前後の理由と指示を台帳に記録。ほかの全工程停止を起動時に自動解除する仕組みではない。
+
+PMID追加欄にPubMed Abstractの出力TXTを明記し、ネイティブファイル選択の初期位置を隣接リポジトリの `pubmed_abstract/ledger_private/exports/` に設定。存在しなければDownloadsを開く。実際の出力TXTを選んで、PMIDが入力欄へ読み込まれるところまでMac画面で確認した。今回の試験ではファイル全件の登録は実行していない。
+
+検証：119テスト成功。画像停止中のJSONのみ実行、全体／精読停止の維持、残額期限切れの拒否、予算更新時の停止保持を含む。アプリのビルドと実画面表示を確認。
+
+実サービスでの1件試験：PMID **39924148**（思春期の不眠症に対するデジタルCBTの系統的レビュー／メタ解析）の19ページ・1,645,588 bytesのPDFをPMCから取得・識別した。利用者が提示した現在の請求画面で残額と自動チャージOFFを確認して台帳を更新し、この1件だけDirect精読を実行。本文入力65,678 tokens／出力10,639 tokens、設定単価による計算額$0.237746（請求額の独立照合ではない）。`READY_FOR_WEB` に到達し、`papers/PMID_39924148/` にPDF・review.json・master.json・2テーマのGraphic JSONとWeb依頼文を保存した。分類は `systematic_review`。テーマは睡眠転帰と完了率・受容性。構造検証と識別子の一致を確認したが、臨床的な内容の人による確認は未実施で、Human Checkedはfalseを保持。新規精読要求1件、画像API要求0件、Notion実送信なし。
+
+バックアップと取得・保全記録はGit管理外の `output/json-resume-20261110/`。既存台帳の論文11件を含む全既存レコード（停止設定を除く）と元ファイル67件の不変を照合した。
+
 ## 2026-11-10 Macアプリ画面
 
 `PubMed-grareko-notion.app` を追加。`PubMedGraRecAuto.command` はアプリをビルドして開く入口に変更。既存CLIは `scripts/process_papers.py menu` で利用できる。AppKit／WKWebViewのウィンドウと、127.0.0.1のランダムポートだけで待ち受けるPythonバックエンドを使う。操作APIには起動ごとのトークンとHostの照合を要求し、外部公開・CORS許可はしない。アプリ終了でバックエンドと自動回収も終了する。

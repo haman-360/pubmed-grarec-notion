@@ -59,9 +59,25 @@ class DashboardTests(unittest.TestCase):
             with self.assertRaises(ValueError): self.dash.run('upload',data,self.store)
             self.assertEqual(client.return_value.sync.call_count,1)
     def test_budget_update_preserves_quality_hold(self):
-        self.store.set_setting('budget',{'suspended_reason':'hold'})
+        self.store.set_setting('budget',{'suspended_reason':'hold','image_suspended_reason':'image hold','analysis_suspended_reason':'analysis hold'})
         self.dash.run('budget',dict(start='2026-11-01',end='2026-12-01T00:00:00+09:00',remaining=10,confirmed=True),self.store)
         self.assertEqual(self.store.setting('budget')['suspended_reason'],'hold')
+        self.assertEqual(self.store.setting('budget')['image_suspended_reason'],'image hold')
+        self.assertEqual(self.store.setting('budget')['analysis_suspended_reason'],'analysis hold')
+    def test_json_button_ignores_only_image_hold(self):
+        self.store.set_setting('budget',{'image_suspended_reason':'image hold'})
+        state=self.dash.snapshot(self.store)
+        self.assertFalse(state['stop'])
+        self.assertEqual(state['image_stop'],'image hold')
+        with patch.dict('os.environ',{'OPENAI_API_KEY':'synthetic'}), patch('paper_pipeline.dashboard.API'), patch('paper_pipeline.dashboard.Batches') as runner:
+            self.dash.run('json',{},self.store)
+            runner.return_value.submit.assert_called_once_with(5)
+            self.store.set_setting('budget',{'analysis_suspended_reason':'analysis hold'})
+            runner.reset_mock()
+            with self.assertRaisesRegex(ValueError,'停止中'):
+                self.dash.run('json',{},self.store)
+            runner.return_value.submit.assert_not_called()
+
     def test_api_requires_token_and_loopback_host(self):
         app=Application(self.f.repo,self.store.root)
         server=ThreadingHTTPServer(('127.0.0.1',0),Handler);server.app=app

@@ -191,6 +191,23 @@ class PipelineTests(unittest.TestCase):
         setting.update(changes)
         self.store.set_setting('budget',setting)
 
+    def test_stage_holds_preserve_budget_checks(self):
+        paper = self.paper()
+        revision = self.revision(paper)
+        self.budget(image_suspended_reason='image hold')
+        attempt = self.store.reserve(revision, 'analysis', 0.1)
+        self.assertEqual(attempt['stage'], 'analysis')
+        with self.assertRaisesRegex(ValueError, '停止中'):
+            self.store.reserve(revision, 'image', 0.1)
+        self.budget(image_suspended_reason='image hold',
+                    checked_at=(datetime.now(timezone.utc)-timedelta(days=2)).isoformat())
+        with self.assertRaisesRegex(ValueError, '24時間'):
+            self.store.reserve(revision, 'analysis', 0.1)
+        for key in ('suspended_reason', 'analysis_suspended_reason'):
+            self.budget(**{key: 'hold'})
+            with self.assertRaisesRegex(ValueError, '停止中'):
+                self.store.reserve(revision, 'analysis', 0.1)
+
     def paper(self,pmid='90000001',pdf=True):
         p = self.store.paper(pmid=pmid,title='Synthetic pediatric study '+pmid,doi='10.1234/test'+pmid)
         if pdf:

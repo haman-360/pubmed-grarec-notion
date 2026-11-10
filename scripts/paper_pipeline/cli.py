@@ -244,6 +244,8 @@ def status(store, review=False):
         print(f"予算: {'通常 $80/期間' if budget.get('production') else '初回5件/$20'} / 1版$4 / 残額確認 {budget['checked_at']} / 失効 {budget['end']}")
         if budget.get('suspended_reason'):
             print('生成停止中: '+budget['suspended_reason'])
+        for stage, label in (('analysis','JSON作成'),('image','画像API')):
+            if budget.get(stage+'_suspended_reason'): print(label+'停止中: '+budget[stage+'_suspended_reason'])
     else:
         print('予算未設定：新規Batchは投入しません。')
     for a in attempts:
@@ -410,7 +412,8 @@ def dispatch(store,args):
         end = datetime.fromisoformat(args.end)
         if end.tzinfo is None or end <= start or not all(math.isfinite(x) and x >= 0 for x in (args.remaining,args.other_usage)):
             raise ValueError('期間・残額を確認してください。終了日時は時差が必要です。')
-        store.set_setting('budget',{'start':start.isoformat(),'end':end.isoformat(),'remaining':args.remaining,
+        holds = {k:v for k,v in store.setting('budget',{}).items() if k in ('suspended_reason','analysis_suspended_reason','image_suspended_reason')}
+        store.set_setting('budget',{**holds,'start':start.isoformat(),'end':end.isoformat(),'remaining':args.remaining,
             'other_usage':args.other_usage,'checked_at':now(),'no_auto_recharge':True,'purchased_checked':True,'production':args.production})
         print('予算設定を保存しました。残額確認は24時間有効です。')
     elif cmd == 'settle':

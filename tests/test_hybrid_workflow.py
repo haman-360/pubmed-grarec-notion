@@ -154,7 +154,7 @@ class HybridTests(unittest.TestCase):
         self.store.update('revisions',revision['id'],summary=None,status='analysis_ready')
         current = datetime.now(timezone.utc)
         self.store.set_setting('budget',{'start':(current-timedelta(days=1)).isoformat(),'end':(current+timedelta(days=20)).isoformat(),
-            'checked_at':current.isoformat(),'remaining':100,'other_usage':20,'production':False,'no_auto_recharge':True,'purchased_checked':True})
+            'checked_at':current.isoformat(),'remaining':100,'other_usage':20,'production':False,'no_auto_recharge':True,'purchased_checked':True,'image_suspended_reason':'Image quality hold'})
         api = Mock()
         api.upload.return_value = 'synthetic-pdf'
         api.count_input.return_value = 100
@@ -166,6 +166,7 @@ class HybridTests(unittest.TestCase):
         Direct(self.store,api).run(['41064908'])
         self.assertEqual([c.args[:2] for c in api.call.call_args_list],[('POST','/responses')])
         self.assertEqual(self.store.one('revisions',revision['id'])['status'],'READY_FOR_WEB')
+        self.assertEqual(self.store.setting('budget')['image_suspended_reason'],'Image quality hold')
 
     def test_explicit_analysis_resume_retains_quality_hold_and_never_generates_image(self):
         from datetime import datetime,timedelta,timezone

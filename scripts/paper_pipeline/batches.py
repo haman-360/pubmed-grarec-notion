@@ -243,7 +243,7 @@ class Batches:
                 except ValueError as error:
                     # Count the actual full PDF when the conservative page allowance
                     # exceeds the limit. Never split/truncate a medical source to fit.
-                    if stage != 'analysis' or '長文料金域' not in str(error) or self.store.setting('budget',{}).get('suspended_reason'):
+                    if stage != 'analysis' or '長文料金域' not in str(error) or self.store.suspension_reason(stage):
                         raise
                     prepared_body = self.request_body(revision,stage)
                     tokens = self.api.count_input(prepared_body)
