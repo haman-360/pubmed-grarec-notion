@@ -5,6 +5,7 @@ import json
 import math
 import os
 import shutil
+import sqlite3
 import sys
 import time
 from datetime import datetime, timezone
@@ -17,6 +18,8 @@ from .batches import API, Batches, config
 from .notion import Notion, NotionAPI
 from .sources import Sources, inspect_pdf, error_reason
 from .store import Store, atomic_write, encode, now
+from .workspace import select_state_dir, remember_state_dir
+from .library import sync_library, expose_library, paper_folder
 
 REPO = Path(__file__).resolve().parents[2]
 LABELS = {'unsearched':'未調査','manual_candidate':'無料候補あり','free_unconfirmed':'無料版未確認',
@@ -119,7 +122,8 @@ def collect_legacy(store, api):
 
 def parser():
     result = argparse.ArgumentParser(description='PMID/PDF → 精読JSON → ChatGPT Web → 画像承認 → Notion')
-    result.add_argument('--state-dir',default=os.getenv('PAPER_PIPELINE_HOME') or str(REPO/'.paper_pipeline'))
+    result.add_argument('--state-dir',default=os.getenv('PAPER_PIPELINE_HOME'),
+                        help='省略時は前回の保存先・既存台帳を自動選択')
     commands = result.add_subparsers(dest='command',required=True)
     p = commands.add_parser('direct',help='指定した最大4論文を通常APIで試験（Batchなし）')
     p.add_argument('--paper',action='append',required=True,help='PMIDまたは論文内部ID、繰り返し指定')
@@ -210,10 +214,15 @@ def parser():
 
 
 def status(store, review=False):
-    rows = store.rows('''SELECT p.*, (SELECT status FROM revisions r WHERE r.paper_id=p.id ORDER BY created_at DESC LIMIT 1) progress
+    rows = store.rows('''SELECT p.*, (SELECT status FROM revisions r WHERE r.paper_id=p.id ORDER BY created_at DESC,rowid DESC LIMIT 1) progress
                         FROM papers p ORDER BY p.added_at''')
     for p in rows:
         print(f"{p['id']}  PMID={p['pmid'] or '-'}  {LABELS.get(p['access'],p['access'])}  {LABELS.get(p['progress'],p['progress'] or 'PDF待ち')}  {p['disposition']} {p['blocker']}  {p['title'][:60]}")
+        folder = paper_folder(store,p)
+        visible = REPO / 'papers' / folder.name
+        if visible.is_symlink() and visible.resolve() == folder:
+            folder = visible
+        print('  論文フォルダ: '+str(folder))
         if review:
             searches = store.rows('SELECT result FROM searches WHERE paper_id=? ORDER BY id DESC LIMIT 1',(p['id'],))
             for row in searches:
@@ -221,7 +230,9 @@ def status(store, review=False):
                     print(f"  {c.get('priority','')} {c.get('evidence','')} {c['url']} {c.get('reason','')}")
             for r in store.rows("SELECT id,error FROM revisions WHERE paper_id=? AND error!=''",(p['id'],)):
                 print(f"  生成版 {r['id']}: {r['error']}")
-    for graphic in store.rows('SELECT * FROM graphics WHERE active=1 ORDER BY revision_id,position'):
+    for graphic in store.rows('''SELECT g.* FROM graphics g JOIN revisions r ON r.id=g.revision_id
+        WHERE g.active=1 AND r.id=(SELECT id FROM revisions latest WHERE latest.paper_id=r.paper_id
+        ORDER BY created_at DESC,rowid DESC LIMIT 1) ORDER BY g.revision_id,g.position'''):
         print(f"  Graphic {graphic['revision_id']} / {graphic['topic_id']}: {graphic['status']}  {graphic['json_path']}")
     for source in store.rows("SELECT * FROM sources WHERE status!='confirmed'"):
         details = json.loads(source['details'])
@@ -301,10 +312,28 @@ def main(argv=None):
     from openai_batch import load_dotenv
     load_dotenv(str(REPO/'.env'))
     args = parser().parse_args(argv)
-    store = Store(args.state_dir)
+    try:
+        root = select_state_dir(REPO, args.state_dir)
+    except (ValueError, KeyError, OSError, sqlite3.Error) as error:
+        print('保存先を確認できません: '+str(error),file=sys.stderr)
+        return 1
+    store = Store(root)
     try:
         with store.lock():
-            dispatch(store,args)
+            if args.command == 'menu':
+                visible = expose_library(REPO,store)
+                remember_state_dir(REPO,store.root)
+                print('前回の記録を開きました。論文フォルダ: '+str(visible))
+                status(store)
+            else:
+                sync_library(store)
+            try:
+                dispatch(store,args)
+            finally:
+                if args.command == 'menu':
+                    expose_library(REPO,store)
+                else:
+                    sync_library(store)
     except (ValueError,RuntimeError,OSError,ValidationError,requests.RequestException) as error:
         reason = ('JSONスキーマ不一致: '+error.message if isinstance(error,ValidationError) else error_reason(error))
         atomic_write(store.root/'errors'/f'{time.time_ns()}.json',encode({'at':now(),'command':args.command,'error_type':type(error).__name__,'reason':reason[:500]}))
@@ -532,6 +561,7 @@ def menu(store):
         print('\n1 新規取り込み・実行 / 2 状況 / 3 要確認 / 4 続きから実行（再検索なし） / 5 予算設定')
         print('6 PDF識別 / 7 保留・解除 / 8 再生成 / 9 CSV / 10 バックアップ / 11 旧版を対象化 / q 終了')
         print('12 Web用ファイル準備 / 13 PNG取り込み / 14 画像承認・却下 / 15 承認済み画像をNotionへ送信')
+        print('16 論文フォルダを開く（PDF・JSON・Web依頼文・画像）')
         choice = ask('番号')
         if choice == 'q':
             return
@@ -580,7 +610,7 @@ def menu(store):
         elif choice == '12':
             command = ['prepare-web','--paper',ask('PMID/内部ID')]
             plan = path_input('編集した分割設定plan.json（通常は空欄）')
-            destination = path_input('Web用コピーの新規フォルダ（管理領域のみなら空欄）')
+            destination = path_input('追加コピーの新規フォルダ（空欄なら論文フォルダから利用）')
             if plan:
                 command += ['--plan',plan]
             if destination:
@@ -597,11 +627,26 @@ def menu(store):
                            '--reviewer',ask('確認者'),'--note',ask('確認内容／却下理由')]
         elif choice == '15':
             command = ['sync-notion','--paper',ask('Notionへ実送信する論文のPMID/内部ID')]
+        elif choice == '16':
+            import subprocess
+            value = ask('開くPMID（全論文のフォルダは空欄）')
+            try:
+                visible = expose_library(REPO,store)
+                folder = visible / paper_folder(store,store.resolve(value)).name if value else visible
+                subprocess.run(['open',str(folder)],check=True)
+            except (ValueError,OSError,subprocess.CalledProcessError) as error:
+                print(f'フォルダを開けません: {error}')
         if command:
             try:
                 dispatch(store,parser().parse_args(command))
             except (ValueError,RuntimeError,OSError,ValidationError,requests.RequestException) as error:
                 print(f'保留: {error}')
+            finally:
+                try:
+                    expose_library(REPO,store)
+                    print('論文フォルダを更新しました: '+str(REPO/'papers'))
+                except (ValueError,OSError) as error:
+                    print(f'論文フォルダの更新待ち（台帳は保持）: {error}')
 
 
 if __name__ == '__main__':

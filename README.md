@@ -45,70 +45,60 @@ Web向けのデザインは [grarec-v2.md](prompts/grarec-v2.md) を共用し、
 
 ## 保存先の早見表
 
-以下のパスは、それぞれのリポジトリ直下からの相対パスです。
-このMacではPMID出力側が `/Users/thama/Documents/GitHub/pubmed_abstract`、グラレコ側が `/Users/thama/Documents/GitHub/pubmed-grarec-notion` です。
+**`PubMedGraRecAuto.command` を開くだけで前回の記録を引き継ぎます。試験用・通常用の指定は不要です。**
+起動時に既存の記録を自動選択し、次回の起動先を保存します。開くだけではAPI送信・Notion更新は行いません。
+
+**PDF・JSON・画像は、リポジトリ直下の `papers/PMID_番号/` から確認します。** メニュー **16 論文フォルダを開く** でFinderから開けます。PMIDを空欄にすると全論文のフォルダを開きます。
+
+```text
+papers/
+  PMID_39678704/
+    案内.txt             論文名・論文種別・現在の状態・ファイルの説明
+    source.pdf           現在の処理に使う原本PDF
+    review.json          精読結果
+    master.json          論文全体・分類理由・章立て
+    plan.json            分割設定
+    graphics/            画像1枚ごとのJSON
+    ready_for_web/       ChatGPT Webへ渡す依頼文（JSON込み）
+    images/              取り込んだPNG（承認状態はmanifest.jsonで確認）
+    manifest.json        画像の対応・承認状態
+    status.json          取得履歴・処理状態
+    pdfs/                入手した各版のPDF
+    versions/            以前の処理版・JSON・画像
+```
+
+未取得・未完了のファイルはまだ表示されません。新しい精読版が未完了の場合、旧版のWeb依頼文は `versions/` に残し、現在の依頼文としては表示しません。PMIDが未設定の論文は `PAPER_内部ID/` に保存します。
 
 | 対象 | 保存先・操作 |
 |---|---|
-| 希望PMIDのTXT（Mac出力） | **pubmed_abstract側の** `ledger_private/exports/pmids-日時-識別子.txt`。`希望PMIDを出力.command` で保存するとフォルダが開く |
-| 希望PMIDのTXT（旧GAS画面） | `pmids.txt` をブラウザーでダウンロード。保存場所はブラウザー設定による（通常はDownloads） |
-| このアプリへ渡すPMID | 上記TXTをメニュー1で指定。コピー不要。空欄時だけ `input/pmids.txt` を使う |
-| 自分で入手したPDF | `input/pdfs/` に置く。別フォルダは `--pdf-dir` で指定。元ファイルは移動・改名・削除しない |
-| 自動取得したPDF | `<台帳フォルダ>/downloads/<URLのハッシュ>.pdf` |
-| PDFの管理コピー | `<台帳フォルダ>/pdfs/<内容のSHA256>.pdf`。元パスと論文との対応は台帳に記録 |
-| 精読結果 | `<台帳フォルダ>/artifacts/<版ID>/review.json` |
-| Master・Graphic・Web依頼文 | `<台帳フォルダ>/artifacts/<版ID>/web/<内容ハッシュ>/` 以下。下図を参照 |
-| 見やすいWeb用コピー | メニュー12で、例えば **`output/PMID_12345678/web-v1/`** を指定。自動の既定先ではなく、自分で指定するコピー先 |
-| 自分が生成したグラレコ | まずDownloads等へPNG保存 → メニュー13で指定するとWeb用管理領域の `images/` へコピー |
-| 取得成否・候補・エラー・承認履歴 | `<台帳フォルダ>/ledger.sqlite3`。メニュー2「状況」、3「要確認」、9「CSV」で確認 |
-| 以前の手動運用のデータ | `input/chatgpt_summaries/pending/`・`done/`、`output/summaries/`、`images/YYYY/MM/`。現行台帳とは別の旧保存先 |
+| 希望PMIDのTXT | pubmed_abstract側の `ledger_private/exports/pmids-日時-識別子.txt`。`希望PMIDを出力.command` で保存後、フォルダが開く |
+| 旧GAS画面のPMID出力 | `pmids.txt` をブラウザーでダウンロード。場所はブラウザー設定による |
+| このアプリへ渡すPMID | メニュー1で上記TXTを指定。コピー不要。空欄時だけ `input/pmids.txt` を使う |
+| 自分で入手したPDF | `input/pdfs/` に置いてメニュー1から取り込む。元ファイルは保持し、取り込み後はPMID別フォルダでも確認できる |
+| Webへ渡すファイル | `papers/PMID_番号/ready_for_web/*_prompt.md` |
+| 自分で生成したグラレコ | Downloads等へPNG保存 → メニュー13から取り込む → `papers/PMID_番号/images/` で確認 |
+| 取得成否・候補・エラー | メニュー2・3・9、および各PMIDフォルダの `status.json` |
+| 任意の追加コピー | メニュー12で新規フォルダを指定した場合だけ書き出す。指定しなくてもPMID別フォルダを使える |
 
-JSONは**論文種別ごとではなく、処理版と画像テーマごと**に保存します。
-`output/` の書き出しはスナップショットです。後からPNGを取り込んでも以前のコピーは更新されず、進捗の正本は台帳です。
+JSONは論文種別別ではなく、PMID・処理版・画像テーマごとに保存します。種別はJSONの `paper_type` と `案内.txt` で確認できます。
 
-```text
-<台帳フォルダ>/
-  ledger.sqlite3                 取得・処理・画像・承認・費用等の正本
-  downloads/                     Webから取得したPDF
-  pdfs/                          PDFの管理コピー
-  artifacts/<版ID>/
-    review.json                  精読結果
-    web/<内容ハッシュ>/
-      master.json                論文全体（paper_type・分類理由もここ）
-      plan.json                  分割設定
-      graphics/00_main.json      画像1枚分（paper_type・topic_id付き）
-      ready_for_web/00_main_prompt.md  Webへ渡す依頼文（JSON込み）
-      images/PMID_<PMID>_<topic_id>_<hash>.png  取り込んだPNG
-      manifest.json              画像の対応・進捗
-```
+PMID別フォルダは確認用コピーです。**既存の原本・JSON・画像・承認履歴は台帳側に保持し、移動・削除しません。** 各操作後と次回起動時に更新されます。表示先は最新の処理版に切り替わり、旧版や差し替え前のPNGも残ります。
+コピーを直接編集しても台帳には反映しません。コピーの変更を検出した場合は自動で上書きせず更新を止めるため、分割設定は別の場所へ別名保存し、メニュー12で指定してください。画像はメニュー13から取り込みます。
 
-### このMacでは試験台帳と既定台帳が別です
-
-2026-11-10の読み取り確認では、前回の試験記録は **`.paper_pipeline-pilot/`** にあり、既定の **`.paper_pipeline/` は未作成**でした。PMID 39678704の最新処理版には、承認・Notion同期済みのWeb画像が記録されています。通常のAPI生成は品質確認のため停止中です。
-
-`PubMedGraRecAuto.command` は、設定がなければ `.paper_pipeline/` を使います。**前回の続きには、リポジトリ直下のTerminalで次を実行してください。**
-
-```sh
-.venv/bin/python scripts/process_papers.py --state-dir .paper_pipeline-pilot menu
-```
-
-すべての操作で同じ台帳を使います。CLIの `--state-dir` はサブコマンドより前に置きます。別台帳を開いても既存データは消えませんが、前回の記録が表示されません。
-台帳指定の優先順は `--state-dir` → `PAPER_PIPELINE_HOME`（環境変数／`.env`）→ 既定の `.paper_pipeline/` です。
-通常起動も試験台帳に揃える場合は、既存 `.env` の他の行を保持し、`PAPER_PIPELINE_HOME=.paper_pipeline-pilot` を設定できます。今回の整理では設定を変更していません。
-
-既定台帳、試験台帳、`output/` はGit管理外です。**Git pushだけではPDF・JSON・画像・台帳は別のMacへ移りません。** メニュー10のバックアップを使います。管理領域の直接編集・移動ではなく、コピー書き出しと取り込みを使ってください。
+`papers/` はGit管理外です。Git pushだけでは論文データ・台帳は別のMacへ移りません。メニュー10のバックアップを使います。
+以前の手動運用の `input/chatgpt_summaries/`、`images/YYYY/MM/`、`output/` も元の場所に残します。これらを新規API処理や承認済み画像として自動登録する変更はありません。
 
 ## 普段の操作
 
 初回環境準備は `SetupPaperPipeline.command`。API・予算設定は [初回設定](docs/AUTOMATION.md#初回設定) を参照してください。
-新規環境の通常起動は `PubMedGraRecAuto.command`、このMacで既存記録を続ける場合は上記の試験台帳指定で起動します。
+通常は `PubMedGraRecAuto.command` をダブルクリックします。起動時に前回の状態と論文フォルダの場所を表示します。
 
 | 順番 | 操作 | 結果・確認すること |
 |---|---|---|
 | 1 | pubmed_abstractの `希望PMIDを出力.command` → Googleログイン → 「希望PMIDをTXTへ保存」 | `ledger_private/exports/` が開く。保存済みの入手希望を出力する |
 | 2 | グラレコ側の **1 新規取り込み・実行** → TXTをドラッグして指定 | PDF照合・探索・履歴保存。予算・停止状態に問題がなければAPI精読へ進む |
 | 3 | **2 状況**／**3 要確認** | PDF未取得、PDF識別待ち、API待ち・品質停止などを確認する |
-| 4 | 精読後、**12 Web用ファイル準備** → PMID → 分割設定は通常空欄 → 新規コピー先を指定 | `output/PMID_<PMID>/web-v1` 等へ書き出す。既存フォルダは上書きしない |
+| 4 | 精読後、**12 Web用ファイル準備** → PMID → 分割設定・追加コピー先は通常空欄 | PMID別フォルダを自動更新。メニュー16で開く |
 | 5 | **`ready_for_web/*_prompt.md` の内容をChatGPT Webへ渡す** | JSONの追加貼付は不要。複数テーマなら1依頼につき1ファイル・1枚 |
 | 6 | 画像をPNG保存 → **13 PNG取り込み** | PMID・`topic_id`・PNGパスを指定。topic_idはGraphic JSON／manifestで確認（原著は通常 `main`） |
 | 7 | 原文・JSON・PNGの対応、数値、条件、限界を照合 → **14 画像承認・却下** | 確認者と確認内容を記録。保存だけでは承認されない |
@@ -125,13 +115,14 @@ PNGは横長16:9または3:2に対応し、自動加工しません。元画像�
 | ファイル／フォルダ | 役割・使いどころ |
 |---|---|
 | `SetupPaperPipeline.command` | 初回のPython環境準備 |
-| `PubMedGraRecAuto.command` | **現行メニューの起動**（使う台帳に注意） |
+| `PubMedGraRecAuto.command` | **現行メニューの起動**。前回の記録を自動的に開く |
 | `scripts/process_papers.py` | 現行CLIの入口。`paper_pipeline/cli.py` へ転送。旧処理の関数も互換用に同居 |
 | `scripts/paper_pipeline/cli.py` | メニュー、取り込み・再開・書き出し等の司令役 |
 | `scripts/paper_pipeline/sources.py`・`pubmed.py` | 書誌照合、無料本文の探索、PDF取得 |
 | `scripts/paper_pipeline/batches.py`・`direct.py` | API精読。Batch処理と通常API試験 |
 | `scripts/paper_pipeline/graphics.py` | 分類・分割用スキーマ、Master／Graphic／Web依頼文、PNG取り込み・承認 |
 | `scripts/paper_pipeline/store.py` | 台帳、原本コピー、履歴、予算、CSV、バックアップ |
+| `scripts/paper_pipeline/workspace.py`・`library.py` | 前回の記録を選択・記憶し、PMID別の確認用フォルダを更新 |
 | `scripts/paper_pipeline/notion.py` | 承認済み画像・JSONをNotionへ同期 |
 | `scripts/paper_pipeline/transport_audit.py` | 画像API通信の診断用。通常のWeb運用では操作不要 |
 | `prompts/grarec-v2.md` | 現行の共通画像デザイン指示。v1は旧版 |
@@ -150,4 +141,4 @@ PNGは横長16:9または3:2に対応し、自動加工しません。元画像�
 
 2026-11-08までの確認では、ローカルテスト99件成功。PMID 39678704の実API精読、Web画像の取り込み・承認・既存Notionギャラリー登録を確認済みです。
 画像APIが無関係な写真を返した原因は未解決で、画像APIの自動運用は停止を維持しています。Review／Consensusの全文・全声明の網羅性や、画像の医学的正確性は別途、人による確認が必要です。
-2026-11-10の整理では案内文書のみ変更し、有料API実行・Notion更新・データ移動・停止解除は行っていません。
+2026-11-10：起動先の自動引き継ぎとPMID別フォルダを追加。通常のAPI生成停止設定は維持し、この変更で有料API実行・Notion更新は行っていません。

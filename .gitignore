@@ -8,6 +8,7 @@ __pycache__/
 .venv/
 .paper_pipeline/
 .paper_pipeline-pilot/
+/papers
 output/*
 !output/.gitkeep
 .env
