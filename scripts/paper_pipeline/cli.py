@@ -241,7 +241,7 @@ def status(store, review=False):
     print(f"費用（全履歴）: 確認済み計算額 ${sum(a['actual'] or 0 for a in attempts):.4f} / 未確定予約 ${sum(a['reserve'] for a in attempts if a['actual'] is None):.4f}")
     budget = store.setting('budget',{})
     if budget:
-        print(f"予算: {'通常 $80/期間' if budget.get('production') else '初回5件/$20'} / 1版$4 / 残額確認 {budget['checked_at']} / 失効 {budget['end']}")
+        print(f"予算: ${80 if budget.get('production') else 20}/期間 / 1版$4 / 残額確認 {budget['checked_at']} / 失効 {budget['end']}")
         if budget.get('suspended_reason'):
             print('生成停止中: '+budget['suspended_reason'])
         for stage, label in (('analysis','JSON作成'),('image','画像API')):

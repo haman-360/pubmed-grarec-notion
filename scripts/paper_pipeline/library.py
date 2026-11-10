@@ -61,6 +61,7 @@ def snapshot(folder, name, data):
 def sync_paper(store, paper):
     folder = paper_folder(store, paper)
     folder.mkdir(parents=True, exist_ok=True)
+    (folder / 'web_input' / 'images').mkdir(parents=True, exist_ok=True)
     sources = store.rows('SELECT * FROM sources WHERE paper_id=? ORDER BY created_at,rowid', (paper['id'],))
     for source in sources:
         copy_unchanged(store.root / source['path'], folder / 'pdfs' / (source['hash'] + '.pdf'))
@@ -130,6 +131,8 @@ def sync_paper(store, paper):
             'source.pdf: 現在の処理に使う原本PDF\nreview.json: 精読結果\nmaster.json: 論文全体\n'
             'graphics/: 画像ごとのJSON\nready_for_web/: ChatGPT Webへ渡す依頼文\n'
             'images/: 取り込んだPNG（承認状態はmanifest.jsonを確認）\n'
+            'web_input/master.json: ChatGPT Webで作成した全文JSONの保存先（アプリで取り込み）\n'
+            'web_input/images/<topic_id>.png: Webで作成したPNGの保存先（アプリで確認してNotion登録）\n'
             'versions/: 以前の処理版・JSON・画像\nstatus.json: 取得履歴と現在の状態\n\n'
             'ここは確認用コピーです。元のPDF・JSON・画像・承認履歴は台帳側に保持しています。\n'
             '変更した分割設定は別名保存してメニュー12へ、生成PNGはメニュー13から取り込んでください。\n'

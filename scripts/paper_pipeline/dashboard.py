@@ -14,6 +14,7 @@ from .notion import Notion, NotionAPI
 from .library import expose_library
 from .workspace import remember_state_dir
 from .cli import LABELS, dispatch, parser
+from . import web_import
 
 class Dashboard:
     def __init__(self, repo, root):
@@ -25,22 +26,54 @@ class Dashboard:
         rows = store.rows('SELECT * FROM revisions WHERE paper_id=? ORDER BY created_at DESC,rowid DESC', (paper['id'],))
         return rows[0] if rows else None
 
-    def candidates(self, store):
-        result=[]
+    def image_files(self, store):
+        files=[]
         for path in sorted(self.inbox.glob('*.png')):
             match=re.fullmatch(r'PMID_(\d+)_([a-z0-9_-]+)\.png', path.name)
-            item={'name':path.name,'error':'ファイル名を PMID_番号_topic.png にしてください'}
-            if match:
+            files.append((path.name,path,match[1] if match else '',match[2] if match else ''))
+        for paper in store.rows('SELECT * FROM papers WHERE pmid IS NOT NULL'):
+            for path in sorted((web_import.inbox(store,paper)/'images').glob('*.png')):
+                topic=path.stem
+                files.append((f"PMID_{paper['pmid']}/web_input/images/{path.name}",path,paper['pmid'],topic))
+        return files
+
+    def image_path(self, store, name):
+        for key,path,_,_ in self.image_files(store):
+            if key==name: return path
+        raise ValueError('一覧にあるPNGを選んでください')
+
+    def candidates(self, store):
+        result=[]
+        for name,path,pmid,topic in self.image_files(store):
+            item={'name':name,'error':'保存先・ファイル名を確認してください（論文別フォルダは topic_id.png）'}
+            if pmid and re.fullmatch(r'[a-z0-9][a-z0-9_-]{0,63}',topic):
                 try:
-                    paper=store.resolve(match[1]); revision=self.latest(store,paper)
+                    paper=store.resolve(pmid); revision=self.latest(store,paper)
                     if not revision: raise ValueError('精読JSONがありません')
-                    rows=[g for g in active_graphics(store,revision['id']) if g['topic_id']==match[2]]
+                    rows=[g for g in active_graphics(store,revision['id']) if g['topic_id']==topic]
                     if len(rows)!=1: raise ValueError('画像テーマが見つかりません。Web用ファイルを準備してください')
                     g=rows[0]; sha=hashlib.sha256(path.read_bytes()).hexdigest()
-                    item.update(pmid=match[1],topic=match[2],revision=revision['id'],json_hash=g['json_hash'],sha=sha,
+                    item.update(pmid=pmid,topic=topic,revision=revision['id'],json_hash=g['json_hash'],sha=sha,
                                 status=g['status'],synced=g['status']=='COMPLETED' and g['image_hash']==sha,error='')
                     if paper['disposition']!='active' or paper['blocker']: item['error']='保留・識別確認待ちです'
-                except ValueError as e: item['error']=str(e)
+                except (ValueError,OSError) as e: item['error']=str(e)
+            result.append(item)
+        for item in result:
+            if item.get('revision') and sum(c.get('revision')==item['revision'] and c.get('topic')==item['topic'] for c in result)>1:
+                item['error']='同じ論文・テーマのPNGが複数の保存先にあります。登録する1枚だけを残し、他は別フォルダへ移してください'
+        return result
+
+    def web_json_candidates(self, store):
+        result=[]
+        for paper in store.rows('SELECT * FROM papers'):
+            path=web_import.inbox(store,paper)/'master.json'
+            if not path.is_file(): continue
+            item={'pmid':paper['pmid'] or paper['id'],'error':'','imported':False}
+            try:
+                raw=path.read_bytes(); item['sha']=digest(raw)
+                item['imported']=web_import.imported(store,paper,item['sha'])
+                if not item['imported']: web_import.read_master(store,paper,raw)
+            except (ValueError,OSError) as error: item['error']=str(error)
             result.append(item)
         return result
 
@@ -50,7 +83,7 @@ class Dashboard:
             return None
         if revision:
             cfg=json.loads(revision['config'])
-            if revision['summary'] or revision['status'] not in ('analysis_ready','budget_wait') or cfg.get('mode')=='direct':
+            if revision['summary'] or revision['status'] not in ('analysis_ready','budget_wait') or cfg.get('mode') in ('direct','web_import'):
                 return None
             attempts=store.rows("SELECT * FROM attempts WHERE revision_id=? AND stage='analysis'",(revision['id'],))
             if len(attempts)>=2 or any(a['status'] not in ('failed','rejected') for a in attempts):
@@ -94,14 +127,37 @@ class Dashboard:
                     title=json.loads((store.root/g['json_path']).read_text()).get('topic_title') or g['topic_id']
                 except (OSError,ValueError): title=g['topic_id']
                 web_topics.append({'id':g['id'],'topic':g['topic_id'],'title':title,'revision':r['id'],'json_hash':g['json_hash']})
+            cfg=json.loads(r['config']) if r else {}
+            tokens=cfg.get('counted_input_tokens')
+            estimate=Batches.analysis_reserve(tokens,cfg) if target and type(tokens) is int and tokens<=272000 else None
+            estimate_note='長文入力のためAPI自動投入対象外。WebでのJSON作成を利用できます' if type(tokens) is int and tokens>272000 else '未計測・送信前に確認'
+            origin='API利用時はBatch'
+            if cfg.get('mode')=='web_import': origin='ChatGPT Web'
+            elif cfg.get('mode')=='direct': origin='通常API（過去の処理）'
+            elif r and store.rows("SELECT 1 FROM attempts WHERE revision_id=? AND stage='analysis' LIMIT 1",(r['id'],)): origin='Batch API'
+            elif r and r['summary']: origin='既存JSON'
+            error=(r['error'] if r else '') or p['blocker']
+            if error=='初回5論文/$20の評価枠を超えます':
+                error='旧・初回5論文の制限で停止していました（件数制限は解除済み）。対象を選んでBatchを依頼できます'
             rows.append({'web_topics':web_topics,'pmid':p['pmid'] or p['id'],'title':p['title'],'access':LABELS.get(p['access'],p['access']),
+                         'web_available':p['access']=='available' and not p['blocker'] and p['disposition']=='active' and not p['legacy'],
+                         'analysis_origin':origin,'batch_estimate_note':estimate_note,'has_json':bool(r and r['summary']),
+                         'batch_reserve':estimate,
                          'category':category,'json_target':target,'unsearched':unsearched,
                          'progress':LABELS.get(r['status'],r['status']) if r else ('JSON作成待ち' if target else 'PDF取得待ち'),
-                         'error':(r['error'] if r else '') or p['blocker'], 'topics':','.join(g['topic_id'] for g in graphics)})
+                         'error':error, 'topics':','.join(g['topic_id'] for g in graphics)})
         candidates=self.candidates(store)
         counts['inbox_pending']=sum(not c.get('synced') and not c['error'] for c in candidates)
         budget=store.setting('budget',{})
+        costs={'analysis_usage':0,'reserved':0,'period_limit':80 if budget.get('production') else 20}
+        runner=Batches(store,None)
+        for a in store.rows('SELECT a.*,r.config FROM attempts a JOIN revisions r ON r.id=a.revision_id'):
+            if a['actual'] is None: costs['reserved']+=a['reserve']
+            if a['stage']=='analysis' and a['usage']:
+                amount=runner.actual_cost(json.loads(a['usage']),'analysis',json.loads(a['config'])['rates'])
+                if amount is not None: costs['analysis_usage']+=amount
         return {'counts':counts,'papers':rows,'candidates':candidates,'inbox':str(self.inbox),
+                'web_json_candidates':self.web_json_candidates(store),'costs':costs,
                 'stop':store.suspension_reason('analysis'),'image_stop':store.suspension_reason('image'),'budget_checked':budget.get('checked_at','未設定'),
                 'budget_end':budget.get('end','未設定')}
 
@@ -147,7 +203,28 @@ class Dashboard:
             revisions=[self.latest(store,store.one('papers',pid)) for pid in selected]
             sent=runner.submit(len(selected),revision_ids=[r['id'] for r in revisions])
             labels=[store.one('papers',pid)['pmid'] or pid for pid in selected]
-            return f'選択した{len(selected)}件（PMID: {", ".join(labels)}）のうち{sent}件を依頼しました。残りは一覧の理由を確認してください。依頼済み分は「精読結果を回収」で更新できます。'
+            return f'選択した{len(selected)}件（PMID: {", ".join(labels)}）のうち{sent}件をBatchで依頼しました（24時間枠）。残りは一覧の理由を確認してください。依頼済み分は「精読結果を回収」で更新できます。'
+        if action=='copy-json-request':
+            paper=store.resolve(data.get('pmid',''))
+            self.copy_text(web_import.json_request(store,paper))
+            return f"JSON作成の依頼文をコピーしました：PMID {paper['pmid']}。WebのChatGPTに貼り付け、論文フォルダのsource.pdfを添付してください。完成JSONはweb_input/master.jsonに保存します。"
+        if action=='import-web-json':
+            items=data.get('items',[])
+            if not isinstance(items,list) or not items: raise ValueError('取り込み対象のJSONがありません')
+            current={c['pmid']:c for c in self.web_json_candidates(store)}
+            prepared=[]; seen=set()
+            for item in items:
+                c=current.get(item.get('pmid')) if isinstance(item,dict) else None
+                if not c or c['error'] or c['imported'] or c.get('sha')!=item.get('sha') or c['pmid'] in seen:
+                    raise ValueError('JSONが変わりました。一覧を更新して確認してください')
+                seen.add(c['pmid']); paper=store.resolve(c['pmid']); raw=(web_import.inbox(store,paper)/'master.json').read_bytes()
+                if digest(raw)!=c['sha']: raise ValueError('JSONが取り込み中に変わりました')
+                prepared.append((paper,raw))
+            count=0; failures=[]
+            for paper,raw in prepared:
+                try: web_import.import_master(store,paper,raw); count+=1
+                except (ValueError,OSError) as error: failures.append(f"PMID {paper['pmid']}: {error}")
+            return f'{count}件のWeb JSONを取り込みました（API課金なし）。画像作成はテーマ別の依頼文をコピーしてください。'+ ('\n'+'\n'.join(failures) if failures else '')
         if action=='copy-prompt':
             paper=store.resolve(data.get('pmid',''))
             revision=self.latest(store,paper)
@@ -158,11 +235,7 @@ class Dashboard:
                 raise ValueError('論文・テーマが変わりました。一覧を更新して選び直してください')
             prompt=read_web_prompt(store,revision,graphic)
             title=json.loads((store.root/graphic['json_path']).read_text()).get('topic_title') or graphic['topic_id']
-            try:
-                subprocess.run(['/usr/bin/pbcopy'],input=prompt.encode('utf-8'),check=True,timeout=10,
-                               env=dict(os.environ,LANG='en_US.UTF-8',LC_ALL='en_US.UTF-8'),capture_output=True)
-            except (OSError,subprocess.SubprocessError) as error:
-                raise ValueError('クリップボードへコピーできませんでした。もう一度お試しください') from error
+            self.copy_text(prompt)
             return f'コピーしました：PMID {paper["pmid"] or paper["id"]} ／ {title}。WebのChatGPTに ⌘V で貼り付けてください。'
         if action=='prepare':
             dispatch(store,parser().parse_args(['prepare-web','--paper',data['pmid']]))
@@ -185,7 +258,7 @@ class Dashboard:
             for item in requested:
                 try:
                     r=store.one('revisions',item['revision'])
-                    imported=import_image(store,r,item['topic'],self.inbox/item['name'])
+                    imported=import_image(store,r,item['topic'],self.image_path(store,item['name']))
                     if imported['image_hash']!=item['sha']: raise ValueError('PNGが取り込み中に変わりました。再確認してください')
                     review_image(store,r,item['topic'],True,data['reviewer'],data['note'])
                     client.sync(store.one('revisions',r['id'])); completed+=1
@@ -197,12 +270,15 @@ class Dashboard:
                   '--other-usage',str(data.get('other',0)),'--no-auto-recharge','--purchased-checked']
             dispatch(store,parser().parse_args(args))
             return '予算情報を更新しました。品質停止設定は保持しています。'
-        if action in ('folder','inbox','notion','preview'):
+        if action in ('folder','inbox','notion','preview','web-folder'):
             if action=='inbox': target=str(self.inbox)
+            elif action=='web-folder':
+                p=store.resolve(data.get('pmid','')); folder=web_import.inbox(store,p)
+                (folder/'images').mkdir(parents=True,exist_ok=True); target=str(folder)
             elif action=='preview':
                 names={c['name'] for c in self.candidates(store)}
                 if data.get('name') not in names: raise ValueError('一覧にあるPNGを選んでください')
-                target=str(self.inbox/data['name'])
+                target=str(self.image_path(store,data['name']))
             elif action=='folder':
                 target=str(self.repo/'papers')
                 if data.get('pmid'):
@@ -213,3 +289,11 @@ class Dashboard:
                 target='https://www.notion.so/'+identifier
             subprocess.run(['open',target],check=True); return '開きました。'
         raise ValueError('未対応の操作です')
+
+    @staticmethod
+    def copy_text(text):
+        try:
+            subprocess.run(['/usr/bin/pbcopy'],input=text.encode('utf-8'),check=True,timeout=10,
+                           env=dict(os.environ,LANG='en_US.UTF-8',LC_ALL='en_US.UTF-8'),capture_output=True)
+        except (OSError,subprocess.SubprocessError) as error:
+            raise ValueError('クリップボードへコピーできませんでした。もう一度お試しください') from error

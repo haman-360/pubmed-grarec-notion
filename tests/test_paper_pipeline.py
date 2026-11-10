@@ -469,11 +469,14 @@ class PipelineTests(unittest.TestCase):
         with self.assertRaises(ValueError): self.store.reserve(r,'image',1)
         self.assertEqual(self.store.one('attempts',a['id'])['reserve'],2)
 
-    def test_initial_evaluation_stops_at_five_papers(self):
+    def test_cumulative_five_paper_limit_removed_with_money_cap_retained(self):
         for i in range(6): self.paper(str(90000000+i))
         self.runner.submit(limit=10)
-        self.assertEqual(self.api.posts,5)
-        self.assertEqual(len(self.store.rows("SELECT * FROM revisions WHERE status='budget_wait'")),1)
+        self.assertEqual(self.api.posts,6)
+        self.assertEqual(len(self.store.rows("SELECT * FROM revisions WHERE status='budget_wait'")),0)
+        r=self.store.rows('SELECT * FROM revisions')[0]
+        with self.assertRaisesRegex(ValueError, '期間予算'):
+            self.store.reserve(r,'analysis',20)
 
     def test_hold_and_release_affect_search_and_submit(self):
         p = self.paper()

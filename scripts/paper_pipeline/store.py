@@ -255,14 +255,13 @@ class Store:
             period_total = sum(cost(a) for a in attempts if a['period'] == period or a['actual'] is None)
             since_check = sum(cost(a) for a in attempts if a['created_at'] >= budget['checked_at'] or a['actual'] is None)
             revision_total = sum(cost(a) for a in attempts if a['revision_id'] == revision['id'])
-            trial_total = sum(cost(a) for a in attempts)
             limit = 80.0 if budget.get('production') else 20.0
-            if period_total + amount > limit or since_check + amount > remaining or revision_total + amount > 4:
-                raise ValueError("予算上限に達するため新規API処理を停止しました")
-            if not budget.get('production'):
-                papers = {r['paper_id'] for r in self.rows("SELECT DISTINCT r.paper_id FROM attempts a JOIN revisions r ON a.revision_id=r.id")}
-                if trial_total + amount > 20 or (revision['paper_id'] not in papers and len(papers) >= 5):
-                    raise ValueError("初回5論文/$20の評価枠を超えます")
+            if period_total + amount > limit:
+                raise ValueError(f'期間予算${limit:.2f}を超えるため停止：使用・予約済み${period_total:.3f} ＋ 今回予約${amount:.3f}（見積額であり請求額ではありません）')
+            if since_check + amount > remaining:
+                raise ValueError(f'確認済み残高の利用可能額${remaining:.2f}を超えるため停止：確認後の使用・予約${since_check:.3f} ＋ 今回予約${amount:.3f}')
+            if revision_total + amount > 4:
+                raise ValueError(f'1処理版の予算$4.00を超えるため停止：使用・予約済み${revision_total:.3f} ＋ 今回予約${amount:.3f}')
             identifier = uid()
             self.db.execute("INSERT INTO attempts(id,revision_id,stage,status,reserve,period,created_at) VALUES(?,?,?,?,?,?,?)",
                             (identifier, revision['id'], stage, 'reserved', amount, period, now()))

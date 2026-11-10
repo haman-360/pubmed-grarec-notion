@@ -16,11 +16,11 @@ from .store import atomic_write, digest, encode, now
 REPO = Path(__file__).resolve().parents[2]
 PROMPT = REPO / 'prompts' / 'grarec-v2.md'
 RATES = {'analysis_input':1.0, 'analysis_output':5.0, 'image_text':2.5, 'image_input':4.0, 'image_output':15.0,
-         'as_of':'2026-11-07', 'currency':'USD', 'processing':'batch'}
+         'as_of':'2026-11-11', 'currency':'USD', 'processing':'batch'}
 
 
 def config():
-    return {'analysis_model':'gpt-6.1-sol', 'image_model':'gpt-image-2.5-sunburst',
+    return {'mode':'batch', 'analysis_model':'gpt-6.1-sol', 'image_model':'gpt-image-2.5-sunburst',
             'effort':'medium', 'detail':'high', 'max_output_tokens':16000,
             'size':'2048x1152', 'quality':'high', 'format':'png',
             'review_version':'fulltext-v4', 'image_generation_mode':'manual_web',
@@ -193,7 +193,7 @@ class Batches:
                 tokens = cfg['counted_input_tokens']
             if tokens > 272000:
                 raise ValueError('長文料金域のPDFは自動投入しません。原本の分割/対象指定を確認してください。')
-            estimate = (tokens*rates['analysis_input'] + cfg['max_output_tokens']*rates['analysis_output']) / 1e6 * 1.5
+            estimate = self.analysis_reserve(tokens, cfg)
         else:
             if not self.allow_image_api or cfg.get('image_generation_mode') != 'api':
                 raise ValueError('画像APIは明示許可時のみ使用できます')
@@ -202,6 +202,12 @@ class Batches:
                 raise ValueError('複数画像のAPI生成は未対応です。manual_webを使用してください')
             estimate = (3.0 if cfg.get('mode')=='direct' else 1.5) + len(self.image_prompt(revision).encode()) * rates['image_text'] / 1e6 * 1.5
         return round(estimate, 6)
+
+    @staticmethod
+    def analysis_reserve(tokens, cfg):
+        # Allow for a 30-minute cache write of every input token, plus output cap and margin.
+        return round((tokens * cfg['rates']['analysis_input'] * 1.25 +
+                      cfg['max_output_tokens'] * cfg['rates']['analysis_output']) / 1e6 * 1.5, 6)
 
     def request_body(self, revision, stage):
         cfg = json.loads(revision['config'])
@@ -229,7 +235,7 @@ class Batches:
                 continue
             if self.manual_handoff(revision):
                 continue
-            if json.loads(revision['config']).get('mode') == 'direct':
+            if json.loads(revision['config']).get('mode') in ('direct', 'web_import'):
                 continue
             stage = 'image' if revision['summary'] else 'analysis'
             previous = self.store.rows('SELECT * FROM attempts WHERE revision_id=? AND stage=?', (revision['id'],stage))
@@ -324,7 +330,15 @@ class Batches:
         if not isinstance(usage, dict) or not all(isinstance(usage.get(k), int) and usage[k] >= 0 for k in ('input_tokens','output_tokens')):
             return None
         if stage == 'analysis':
-            return (usage['input_tokens']*rates['analysis_input'] + usage['output_tokens']*rates['analysis_output'])/1e6
+            details = usage.get('input_tokens_details') or {}
+            if not isinstance(details, dict):
+                return None
+            cached, written = details.get('cached_tokens', 0), details.get('cache_write_tokens', 0)
+            if any(type(v) is not int or v < 0 for v in (cached, written)) or cached + written > usage['input_tokens']:
+                return None
+            plain = usage['input_tokens'] - cached - written
+            input_cost = (plain + cached * .05 + written * 1.25) * rates['analysis_input']
+            return (input_cost + usage['output_tokens']*rates['analysis_output'])/1e6
         details = usage.get('input_tokens_details', {})
         if not isinstance(details,dict) or not all(isinstance(details.get(k),int) and details[k]>=0 for k in ('text_tokens','image_tokens')):
             return None
