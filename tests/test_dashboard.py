@@ -69,14 +69,64 @@ class DashboardTests(unittest.TestCase):
         state=self.dash.snapshot(self.store)
         self.assertFalse(state['stop'])
         self.assertEqual(state['image_stop'],'image hold')
+        self.store.update('revisions',self.f.revision['id'],summary=None,status='analysis_ready')
+        item=self.dash.snapshot(self.store)['papers'][0]['json_target']
         with patch.dict('os.environ',{'OPENAI_API_KEY':'synthetic'}), patch('paper_pipeline.dashboard.API'), patch('paper_pipeline.dashboard.Batches') as runner:
-            self.dash.run('json',{},self.store)
-            runner.return_value.submit.assert_called_once_with(5)
+            self.dash.run('json',{'items':[item]},self.store)
+            runner.return_value.prepare_revisions.assert_called_once_with(paper_ids=[self.f.paper['id']])
+            runner.return_value.submit.assert_called_once_with(1,revision_ids=[self.f.revision['id']])
+            runner.return_value.collect.assert_not_called()
             self.store.set_setting('budget',{'analysis_suspended_reason':'analysis hold'})
             runner.reset_mock()
             with self.assertRaisesRegex(ValueError,'停止中'):
-                self.dash.run('json',{},self.store)
+                self.dash.run('json',{'items':[item]},self.store)
             runner.return_value.submit.assert_not_called()
+
+    def test_counts_partition_all_papers_and_target_excludes_completed(self):
+        self.store.paper(pmid='90000002')
+        held=self.store.paper(pmid='90000003')
+        self.store.update('papers',held['id'],disposition='held')
+        snapshot=self.dash.snapshot(self.store)
+        keys=('missing_pdf','json_pending','json_running','web_pending','completed','attention')
+        self.assertEqual(sum(snapshot['counts'][k] for k in keys),snapshot['counts']['total'])
+        self.assertEqual(snapshot['counts']['web_pending'],1)
+        self.assertEqual(snapshot['counts']['missing_pdf'],1)
+        self.assertEqual(snapshot['counts']['attention'],1)
+        self.store.update('revisions',self.f.revision['id'],status='completed')
+        snapshot=self.dash.snapshot(self.store)
+        self.assertEqual(snapshot['counts']['completed'],1)
+        self.assertFalse(any(p['json_target'] for p in snapshot['papers']))
+
+    def test_stale_or_ambiguous_json_selection_fails_before_api(self):
+        self.store.update('revisions',self.f.revision['id'],summary=None,status='analysis_ready')
+        item=self.dash.snapshot(self.store)['papers'][0]['json_target']
+        with patch('paper_pipeline.dashboard.API') as api:
+            for items in ([],[item]*2,[item]*6):
+                with self.assertRaises(ValueError):self.dash.run('json',{'items':items},self.store)
+            self.store.update('revisions',self.f.revision['id'],status='analysis_submitted')
+            with self.assertRaisesRegex(ValueError,'変わりました'):
+                self.dash.run('json',{'items':[item]},self.store)
+            self.assertEqual(self.dash.snapshot(self.store)['counts']['json_running'],1)
+            api.assert_not_called()
+
+    def test_unknown_attempt_and_changed_source_excluded(self):
+        r=self.f.revision
+        self.store.update('revisions',r['id'],summary=None,status='analysis_ready')
+        item=self.dash.snapshot(self.store)['papers'][0]['json_target']
+        self.store.update('sources',self.f.source['id'],status='revision_review')
+        self.assertIsNone(self.dash.snapshot(self.store)['papers'][0]['json_target'])
+        with patch('paper_pipeline.dashboard.API') as api, self.assertRaises(ValueError):
+            self.dash.run('json',{'items':[item]},self.store)
+        api.assert_not_called()
+        self.store.update('sources',self.f.source['id'],status='confirmed')
+        with self.store.db:
+            self.store.db.execute("INSERT INTO attempts(id,revision_id,stage,status,reserve,period,created_at) VALUES('pending',?,'analysis','unknown',1,'test','test')",(r['id'],))
+        self.assertIsNone(self.dash.snapshot(self.store)['papers'][0]['json_target'])
+
+    def test_search_then_preview_never_creates_json(self):
+        with patch('paper_pipeline.dashboard.Sources'),patch('paper_pipeline.dashboard.API') as api:
+            self.dash.run('auto',{},self.store)
+            api.assert_not_called()
 
     def test_api_requires_token_and_loopback_host(self):
         app=Application(self.f.repo,self.store.root)

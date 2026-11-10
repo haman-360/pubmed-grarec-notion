@@ -153,9 +153,11 @@ class Batches:
             return True
         return False
 
-    def prepare_revisions(self):
+    def prepare_revisions(self, paper_ids=None):
         for paper in self.store.rows("SELECT * FROM papers WHERE disposition='active' AND legacy=0 AND blocker='' AND access='available'"):
-            sources = self.store.rows("SELECT * FROM sources WHERE paper_id=? AND status='confirmed' ORDER BY created_at DESC", (paper['id'],))
+            if paper_ids is not None and paper['id'] not in paper_ids:
+                continue
+            sources = self.store.rows("SELECT * FROM sources WHERE paper_id=? AND status='confirmed' ORDER BY created_at DESC,rowid DESC", (paper['id'],))
             if not sources:
                 continue
             # Configuration changes do not silently regenerate existing work.
@@ -219,10 +221,12 @@ class Batches:
                     'quality':cfg['quality'],'n':1,'output_format':'png'}
         return body
 
-    def submit(self, limit=5):
+    def submit(self, limit=5, revision_ids=None):
         count = 0
         revisions = self.store.rows("SELECT r.* FROM revisions r JOIN papers p ON p.id=r.paper_id WHERE p.disposition='active' AND r.status IN ('analysis_ready','image_ready','budget_wait') ORDER BY r.created_at")
         for revision in revisions:
+            if revision_ids is not None and revision['id'] not in revision_ids:
+                continue
             if self.manual_handoff(revision):
                 continue
             if json.loads(revision['config']).get('mode') == 'direct':

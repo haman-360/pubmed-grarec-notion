@@ -6,7 +6,7 @@ import os
 import re
 import subprocess
 from pathlib import Path
-from .store import Store
+from .store import Store, digest
 from .sources import Sources
 from .batches import API, Batches
 from .graphics import active_graphics, check_graphic, import_image, review_image
@@ -44,21 +44,54 @@ class Dashboard:
             result.append(item)
         return result
 
+    def json_target(self, store, paper, revision):
+        """One stable, eligible analysis target; also used immediately before submission."""
+        if paper['disposition']!='active' or paper['legacy'] or paper['blocker'] or paper['access']!='available':
+            return None
+        if revision:
+            cfg=json.loads(revision['config'])
+            if revision['summary'] or revision['status'] not in ('analysis_ready','budget_wait') or cfg.get('mode')=='direct':
+                return None
+            attempts=store.rows("SELECT * FROM attempts WHERE revision_id=? AND stage='analysis'",(revision['id'],))
+            if len(attempts)>=2 or any(a['status'] not in ('failed','rejected') for a in attempts):
+                return None
+            source=store.one('sources',revision['source_id'])
+        else:
+            sources=store.rows("SELECT * FROM sources WHERE paper_id=? AND status='confirmed' ORDER BY created_at DESC,rowid DESC",(paper['id'],))
+            source=sources[0] if sources else None
+            attempts=[]
+        if not source or source['status']!='confirmed' or not (store.root/source['path']).is_file():
+            return None
+        return {'paper_id':paper['id'],'fingerprint':digest({'paper':paper,'source':source,'revision':revision,'attempts':attempts})}
+
     def snapshot(self, store):
         papers=store.rows('SELECT * FROM papers ORDER BY added_at DESC'); rows=[]
-        counts=dict(total=len(papers),unsearched=0,missing_pdf=0,json_ready=0,completed=0,png_synced=0,png_pending=0)
+        counts=dict(total=len(papers),unsearched=0,missing_pdf=0,json_pending=0,json_running=0,
+                    web_pending=0,attention=0,json_ready=0,completed=0,png_synced=0,png_pending=0)
         for p in papers:
             r=self.latest(store,p); graphics=active_graphics(store,r['id']) if r else []
+            target=self.json_target(store,p,r)
             searched=bool(store.rows('SELECT 1 FROM searches WHERE paper_id=? LIMIT 1',(p['id'],)))
-            counts['unsearched']+=int(not searched and p['access']!='available' and p['disposition']=='active' and not p['legacy'])
-            counts['missing_pdf']+=int(p['access']!='available')
+            unsearched=not searched and p['access']!='available' and p['disposition']=='active' and not p['legacy'] and not p['blocker']
+            counts['unsearched']+=int(unsearched)
+            if p['disposition']!='active' or p['legacy'] or p['blocker']:
+                category='attention'
+            elif r and r['status']=='completed': category='completed'
+            elif r and r['status'] in ('review_required','quality_wait','structure_review_required','IMAGE_REJECTED'):
+                category='attention'
+            elif p['access']!='available': category='missing_pdf'
+            elif target: category='json_pending'
+            elif r and r['status']=='analysis_submitted': category='json_running'
+            elif r and r['summary']: category='web_pending'
+            else: category='attention'
+            counts[category]+=1
             counts['json_ready']+=int(bool(r and r['summary']))
-            counts['completed']+=int(bool(r and r['status']=='completed'))
             counts['png_synced']+=sum(g['status']=='COMPLETED' for g in graphics)
             counts['png_pending']+=sum(bool(g['image_path']) and g['status']!='COMPLETED' for g in graphics)
             rows.append({'pmid':p['pmid'] or p['id'],'title':p['title'],'access':LABELS.get(p['access'],p['access']),
-                         'progress':LABELS.get(r['status'],r['status']) if r else 'PDF・精読待ち',
-                         'error':r['error'] if r else p['blocker'], 'topics':','.join(g['topic_id'] for g in graphics)})
+                         'category':category,'json_target':target,'unsearched':unsearched,
+                         'progress':LABELS.get(r['status'],r['status']) if r else ('JSON作成待ち' if target else 'PDF取得待ち'),
+                         'error':(r['error'] if r else '') or p['blocker'], 'topics':','.join(g['topic_id'] for g in graphics)})
         candidates=self.candidates(store)
         counts['inbox_pending']=sum(not c.get('synced') and not c['error'] for c in candidates)
         budget=store.setting('budget',{})
@@ -74,7 +107,7 @@ class Dashboard:
             return f'{len(set(ids))}件のPMIDを取り込みました。'
         if action in ('search','auto'):
             sources=Sources(store)
-            papers=store.rows("SELECT * FROM papers p WHERE disposition='active' AND legacy=0 AND access!='available' AND NOT EXISTS (SELECT 1 FROM searches s WHERE s.paper_id=p.id)")
+            papers=store.rows("SELECT * FROM papers p WHERE disposition='active' AND legacy=0 AND blocker='' AND access!='available' AND NOT EXISTS (SELECT 1 FROM searches s WHERE s.paper_id=p.id)")
             for p in papers:
                 try: sources.metadata(p)
                 except Exception: pass  # discover records the actual retrieval failure below.
@@ -82,17 +115,33 @@ class Dashboard:
             for p in papers:
                 current=store.one('papers',p['id'])
                 if current['access']!='available': sources.discover(current)
-            if action=='search': return f'未検索の{len(papers)}件を確認しました。取得できなかった理由は履歴に残ります。'
-        if action in ('json','auto','collect'):
+            return f'未検索の{len(papers)}件を確認しました。取得できなかった理由は履歴に残ります。JSON作成は対象を確認して実行してください。'
+        if action in ('json','collect'):
+            selected=[]
+            if action=='json':
+                items=data.get('items',[])
+                if not isinstance(items,list) or not 1<=len(items)<=5:
+                    raise ValueError('JSON作成待ちの論文を1〜5件選んでください')
+                current={p['json_target']['paper_id']:p for p in self.snapshot(store)['papers'] if p['json_target']}
+                for item in items:
+                    p=current.get(item.get('paper_id')) if isinstance(item,dict) else None
+                    if not p or p['json_target']!=item or item['paper_id'] in selected:
+                        raise ValueError('対象の論文・PDF・進捗が変わりました。JSON作成対象を開き直してください')
+                    selected.append(item['paper_id'])
+                if store.suspension_reason('analysis'):
+                    raise ValueError('JSON作成は品質確認のため停止中です: '+store.suspension_reason('analysis'))
             if not os.getenv('OPENAI_API_KEY'): raise ValueError('.envにOPENAI_API_KEYを設定してください')
             api=API(os.environ['OPENAI_API_KEY'],audit_dir=store.root/'http_audit')
             runner=Batches(store,api,allow_image_api=False)
-            runner.collect()
-            if action!='collect':
-                if store.suspension_reason('analysis'): raise ValueError('JSON作成は品質確認のため停止中です: '+store.suspension_reason('analysis'))
-                api.check_models(include_images=False)
-                runner.prepare_revisions(); runner.submit(5)
-            return '精読結果を回収しました。新規依頼は予算内で最大5論文です。API待ちは画面の自動回収で更新されます。'
+            if action=='collect':
+                runner.collect()
+                return '依頼済みの精読結果を回収しました。新規のJSON作成依頼は行いません。'
+            api.check_models(include_images=False)
+            runner.prepare_revisions(paper_ids=selected)
+            revisions=[self.latest(store,store.one('papers',pid)) for pid in selected]
+            sent=runner.submit(len(selected),revision_ids=[r['id'] for r in revisions])
+            labels=[store.one('papers',pid)['pmid'] or pid for pid in selected]
+            return f'選択した{len(selected)}件（PMID: {", ".join(labels)}）のうち{sent}件を依頼しました。残りは一覧の理由を確認してください。依頼済み分は「精読結果を回収」で更新できます。'
         if action=='prepare':
             dispatch(store,parser().parse_args(['prepare-web','--paper',data['pmid']]))
             return 'Web用依頼文を準備しました。論文フォルダのready_for_webを使ってください。'

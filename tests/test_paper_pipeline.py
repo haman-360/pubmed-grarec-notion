@@ -191,6 +191,23 @@ class PipelineTests(unittest.TestCase):
         setting.update(changes)
         self.store.set_setting('budget',setting)
 
+    def test_explicit_revision_selection_never_submits_other_papers(self):
+        a=self.paper('90000001');b=self.paper('90000002')
+        ra=self.revision(a);rb=self.revision(b)
+        self.assertEqual(self.runner.submit(5,revision_ids=[rb['id']]),1)
+        attempts=self.store.rows('SELECT * FROM attempts')
+        self.assertEqual([v['revision_id'] for v in attempts],[rb['id']])
+        self.assertEqual(self.store.one('revisions',ra['id'])['status'],'analysis_ready')
+        self.assertEqual(self.runner.submit(5,revision_ids=[]),0)
+
+    def test_prepare_revisions_scopes_new_work(self):
+        a=self.paper('90000001',pdf=False);b=self.paper('90000002',pdf=False)
+        for i,p in enumerate((a,b)):
+            writer=PdfWriter();writer.add_blank_page(width=100+i,height=100)
+            path=self.root/(p['pmid']+'.pdf');writer.write(path);self.store.source(path,p['id'])
+        self.runner.prepare_revisions(paper_ids=[b['id']])
+        self.assertEqual([r['paper_id'] for r in self.store.rows('SELECT * FROM revisions')],[b['id']])
+
     def test_stage_holds_preserve_budget_checks(self):
         paper = self.paper()
         revision = self.revision(paper)
