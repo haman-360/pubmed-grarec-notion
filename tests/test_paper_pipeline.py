@@ -208,6 +208,39 @@ class PipelineTests(unittest.TestCase):
         self.runner.prepare_revisions(paper_ids=[b['id']])
         self.assertEqual([r['paper_id'] for r in self.store.rows('SELECT * FROM revisions')],[b['id']])
 
+    def test_output_budget_content_policy_and_saved_work(self):
+        from paper_pipeline.token_policy import output_budget
+        self.assertEqual(config()['max_output_tokens'],32000)
+        self.assertEqual(output_budget('Guideline','Diagnostic tests. '*8000)['max_output_tokens'],32000)
+        self.assertEqual(output_budget('Guideline','Systemic therapy in children and pregnancy. '+'x'*125000)['max_output_tokens'],48000)
+        self.assertEqual(output_budget('Guideline','x'*180000)['max_output_tokens'],48000)
+        self.assertEqual(output_budget('Randomized trial','x'*180000)['max_output_tokens'],32000)
+        p=self.paper();r=self.revision(p)
+        cfg=json.loads(r['config']);cfg['max_output_tokens']=16000
+        self.store.update('revisions',r['id'],config=encode(cfg),status='analysis_submitted')
+        self.runner.prepare_revisions()
+        self.assertEqual(len(self.store.rows('SELECT * FROM revisions')),1)
+        self.assertEqual(json.loads(self.revision(p)['config'])['max_output_tokens'],16000)
+
+    def test_reviewed_long_input_is_counted_and_charged_at_long_rates(self):
+        p=self.paper();r=self.revision(p);cfg=json.loads(r['config'])
+        cfg.update(counted_input_tokens=339749,max_output_tokens=48000)
+        self.store.update('revisions',r['id'],config=encode(cfg))
+        with self.assertRaisesRegex(ValueError,'長文料金域'):
+            self.runner.estimate(self.revision(p),'analysis')
+        source=self.store.one('sources',r['source_id'])
+        cfg['long_input_reviewed']={'source_hash':source['hash'],'reason':'Reviewed source for this revision'}
+        self.store.update('revisions',r['id'],config=encode(cfg))
+        expected=(339749*2*1.25+48000*5*1.5)/1e6*1.5
+        self.assertAlmostEqual(self.runner.estimate(self.revision(p),'analysis'),expected,places=6)
+        self.assertEqual(self.runner.request_body(self.revision(p),'analysis')['max_output_tokens'],48000)
+        usage={'input_tokens':339749,'output_tokens':48000,'input_tokens_details':{'cache_write_tokens':339749}}
+        self.assertAlmostEqual(self.runner.actual_cost(usage,'analysis',cfg['rates']),expected/1.5)
+        cfg['counted_input_tokens']=922001
+        self.store.update('revisions',r['id'],config=encode(cfg))
+        with self.assertRaisesRegex(ValueError,'入力上限'):
+            self.runner.estimate(self.revision(p),'analysis')
+
     def test_stage_holds_preserve_budget_checks(self):
         paper = self.paper()
         revision = self.revision(paper)

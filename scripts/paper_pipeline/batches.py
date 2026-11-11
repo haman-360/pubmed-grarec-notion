@@ -19,14 +19,18 @@ RATES = {'analysis_input':1.0, 'analysis_output':5.0, 'image_text':2.5, 'image_i
          'as_of':'2026-11-11', 'currency':'USD', 'processing':'batch'}
 
 
-def config():
-    return {'mode':'batch', 'analysis_model':'gpt-6.1-sol', 'image_model':'gpt-image-2.5-sunburst',
-            'effort':'medium', 'detail':'high', 'max_output_tokens':16000,
+def config(paper=None, pdf_path=None):
+    result = {'mode':'batch', 'analysis_model':'gpt-6.1-sol', 'image_model':'gpt-image-2.5-sunburst',
+            'effort':'medium', 'detail':'high', 'max_output_tokens':32000,
             'size':'2048x1152', 'quality':'high', 'format':'png',
             'review_version':'fulltext-v4', 'image_generation_mode':'manual_web',
             'image_prompt_hash':digest(PROMPT.read_bytes()),
             'image_prompt_text':PROMPT.read_text(),
             'rates':RATES}
+    if paper is not None and pdf_path is not None:
+        from .token_policy import source_output_budget
+        result.update(source_output_budget(paper, pdf_path))
+    return result
 
 
 def schema(version='fulltext-v3'):
@@ -162,7 +166,7 @@ class Batches:
                 continue
             # Configuration changes do not silently regenerate existing work.
             if not self.store.rows('SELECT id FROM revisions WHERE paper_id=?', (paper['id'],)):
-                self.store.revision(paper, sources[0], config())
+                self.store.revision(paper, sources[0], config(paper, self.store.root / sources[0]['path']))
 
     def image_prompt(self, revision):
         cfg = json.loads(revision['config'])
@@ -191,8 +195,12 @@ class Batches:
             tokens = info['text_bytes'] + info['pages'] * 16384 + len(review_prompt(paper,version).encode()) + len(encode(schema(version)).encode())
             if type(cfg.get('counted_input_tokens')) is int:
                 tokens = cfg['counted_input_tokens']
-            if tokens > 272000:
+            reviewed = cfg.get('long_input_reviewed')
+            reviewed_source = isinstance(reviewed, dict) and reviewed.get('source_hash') == source['hash']
+            if tokens > 272000 and not (reviewed_source and type(cfg.get('counted_input_tokens')) is int):
                 raise ValueError('長文料金域のPDFは自動投入しません。原本の分割/対象指定を確認してください。')
+            if tokens > 922000:
+                raise ValueError('モデルの入力上限を超えています。原本の分割/対象指定を確認してください。')
             estimate = self.analysis_reserve(tokens, cfg)
         else:
             if not self.allow_image_api or cfg.get('image_generation_mode') != 'api':
@@ -206,8 +214,9 @@ class Batches:
     @staticmethod
     def analysis_reserve(tokens, cfg):
         # Allow for a 30-minute cache write of every input token, plus output cap and margin.
-        return round((tokens * cfg['rates']['analysis_input'] * 1.25 +
-                      cfg['max_output_tokens'] * cfg['rates']['analysis_output']) / 1e6 * 1.5, 6)
+        long_input = tokens > 272000
+        return round((tokens * cfg['rates']['analysis_input'] * 1.25 * (2 if long_input else 1) +
+                      cfg['max_output_tokens'] * cfg['rates']['analysis_output'] * (1.5 if long_input else 1)) / 1e6 * 1.5, 6)
 
     def request_body(self, revision, stage):
         cfg = json.loads(revision['config'])
@@ -338,7 +347,8 @@ class Batches:
                 return None
             plain = usage['input_tokens'] - cached - written
             input_cost = (plain + cached * .05 + written * 1.25) * rates['analysis_input']
-            return (input_cost + usage['output_tokens']*rates['analysis_output'])/1e6
+            long_input = usage['input_tokens'] > 272000
+            return (input_cost * (2 if long_input else 1) + usage['output_tokens']*rates['analysis_output'] * (1.5 if long_input else 1))/1e6
         details = usage.get('input_tokens_details', {})
         if not isinstance(details,dict) or not all(isinstance(details.get(k),int) and details[k]>=0 for k in ('text_tokens','image_tokens')):
             return None

@@ -129,8 +129,12 @@ class Dashboard:
                 web_topics.append({'id':g['id'],'topic':g['topic_id'],'title':title,'revision':r['id'],'json_hash':g['json_hash']})
             cfg=json.loads(r['config']) if r else {}
             tokens=cfg.get('counted_input_tokens')
-            estimate=Batches.analysis_reserve(tokens,cfg) if target and type(tokens) is int and tokens<=272000 else None
-            estimate_note='長文入力のためAPI自動投入対象外。WebでのJSON作成を利用できます' if type(tokens) is int and tokens>272000 else '未計測・送信前に確認'
+            estimate=Batches.analysis_reserve(tokens,cfg) if target and type(tokens) is int and (tokens<=272000 or cfg.get('long_input_reviewed')) else None
+            estimate_note='長文入力のためAPI自動投入対象外。WebでのJSON作成を利用できます' if type(tokens) is int and tokens>272000 and not cfg.get('long_input_reviewed') else '未計測・送信前に確認'
+            if cfg.get('max_output_tokens'):
+                if type(tokens) is int and (tokens<=272000 or cfg.get('long_input_reviewed')):
+                    estimate_note='入力計測済み' + ('・長文割増込み' if tokens>272000 else '')
+                estimate_note += f"／出力上限{cfg['max_output_tokens']:,}トークン（{cfg.get('output_budget_reason','保存済み設定')}）"
             origin='API利用時はBatch'
             if cfg.get('mode')=='web_import': origin='ChatGPT Web'
             elif cfg.get('mode')=='direct': origin='通常API（過去の処理）'
@@ -142,6 +146,7 @@ class Dashboard:
             rows.append({'web_topics':web_topics,'pmid':p['pmid'] or p['id'],'title':p['title'],'access':LABELS.get(p['access'],p['access']),
                          'web_available':p['access']=='available' and not p['blocker'] and p['disposition']=='active' and not p['legacy'],
                          'analysis_origin':origin,'batch_estimate_note':estimate_note,'has_json':bool(r and r['summary']),
+                         'output_token_limit':cfg.get('max_output_tokens') if cfg.get('mode')=='batch' else None,
                          'batch_reserve':estimate,
                          'category':category,'json_target':target,'unsearched':unsearched,
                          'progress':LABELS.get(r['status'],r['status']) if r else ('JSON作成待ち' if target else 'PDF取得待ち'),

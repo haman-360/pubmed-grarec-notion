@@ -474,7 +474,7 @@ def dispatch(store,args):
         store.update('papers',paper['id'],legacy=0,blocker='')
         with store.db:
             store.db.execute("UPDATE revisions SET status='superseded' WHERE paper_id=? AND status IN ('analysis_ready','image_ready','budget_wait','quality_wait','review_required','notion_ready','READY_FOR_WEB','IMAGE_REVIEW_REQUIRED','IMAGE_REJECTED','structure_review_required')",(paper['id'],))
-        cfg = config()
+        cfg = config(paper, store.root/source['path'])
         cfg['image_generation_mode'] = args.image_generation_mode
         if summary:
             old_data = json.loads((store.root/summary).read_text())
