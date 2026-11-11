@@ -20,6 +20,7 @@ class Application:
     def __init__(self, repo, root):
         self.dashboard=Dashboard(repo,root); self.token=secrets.token_urlsafe(32)
         self.mutex=threading.Lock(); self.busy=False; self.message='準備できました。'; self.auto_collect=False
+        self.remote_sync='共有設定なし'
         self.refresh()
     def refresh(self):
         store=Store(self.dashboard.root)
@@ -59,6 +60,21 @@ class Application:
                 try: self.start('collect',{})
                 except ValueError: pass
 
+    def sync_status_once(self):
+        if not (self.dashboard.repo/'.remote_status/config.json').is_file():
+            return
+        from paper_pipeline.remote_status import sync_once
+        try:
+            if sync_once(self.dashboard.repo): self.remote_sync='状況共有：同期済み'
+        except Exception:
+            self.remote_sync='状況共有：接続できません（約1分後に再試行）'
+
+    def sync_status(self):
+        # A separate thread keeps network/notification retries off the collection path.
+        while True:
+            self.sync_status_once()
+            time.sleep(60)
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self,*args): pass
     def reply(self,status,body,kind='application/json'):
@@ -82,7 +98,7 @@ class Handler(BaseHTTPRequestHandler):
                         with store.lock(): app.state=app.dashboard.snapshot(store)
                     except ValueError: pass
                     finally: store.close()
-            return self.reply(200,json.dumps(dict(app.state,busy=app.busy,message=app.message,auto_collect=app.auto_collect),ensure_ascii=False))
+            return self.reply(200,json.dumps(dict(app.state,busy=app.busy,message=app.message,auto_collect=app.auto_collect,remote_sync=app.remote_sync),ensure_ascii=False))
         self.reply(403,'{}')
     def do_POST(self):
         if not self.allowed() or self.path!='/api/action': return self.reply(403,'{}')
@@ -100,5 +116,6 @@ if __name__=='__main__':
     app=Application(REPO,select_state_dir(REPO,os.getenv('PAPER_PIPELINE_HOME')))
     server=ThreadingHTTPServer(('127.0.0.1',0),Handler); server.app=app
     threading.Thread(target=app.poll,daemon=True).start()
+    threading.Thread(target=app.sync_status,daemon=True).start()
     print(f'http://127.0.0.1:{server.server_port}/?token={app.token}',flush=True)
     server.serve_forever()

@@ -413,7 +413,10 @@ class Batches:
                 graphics = active_graphics(self.store, revision['id'])
                 if len(graphics) == 1:
                     import_image(self.store, updated, graphics[0]['topic_id'], self.store.root/path)
-            self.store.update('attempts',attempt['id'],status='completed')
+            details = json.loads(attempt['details'])
+            if attempt['stage'] == 'analysis':
+                details['saved_at'] = now()
+            self.store.update('attempts',attempt['id'],status='completed',details=encode(details))
             if cost is None:
                 self.store.update('revisions',revision['id'],error='usage不明：費用予約を保持しています')
         except Exception as error:

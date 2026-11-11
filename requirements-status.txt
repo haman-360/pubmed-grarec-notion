@@ -1,0 +1,2 @@
+# Optional: standard encrypted Web Push for iPhone / iPad / Mac notifications.
+pywebpush>=2.0,<3

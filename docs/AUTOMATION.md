@@ -509,3 +509,12 @@ PNGの形式・寸法が正しくても、内容がグラレコとして採用�
 参照：[OpenAIの要求IDによるデバッグ](https://developers.openai.com/api/reference/overview#debugging-requests)。
 
 2026-11-08：PMID 39678704が既存論文DB・既存ギャラリーの表示対象であることを確認。空のGraphic Image欄へ登録済みPNGを設定し、ギャラリーから画像ありで取得できることを確認した。今後の同期も空欄だけを設定するよう修正。既存画像保護・Human Checked保持・同期再実行時の重複防止を含む99テスト成功。
+
+
+## 2026-11-12：端末間の状況共有とJSON保存完了通知
+
+本人専用の[共通画面](https://pubmed-progress-thama.fairkayak3.chatgpt.site)を追加。Macアプリ稼働中に約1分ごとに件数・更新日時を共有し、API精読JSONの回収・保存完了を登録端末へ標準Web Pushで通知します。既存台帳を読み取り専用で集計し、初回は過去完了分を通知しません。通信障害時は送信待ち記録を保持します。
+
+有料通知サービス・新規AI呼び出しは追加していません。MacのDocuments保護でLaunchAgent方式は実行できなかったため解除し、既存アプリ内の別スレッドで動作させます。アプリ終了・スリープ中は共有・送信が止まります。既存の回収・承認・Notion登録の手順は維持します。
+
+Python 149テスト、サイト6テスト成功。画面の390px・1024px幅、実データ同期、Macアプリの同期済み表示を確認しました。iPhone・iPadの通知登録・実機到達は利用者側で確認が必要です。手順・停止・復旧は [STATUS_SHARING.md](STATUS_SHARING.md) を参照してください。

@@ -20,6 +20,12 @@ PMIDから論文本文を取得し、精読JSONを作り、**ChatGPT Webで自�
 
 確認後にPNG・JSONが変わった場合は再確認が必要です。画像を保存しただけでは自動承認しません。予算更新も画面内で行えますが、現在の品質停止は解除しません。旧メニューが必要な場合は `.venv/bin/python scripts/process_papers.py menu` で開けます。
 
+## 他のMac・iPhone・iPadで状況を確認する
+
+**[共通の状況画面](https://pubmed-progress-thama.fairkayak3.chatgpt.site)** を同じChatGPTアカウントで開きます。自宅Macのアプリを開いている間、登録件数・進捗・最新のJSON保存完了を約1分ごとに共有します。iPhone・iPadはSafariからホーム画面へ追加し、画面の「通知を有効にする」で保存完了通知を受け取れます。
+
+処理担当は自宅Mac 1台です。別の端末へのPDF・JSON・台帳の複製は行いません。Macのスリープ中は最後の状況を表示し、同期と通知は復帰後です。**JSONの自動回収には従来どおりアプリを開いて自動回収をオンにしておく必要があります。** 詳細・停止方法・通知の確認は [状況共有の説明](docs/STATUS_SHARING.md) を参照してください。
+
 ## 急ぐ場合：JSONもChatGPT Webで作る
 
 APIの結果を待たず、WebでJSONから作る経路も利用できます。アプリのAPIキーは使いません。

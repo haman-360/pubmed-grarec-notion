@@ -158,6 +158,7 @@ class HybridTests(unittest.TestCase):
                 'usage':{'input_tokens':10,'output_tokens':10}}
         runner.accept(self.store.one('attempts','a'),{'response':{'status_code':200,'body':body}})
         self.assertEqual(self.store.one('revisions',revision['id'])['status'],'READY_FOR_WEB')
+        self.assertTrue(json.loads(self.store.one('attempts','a')['details'])['saved_at'])
         runner.submit()
         self.assertEqual(api.posts,0)
         self.assertEqual(len(self.store.rows('SELECT * FROM attempts')),1)

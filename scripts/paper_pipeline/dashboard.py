@@ -167,6 +167,9 @@ class Dashboard:
                 'budget_end':budget.get('end','未設定')}
 
     def run(self, action, data, store):
+        if action=='remote-status':
+            subprocess.run(['open','https://pubmed-progress-thama.fairkayak3.chatgpt.site'],check=True)
+            return '共通の状況画面を開きました。同じChatGPTアカウントでサインインしてください。'
         if action=='add':
             ids=[v.strip() for v in data.get('pmids','').splitlines() if v.strip() and not v.lstrip().startswith('#')]
             if not ids or any(not re.fullmatch(r'[1-9]\d{0,8}',v) for v in ids): raise ValueError('PMIDを1行1件の数字で入力してください')

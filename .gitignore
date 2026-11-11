@@ -14,3 +14,4 @@ output/*
 .env
 /PubMed-grareko-notion.app/
 /input/web_images/
+/.remote_status/
