@@ -1,4 +1,4 @@
-"""Loopback desktop UI for the manual OneDrive workflow. No external requests."""
+"""Manual OneDrive desktop UI with aggregate reporting to the private status site."""
 import json
 import secrets
 import subprocess
@@ -7,6 +7,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from paper_pipeline.manual import Workspace, STAGES, local_settings, save_settings, suggested_root, pmid_value
+from paper_pipeline.manual_status import StatusReporter
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -23,6 +24,7 @@ class Application:
         self.message = '手動ワークフロー。保存したファイルの状態を記録します。'
         self.scan_errors = []
         self.state = {}
+        self.reporter = StatusReporter(repo)
         self.refresh(scan=True)
 
     def workspace(self):
@@ -49,6 +51,7 @@ class Application:
                     row['note'] = '\n'.join([row['note'], *errors])
             workspace.export_view(state)
             self.state = dict(base, **{k: v for k, v in state.items() if k not in base})
+            self.reporter.submit(self.state)
         except Exception as error:
             self.state = dict(base, papers=[], counts=dict(total=0, **{k: 0 for k in STAGES}), errors=[str(error)])
 
@@ -163,7 +166,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(200, (REPO / 'scripts/dashboard.html').read_text().replace('__TOKEN__', app.token), 'text/html')
         if self.path == '/api/state' and self.allowed():
             with app.mutex:
-                return self.reply(200, json.dumps(dict(app.state, busy=app.busy, message=app.message), ensure_ascii=False))
+                return self.reply(200, json.dumps(dict(app.state, busy=app.busy, message=app.message,
+                                                       sharing=app.reporter.status()), ensure_ascii=False))
         self.reply(403, '{}')
 
     def do_POST(self):
@@ -186,5 +190,6 @@ if __name__ == '__main__':
     server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
     server.app = app
     threading.Thread(target=app.watch, daemon=True).start()
+    threading.Thread(target=app.reporter.watch, daemon=True).start()
     print(f'http://127.0.0.1:{server.server_port}/?token={app.token}', flush=True)
     server.serve_forever()

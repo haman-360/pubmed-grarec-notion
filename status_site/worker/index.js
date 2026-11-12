@@ -1,4 +1,6 @@
 const categories=['missing_pdf','json_pending','json_running','web_pending','completed','attention'];
+const manualCategories=['missing_pdf','json_pending','web_pending','review_pending','completed','attention'];
+const manual=x=>x.workflow==='manual-onedrive-v1';
 const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
 const asset=(body,type)=>new Response(body,{headers:{'Content-Type':type,'Cache-Control':'no-cache','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; worker-src 'self'; frame-ancestors 'none'"}});
 export function validSubscription(sub){
@@ -15,10 +17,12 @@ export function validSubscription(sub){
 }
 function timestamp(x){return typeof x==='string' && x.length<=40 && Number.isFinite(Date.parse(x));}
 export function validSnapshot(x,id){
+  const keys=x&&manual(x)?manualCategories:categories;
   return x && x.source_id===id && typeof x.device_name==='string' && x.device_name.length<=80 &&
+    (x.workflow===undefined || manual(x)) &&
     timestamp(x.observed_at) && typeof x.busy==='boolean' && x.counts &&
-    ['total',...categories].every(k=>Number.isSafeInteger(x.counts[k])&&x.counts[k]>=0&&x.counts[k]<=1000000) &&
-    categories.reduce((n,k)=>n+x.counts[k],0)===x.counts.total &&
+    ['total',...keys].every(k=>Number.isSafeInteger(x.counts[k])&&x.counts[k]>=0&&x.counts[k]<=1000000) &&
+    keys.reduce((n,k)=>n+x.counts[k],0)===x.counts.total &&
     (!x.last_event || (typeof x.last_event.id==='string' && /^[a-f0-9]{64}$/.test(x.last_event.id) && timestamp(x.last_event.at) && Number.isSafeInteger(x.last_event.count) && x.last_event.count>0 && x.last_event.count<=1000000));
 }
 async function hash(s){return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s))),b=>b.toString(16).padStart(2,'0')).join('');}
@@ -42,8 +46,11 @@ export default {async fetch(request,env){
     if(!writer)return json({error:'送信専用認証が必要です'},403);
     const x=await body();if(!validSnapshot(x,env.REPORTER_ID))return json({error:'状況データが不正です'},400);
     // Allowlist the payload: never persist paper contents, local paths, or credentials.
-    const safe={source_id:x.source_id,device_name:x.device_name,observed_at:x.observed_at,busy:x.busy,counts:Object.fromEntries(['total',...categories].map(k=>[k,x.counts[k]])),last_event:x.last_event?{id:x.last_event.id,at:x.last_event.at,count:x.last_event.count}:null};
-    await env.DB.prepare('INSERT INTO snapshots(id,payload,received_at) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload,received_at=excluded.received_at WHERE json_extract(excluded.payload,\'$.observed_at\') > json_extract(snapshots.payload,\'$.observed_at\')').bind(env.REPORTER_ID,JSON.stringify(safe),new Date().toISOString()).run();
+    const keys=manual(x)?manualCategories:categories;
+    const safe={...(manual(x)?{workflow:x.workflow}:{}),source_id:x.source_id,device_name:x.device_name,observed_at:x.observed_at,busy:x.busy,counts:Object.fromEntries(['total',...keys].map(k=>[k,x.counts[k]])),last_event:x.last_event?{id:x.last_event.id,at:x.last_event.at,count:x.last_event.count}:null};
+    const current=await env.DB.prepare('SELECT payload FROM snapshots WHERE id=?').bind(env.REPORTER_ID).first();
+    if(current && manual(JSON.parse(current.payload)) && !manual(x))return json({error:'旧版からの更新は停止しています'},409);
+    await env.DB.prepare('INSERT INTO snapshots(id,payload,received_at) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload,received_at=excluded.received_at WHERE json_extract(excluded.payload,\'$.observed_at\') > json_extract(snapshots.payload,\'$.observed_at\') AND (coalesce(json_extract(excluded.payload,\'$.workflow\'),\'\')=\'manual-onedrive-v1\' OR coalesce(json_extract(snapshots.payload,\'$.workflow\'),\'\')!=\'manual-onedrive-v1\')').bind(env.REPORTER_ID,JSON.stringify(safe),new Date().toISOString()).run();
     return json({ok:true});
   }
   if(path==='/api/subscriptions' && request.method==='GET'){

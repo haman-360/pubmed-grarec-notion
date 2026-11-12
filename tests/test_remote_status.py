@@ -105,7 +105,7 @@ class PushEncryptionTests(unittest.TestCase):
             self.assertNotIn('OAI-Sites-Authorization',call['headers'])
 
 class AppSyncTests(unittest.TestCase):
-    def test_app_no_longer_has_token_based_sync_or_collection(self):
+    def test_app_has_no_old_ledger_sync_or_collection(self):
         from grarec_app import Application
         self.assertFalse(hasattr(Application, 'sync_status_once'))
         self.assertFalse(hasattr(Application, 'sync_status'))
