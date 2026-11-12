@@ -349,6 +349,12 @@ class Workspace:
         lines = [f'確認端末: {self.device_name}', f'この端末での記録日時: {at}',
                  'OneDriveへのアップロード完了を表す時刻ではありません。',
                  'Mac停止中は最後に同期された記録です。ファイル本体は papers/ を開いてください。', '']
+        counts = snapshot['counts']
+        lines.append('登録総数: ' + str(counts['total']) + '本')
+        lines.extend(f'{label}: {counts[key]}本' for key, label in STAGES.items())
+        pending = snapshot.get('intake', {}).get('pending_files', 0)
+        lines.extend([f'取り込み待ち: {pending}ファイル（工程の件数には未反映）',
+                      '00_取り込み待ちへ保存し、Macの「取り込み・整理」を実行してください。', ''])
         table = []
         for row in snapshot['papers']:
             lines.extend([f"PMID {row['pmid']}  {row['title']}", STAGES[row['category']],
@@ -368,6 +374,7 @@ class Workspace:
             '<style>body{font:15px system-ui;padding:20px;background:#f3f5f8}td,th{padding:12px;border-bottom:1px solid #ccc;text-align:left}table{background:white;width:100%}a{overflow-wrap:anywhere}</style>'
             '<h1>PubMed 進捗</h1><p>' + html.escape(self.device_name + ' / ' + at) +
             '</p><p>最後に記録された状況。OneDriveの同期完了を確認して端末を切り替えてください。</p>'
+            '<p>登録総数: ' + str(counts['total']) + '本 ／ 取り込み待ち: ' + str(pending) + 'ファイル（集計時点）</p>'
             '<div style="overflow:auto"><table><tr><th>PMID</th><th>論文</th><th>工程</th><th>更新</th><th>ファイル</th></tr>' + ''.join(table) + '</table></div></html>')
 
     def json_prompt(self, pmid, data=None):

@@ -8,6 +8,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from paper_pipeline.manual import Workspace, STAGES, local_settings, save_settings, suggested_root, pmid_value
 from paper_pipeline.manual_status import StatusReporter
+from paper_pipeline.intake import (PENDING, ARCHIVE, ensure_folders, inventory, organize,
+                                   parse_pmids, result_message, workspace_lock)
+from paper_pipeline.store import now
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -21,7 +24,8 @@ class Application:
         self.token = secrets.token_urlsafe(32)
         self.mutex = threading.Lock()
         self.busy = False
-        self.message = '手動ワークフロー。保存したファイルの状態を記録します。'
+        self.message = '共通の取り込み待ちに保存し、「取り込み・整理」でまとめて進められます。'
+        self.intake_result = None
         self.scan_errors = []
         self.state = {}
         self.reporter = StatusReporter(repo)
@@ -33,13 +37,28 @@ class Application:
         return Workspace(self.settings['shared_root'], self.settings['device_id'], self.settings['device_name'])
 
     def refresh(self, scan=False):
+        if self.settings['shared_root']:
+            try:
+                workspace = self.workspace()
+            except (ValueError, OSError):
+                return self._refresh(scan)
+            with workspace_lock(workspace):
+                return self._refresh(scan)
+        return self._refresh(scan)
+
+    def _refresh(self, scan=False):
         base = dict(configured=bool(self.settings['shared_root']), suggestion=suggested_root(),
                     device=self.settings['device_name'], root=self.settings['shared_root'])
         try:
             workspace = self.workspace()
+            ensure_folders(workspace)
             if scan:
                 _, self.scan_errors = workspace.scan()
             state = workspace.snapshot()
+            state['intake'] = inventory(workspace)
+            result_path = workspace.path('状況/' + workspace.device_id + '/取り込み結果.json')
+            if result_path.is_file():
+                self.intake_result = json.loads(result_path.read_text())
             state['errors'] += self.scan_errors
             for row in state['papers']:
                 errors = [e for e in self.scan_errors if e.startswith('PMID ' + row['pmid'] + ':')]
@@ -51,11 +70,18 @@ class Application:
                     row['note'] = '\n'.join([row['note'], *errors])
             workspace.export_view(state)
             self.state = dict(base, **{k: v for k, v in state.items() if k not in base})
+            self.state.update(observed_at=now(), intake_result=self.intake_result)
             self.reporter.submit(self.state)
         except Exception as error:
             self.state = dict(base, papers=[], counts=dict(total=0, **{k: 0 for k in STAGES}), errors=[str(error)])
 
     def run(self, action, data):
+        if action != 'configure' and self.settings['shared_root']:
+            with workspace_lock(self.workspace()):
+                return self._run(action, data)
+        return self._run(action, data)
+
+    def _run(self, action, data):
         if action == 'configure':
             value = data.get('root', '').strip()
             if not value or not Path(value).expanduser().is_absolute():
@@ -68,17 +94,25 @@ class Application:
             save_settings(self.repo, self.settings)
             return '共有フォルダを設定しました。OneDrive標準アプリで同期します。'
         workspace = self.workspace()
+        if action == 'organize':
+            self.intake_result = organize(workspace)
+            return result_message(self.intake_result)
+        if action in ('intake-folder', 'archive-folder'):
+            ensure_folders(workspace)
+            folder = workspace.path(PENDING if action == 'intake-folder' else ARCHIVE)
+            subprocess.run(['open', str(folder)], check=True)
+            return '取り込み待ちを開きました。' if action == 'intake-folder' else '取り込み済みを開きました。'
         if action == 'refresh':
             return '保存フォルダと進捗記録を確認しました。OneDriveのアップロード状況はOneDriveアプリで確認してください。'
         if action == 'add':
-            ids = list(dict.fromkeys(x.strip() for x in data.get('pmids', '').splitlines() if x.strip()))
+            ids = parse_pmids(data.get('pmids', ''))
             if not ids:
                 raise ValueError('PMIDを入力してください')
             for pmid in ids:
                 pmid_value(pmid)
             for pmid in ids:
                 workspace.add(pmid)
-            return f'{len(ids)}件のPMIDを登録しました。PDFを各論文の受け渡し/PDFに保存してください。'
+            return f'{len(ids)}件のPMIDを登録しました。取り込み待ちのPMID_番号フォルダへファイルを保存できます。'
         if action == 'migrate':
             from paper_pipeline.manual_migration import migrate
             from paper_pipeline.workspace import select_state_dir
