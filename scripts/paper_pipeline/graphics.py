@@ -76,6 +76,10 @@ Originalは原則singleだが独立した複数研究は分割可。テーマ数
 topicsは画像1枚単位。topic_idはmainやsafetyなど英小文字・数字・ハイフン/アンダースコア、overviewは予約語。
 result_indicesとrecommendation_indicesは0始まり。全結果・全声明を少なくとも1テーマに割り当て、条件や例外を分離しない。
 全テーマにsource_sectionsを記録。推奨のevidence_referencesに位置と短い原文、結果はresult_evidenceで追跡。
+先にdocument_structureへ参照する全ての章・小節・図・表を登録する。source_sectionsの各文字列は登録済みsection_idと完全一致させる。
+小節を親節にまとめた場合は登録済みの親節IDを使う。図表を直接参照する場合は図表自体のID・タイトル・PDFページも登録する。
+最終出力前に全テーマのresult_indicesの和集合が0〜main_results件数-1、recommendation_indicesの和集合が0〜recommendations件数-1を欠番なく含むことを確認する。
+各参照IDの実在・完全一致とインデックスの範囲を再確認する。推奨本文が存在するだけでは割り当て完了ではない。未割り当てを関連テーマへ対応付け、条件・例外ごと保持する。
 Practice ChangeのYes/No/Unclearの意味は変えず、論文全体で評価できない場合はnull、テーマ単位で評価。
 不確かな分類はother_unknown。確認できない出典は「未確認」。出力不足で切り捨てず未完了として扱う。
 '''
@@ -108,7 +112,8 @@ def validate_master(master):
                 raise ValueError('結果・声明の参照が不正です')
             indices.extend(selected)
         if set(indices) != set(range(len(values))):
-            raise ValueError('テーマ分割から結果・声明が欠落しています')
+            missing = sorted(set(range(len(values))) - set(indices))
+            raise ValueError(f'テーマ分割から結果・声明が欠落しています：{field} 未割り当て {missing}（0始まり）')
     evidence = master['result_evidence']
     if any(type(e['result_index']) is not int or not 0 <= e['result_index'] < len(master['main_results']) for e in evidence) or {e['result_index'] for e in evidence} != set(range(len(master['main_results']))):
         raise ValueError('結果と根拠が対応していません')
@@ -117,7 +122,8 @@ def validate_master(master):
         raise ValueError('根拠位置・原文は空欄にせず、不明なら未確認と明記してください')
     for topic in topics:
         if not topic['source_sections'] or not set(topic['source_sections']) <= set(sections):
-            raise ValueError('テーマの出典章が不足または不正です')
+            invalid = sorted(set(topic['source_sections']) - set(sections))
+            raise ValueError(f"テーマの出典章が不足または不正です：{topic['topic_id']} 未登録ID {invalid}")
         if not topic['central_message'].strip() or not topic['topic_title'].strip():
             raise ValueError('画像の中心メッセージ・タイトルが必要です')
     for rec in master['recommendations']:

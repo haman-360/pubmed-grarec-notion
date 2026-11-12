@@ -179,19 +179,29 @@ class Workspace:
                 raise ValueError('本文PDFを確認してください')
             # New source invalidates all downstream selections, but old events retain them.
             files = [self.asset(pmid, kind, name, raw)]
+            data.pop('structure_wait', None)
         elif kind == 'json':
             if len(raw) > 8 * 1024 * 1024:
                 raise ValueError('JSONは8MB以下で保存してください')
             master = json.loads(raw.decode('utf-8-sig'))
             if not isinstance(master, dict) or str(master.get('pmid', '')) != pmid:
                 raise ValueError('JSON内のpmidが保存先と一致しません')
-            validate_master(master)
             pdfs = [f for f in files if f['kind'] == 'pdf']
             if not pdfs:
                 raise ValueError('先に本文PDFを登録してください')
             if master.get('source_hash') not in (None, '', pdfs[0]['sha']):
                 raise ValueError('JSONのsource_hashが本文PDFと一致しません')
+            try:
+                validate_master(master)
+            except ValueError as error:
+                # Schema-valid generated JSON is retained as a draft, never as usable graphics.
+                files = [f for f in files if f['kind'] != 'draft']
+                files.append(self.asset(pmid, 'draft', name, raw, basis=pdfs[0]['sha']))
+                data.update(files=files, done=False, structure_wait=str(error),
+                            note='生成済み・構造確認待ち：' + str(error))
+                return self.record(pmid, data, [event['id']])
             files = pdfs + [self.asset(pmid, kind, name, raw, basis=pdfs[0]['sha'])]
+            data.pop('structure_wait', None)
             data['title'] = master.get('title') or data.get('title', '')
             topics = copy.deepcopy(master['topics'])
             if master['visualization_strategy']['include_overview']:
@@ -207,6 +217,8 @@ class Workspace:
                                         encode(content).encode(), topic['topic_id'], digest(raw)))
             data['note'] = 'JSONの形式確認済み。医学的な内容は原文との照合が必要です。'
         else:
+            if data.get('structure_wait'):
+                raise ValueError('生成済み・構造確認待ちです。修正したMaster JSONを先に保存してください')
             topic = Path(name).stem
             graphics = [f for f in files if f['kind'] == 'graphic' and f['topic'] == topic]
             if len(graphics) != 1:
@@ -249,6 +261,8 @@ class Workspace:
                 seen = {(f['kind'], f.get('topic', '') if f['kind'] == 'png' else '', f['sha']) for e in self.events(pmid).values()
                         for f in e['data']['files']}
                 seen.update(tuple(item) for e in self.events(pmid).values() for item in e['data'].get('seen_inputs', []))
+                seen.update(('json', '', f['sha']) for e in self.events(pmid).values()
+                            for f in e['data']['files'] if f['kind'] == 'draft')
                 for kind, suffix in KINDS.items():
                     paths = sorted((self.incoming(pmid) / kind.upper()).glob('*' + suffix))
                     fresh = []
@@ -267,6 +281,8 @@ class Workspace:
         return changed, errors
 
     def category(self, data):
+        if data.get('structure_wait'):
+            return 'attention'
         files = data['files']
         graphics = {f['topic']: f for f in files if f['kind'] == 'graphic'}
         pngs = {f['topic']: f for f in files if f['kind'] == 'png'}
@@ -374,6 +390,8 @@ class Workspace:
     def image_prompt(self, pmid, topic, instruction):
         from .graphics import web_prompt_text
         event = self.current(pmid)
+        if event['data'].get('structure_wait'):
+            raise ValueError('生成済み・構造確認待ちです。修正したMaster JSONを先に保存してください')
         graphic = next((f for f in event['data']['files'] if f['kind'] == 'graphic' and f['topic'] == topic), None)
         if not graphic:
             raise ValueError('画像用JSONがありません')

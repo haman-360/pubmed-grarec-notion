@@ -88,6 +88,33 @@ class ManualTests(unittest.TestCase):
                 self.ws.import_file(PMID, 'json', 'master.json', raw)
         self.assertEqual(self.ws.current(PMID)['id'], before)
 
+    def test_generated_structure_draft_is_retained_blocked_and_repairable(self):
+        self.imported()
+        bad=copy.deepcopy(self.master);bad['topics'][0]['source_sections']=['missing-section']
+        inbox=self.ws.incoming(PMID)/'JSON/master.json'
+        inbox.write_text(encode(bad))
+        self.assertEqual(self.ws.scan(),(1,[]))
+        event=self.ws.current(PMID)
+        self.assertIn('missing-section',event['data']['structure_wait'])
+        self.assertEqual(self.category(),'attention')
+        draft=next(f for f in event['data']['files'] if f['kind']=='draft')
+        self.assertEqual(json.loads(self.ws.read_asset(draft)),bad)
+        with self.assertRaisesRegex(ValueError,'構造確認待ち'):
+            self.ws.image_prompt(PMID,'main','instruction')
+        self.assertEqual(self.ws.scan(),(0,[]))
+        self.master['one_line_summary']='repaired new version'
+        inbox.write_text(encode(self.master))
+        self.assertEqual(self.ws.scan(),(1,[]))
+        self.assertNotIn('structure_wait',self.ws.current(PMID)['data'])
+        self.assertEqual(self.category(),'web_pending')
+        self.assertTrue(self.ws.path(draft['path']).is_file())
+
+    def test_json_prompt_requires_registered_ids_and_complete_assignment(self):
+        self.imported()
+        prompt=self.ws.json_prompt(PMID)
+        self.assertIn('登録済みsection_idと完全一致',prompt)
+        self.assertIn('欠番なく含む',prompt)
+
     def test_concurrent_offline_updates_preserve_both_and_require_explicit_choice(self):
         self.imported()
         other_root = self.root / 'office'

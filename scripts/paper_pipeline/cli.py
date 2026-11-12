@@ -26,7 +26,7 @@ LABELS = {'unsearched':'未調査','manual_candidate':'無料候補あり','free
           'available':'PDF入手済み','search_error':'調査エラー','analysis_ready':'解析待ち','analysis_submitted':'解析中',
           'image_ready':'画像待ち','image_submitted':'画像中','notion_ready':'Notion待ち','completed':'処理済み',
           'budget_wait':'予算待ち','quality_wait':'品質確認待ち','review_required':'要確認',
-          'structure_review_required':'章立て・分割確認待ち','READY_FOR_WEB':'Web画像生成待ち',
+          'structure_review_required':'生成済み・構造確認待ち','READY_FOR_WEB':'Web画像生成待ち',
           'IMAGE_REVIEW_REQUIRED':'画像の確認待ち','IMAGE_REJECTED':'画像却下・再生成待ち'}
 
 

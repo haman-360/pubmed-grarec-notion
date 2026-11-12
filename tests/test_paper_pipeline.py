@@ -208,6 +208,26 @@ class PipelineTests(unittest.TestCase):
         self.runner.prepare_revisions(paper_ids=[b['id']])
         self.assertEqual([r['paper_id'] for r in self.store.rows('SELECT * FROM revisions')],[b['id']])
 
+    def test_completed_api_structure_failure_preserves_draft_without_resubmission(self):
+        from paper_pipeline.graphics import adapt_legacy,master_schema
+        p=self.paper();r=self.revision(p);cfg=json.loads(r['config'])
+        cfg.update(review_version='fulltext-v4',image_generation_mode='manual_web')
+        self.store.update('revisions',r['id'],config=encode(cfg))
+        master=adapt_legacy(sample_summary(p))
+        master={k:master[k] for k in master_schema()['properties']}
+        master['topics'][0]['source_sections']=['unregistered']
+        a=self.store.reserve(self.revision(p),'analysis',.5)
+        body={'status':'completed','output':[{'type':'message','content':[{'type':'output_text','text':encode(master)}]}],
+              'usage':{'input_tokens':100,'output_tokens':100}}
+        self.runner.accept(a,{'response':{'status_code':200,'body':body}})
+        updated=self.revision(p)
+        self.assertEqual(updated['status'],'structure_review_required')
+        self.assertIsNone(updated['summary'])
+        a=self.store.one('attempts',a['id'])
+        self.assertEqual(a['status'],'completed')
+        self.assertEqual(json.loads((self.store.root/json.loads(a['details'])['draft']).read_text()),master)
+        self.assertEqual(self.runner.submit(),0)
+
     def test_output_budget_content_policy_and_saved_work(self):
         from paper_pipeline.token_policy import output_budget
         self.assertEqual(config()['max_output_tokens'],32000)

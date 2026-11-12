@@ -375,9 +375,6 @@ class Batches:
                     raise ValueError('解析結果が未完了です')
                 summary = json.loads(extract_response_text(body))
                 validate(summary,schema(cfg.get('review_version','fulltext-v3')))
-                if cfg.get('review_version') == 'fulltext-v4':
-                    from .graphics import validate_master
-                    validate_master(summary)
                 paper = self.store.one('papers',revision['paper_id'])
                 for key in ('pmid','doi','title'):
                     if str(summary.get(key) or '') != str(paper.get(key) or ''):
@@ -386,6 +383,18 @@ class Batches:
                 for key in ('journal','year'):
                     if metadata.get(key) and str(summary[key]) != str(metadata[key]):
                         raise ValueError('書誌情報不一致: '+key)
+                if cfg.get('review_version') == 'fulltext-v4':
+                    from .graphics import validate_master
+                    draft = 'artifacts/'+revision['id']+'/generated_master.json'
+                    atomic_write(self.store.root/draft, encode(summary))
+                    try:
+                        validate_master(summary)
+                    except ValueError as error:
+                        details = json.loads(attempt['details'])
+                        details.update(generated_at=now(), draft=draft, structure_error=str(error))
+                        self.store.update('attempts',attempt['id'],status='completed',details=encode(details))
+                        self.store.update('revisions',revision['id'],status='structure_review_required',error=str(error)[:500])
+                        return
                 indices = {x['result_index'] for x in summary['result_evidence']}
                 if indices != set(range(len(summary['main_results']))):
                     raise ValueError('主要結果と根拠の対応が不足しています')
