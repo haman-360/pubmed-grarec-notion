@@ -166,7 +166,11 @@ class DashboardTests(unittest.TestCase):
         copy.assert_not_called()
 
     def test_api_requires_token_and_loopback_host(self):
-        app=Application(self.f.repo,self.store.root)
+        from paper_pipeline.manual import Workspace
+        from paper_pipeline.manual_migration import migrate
+        shared=Workspace.create(self.f.repo/'shared', 'a'*32, 'Test Mac')
+        migrate(shared,self.store.root)
+        app=Application(self.f.repo,shared.root)
         server=ThreadingHTTPServer(('127.0.0.1',0),Handler);server.app=app
         thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
         self.addCleanup(server.server_close);self.addCleanup(server.shutdown)

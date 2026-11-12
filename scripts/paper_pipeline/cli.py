@@ -653,4 +653,5 @@ def menu(store):
 
 
 if __name__ == '__main__':
+    raise SystemExit('APIキーによる処理は廃止しました。PubMedGraRecAuto.commandから手動・OneDrive版を開いてください。')
     raise SystemExit(main())

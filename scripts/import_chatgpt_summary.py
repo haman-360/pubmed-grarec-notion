@@ -208,4 +208,5 @@ def remember_notion_page(pmid: Any, page: dict[str, Any]) -> None:
 
 
 if __name__ == "__main__":
+    raise SystemExit('APIキーによる処理は廃止しました。PubMedGraRecAuto.commandから手動・OneDrive版を開いてください。')
     main()

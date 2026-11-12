@@ -36,6 +36,7 @@ def prepare(url, service_token, name):
 
 
 if __name__ == '__main__':
+    raise SystemExit('APIキーによる処理は廃止しました。PubMedGraRecAuto.commandから手動・OneDrive版を開いてください。')
     parser = argparse.ArgumentParser()
     parser.add_argument('--url', default='https://pubmed-progress-thama.fairkayak3.chatgpt.site')
     parser.add_argument('--device-name', default='自宅 MacBook Air')

@@ -6,6 +6,7 @@ from pathlib import Path
 from paper_pipeline.remote_status import sync_once
 
 if __name__ == '__main__':
+    raise SystemExit('APIキーによる処理は廃止しました。PubMedGraRecAuto.commandから手動・OneDrive版を開いてください。')
     parser = argparse.ArgumentParser(description='件数とJSON保存完了を共有します（論文の処理・有料API依頼は行いません）')
     parser.add_argument('--config', type=Path)
     args = parser.parse_args()

@@ -105,18 +105,8 @@ class PushEncryptionTests(unittest.TestCase):
             self.assertNotIn('OAI-Sites-Authorization',call['headers'])
 
 class AppSyncTests(unittest.TestCase):
-    def test_optional_sync_failure_does_not_change_job_state(self):
+    def test_app_no_longer_has_token_based_sync_or_collection(self):
         from grarec_app import Application
-        from types import SimpleNamespace
-        with tempfile.TemporaryDirectory() as tmp:
-            root=Path(tmp); app=Application.__new__(Application)
-            app.dashboard=SimpleNamespace(repo=root);app.busy=True;app.message='回収中';app.remote_sync='共有設定なし'
-            with patch('paper_pipeline.remote_status.sync_once') as sync:
-                app.sync_status_once();sync.assert_not_called()
-                (root/'.remote_status').mkdir();(root/'.remote_status/config.json').write_text('{}')
-                sync.side_effect=RuntimeError('synthetic token must not escape')
-                app.sync_status_once()
-                self.assertTrue(app.busy);self.assertEqual(app.message,'回収中')
-                self.assertNotIn('synthetic',app.remote_sync)
-                sync.side_effect=None;sync.return_value=True;app.sync_status_once()
-                self.assertEqual(app.remote_sync,'状況共有：同期済み')
+        self.assertFalse(hasattr(Application, 'sync_status_once'))
+        self.assertFalse(hasattr(Application, 'sync_status'))
+        self.assertFalse(hasattr(Application, 'poll'))

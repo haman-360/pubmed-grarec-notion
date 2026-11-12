@@ -1,3 +1,5 @@
+> **2026-11-12: この文書は旧方式の記録です。** APIキーによる処理・旧状況サイトへの送信は現行アプリでは廃止しました。現在の手動・OneDrive運用は [README](../README.md) を参照してください。
+
 # ハイブリッド運用：API精読 → Web画像生成 → 承認 → Notion
 
 操作と保存先を最初に確認する場合は [README](../README.md) を参照してください。このページは詳細設定・CLI・試験記録を含みます。旧手動・旧Batch方式の旧READMEは [LEGACY_WORKFLOWS.md](LEGACY_WORKFLOWS.md) に保存しています。
