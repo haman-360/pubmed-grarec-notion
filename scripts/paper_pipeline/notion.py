@@ -18,6 +18,22 @@ def plain(block):
     return ''.join(x.get('plain_text',x.get('text',{}).get('content','')) for x in block.get(block.get('type'),{}).get('rich_text',[]))
 
 
+def content_blocks(summary):
+    from upload_to_notion import chatgpt_summary_children
+    blocks = [{'object':'block','type':'paragraph','paragraph':{'rich_text':rich('画像はローカルで人が承認済み。AI精読全体の確認とは区別します。ページのHuman Checkedは以前の版を指す場合があります。')}}]
+    blocks += chatgpt_summary_children(summary)
+    for rec in summary.get('recommendations', []):
+        text = '\n'.join(f'{k}: {rec[k]}' for k in ('kind','text','population','conditions','exceptions','agreement','evidence_strength'))
+        text += '\n' + '\n'.join(e['location']+' / '+e['supporting_text'] for e in rec['evidence_references'])
+        for start in range(0,len(text),1800):
+            blocks.append({'object':'block','type':'paragraph','paragraph':{'rich_text':rich(text[start:start+1800])}})
+    for index, evidence in enumerate(summary.get('evidence_references', [])):
+        text = f"根拠 {index+1}: {evidence['location']} / {evidence['supporting_text']}"
+        for start in range(0,len(text),1800):
+            blocks.append({'object':'block','type':'paragraph','paragraph':{'rich_text':rich(text[start:start+1800])}})
+    return blocks
+
+
 class NotionAPI:
     def __init__(self, token, session=None):
         if not token:
@@ -49,6 +65,7 @@ class Notion:
         if not self.database_id:
             raise ValueError('NOTION_DATABASE_IDが未設定です')
         database = self.api.call('GET','/databases/'+self.database_id)
+        self.database_title = ''.join(x.get('plain_text', x.get('text',{}).get('content','')) for x in database.get('title',[]))
         sources = database.get('data_sources',[])
         if not self.data_source_id:
             if len(sources) != 1:
@@ -181,7 +198,7 @@ class Notion:
                 raise ValueError('Notionページ作成結果が不明です。重複防止のため再作成を保留します')
             from upload_to_notion import build_chatgpt_summary_payload
             master = json.loads((self.store.root/revision['_master']).read_text())
-            payload = build_chatgpt_summary_payload(master,self.database_id,{'properties':self.properties})
+            payload = build_chatgpt_summary_payload(dict(master, human_checked=False, graphic_url=''),self.database_id,{'properties':self.properties})
             payload['parent'] = {'data_source_id':self.data_source_id}
             payload['children'] = []
             payload['properties']['Automation ID'] = {'rich_text':rich(paper['id'])}
@@ -215,18 +232,7 @@ class Notion:
         section_id = sections[0]['id']
         state['section_id'] = section_id
         self.save(revision,state)
-        from upload_to_notion import chatgpt_summary_children
-        blocks = [{'object':'block','type':'paragraph','paragraph':{'rich_text':rich('画像はローカルで人が承認済み。AI精読全体の確認とは区別します。ページのHuman Checkedは以前の版を指す場合があります。')}}]
-        blocks += chatgpt_summary_children(summary)
-        for rec in summary.get('recommendations', []):
-            text = '\n'.join(f'{k}: {rec[k]}' for k in ('kind','text','population','conditions','exceptions','agreement','evidence_strength'))
-            text += '\n' + '\n'.join(e['location']+' / '+e['supporting_text'] for e in rec['evidence_references'])
-            for start in range(0,len(text),1800):
-                blocks.append({'object':'block','type':'paragraph','paragraph':{'rich_text':rich(text[start:start+1800])}})
-        for index, evidence in enumerate(summary.get('evidence_references', [])):
-            text = f"根拠 {index+1}: {evidence['location']} / {evidence['supporting_text']}"
-            for start in range(0,len(text),1800):
-                blocks.append({'object':'block','type':'paragraph','paragraph':{'rich_text':rich(text[start:start+1800])}})
+        blocks = content_blocks(summary)
         existing = self.children(section_id)
         # Compare deterministic textual prefix. User edits are never overwritten.
         for index,block in enumerate(blocks):

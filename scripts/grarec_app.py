@@ -6,6 +6,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 from paper_pipeline.manual import Workspace, STAGES, local_settings, save_settings, suggested_root, pmid_value
 from paper_pipeline.manual_status import StatusReporter
 from paper_pipeline.intake import (PENDING, ARCHIVE, ensure_folders, inventory, organize,
@@ -65,6 +66,8 @@ class Application:
             state['pdf_result'] = json.loads(pdf_path.read_text()) if pdf_path.is_file() else None
             from paper_pipeline.json_batch import status as json_status
             state['json_batch'] = json_status(self.repo, workspace)
+            from paper_pipeline.notion_sync import status as notion_status
+            state['notion_sync'] = notion_status(self.repo, workspace)
             state['errors'] += self.scan_errors
             for row in state['papers']:
                 errors = [e for e in self.scan_errors if e.startswith('PMID ' + row['pmid'] + ':')]
@@ -82,7 +85,7 @@ class Application:
             self.state = dict(base, papers=[], counts=dict(total=0, **{k: 0 for k in STAGES}), errors=[str(error)])
 
     def run(self, action, data):
-        if action not in ('configure', 'fetch-pdfs', 'json-budget', 'json-prepare', 'json-send', 'json-collect') and self.settings['shared_root']:
+        if action not in ('configure', 'fetch-pdfs', 'json-budget', 'json-prepare', 'json-send', 'json-collect', 'notion-prepare', 'notion-send') and self.settings['shared_root']:
             with workspace_lock(self.workspace()):
                 return self._run(action, data)
         return self._run(action, data)
@@ -100,6 +103,11 @@ class Application:
             save_settings(self.repo, self.settings)
             return '共有フォルダを設定しました。OneDrive標準アプリで同期します。'
         workspace = self.workspace()
+        if action in ('notion-prepare', 'notion-send'):
+            from paper_pipeline import notion_sync
+            if action == 'notion-prepare':
+                return notion_sync.prepare(self.repo, workspace, data.get('items'))
+            return notion_sync.submit(self.repo, workspace, data)
         if action in ('json-budget', 'json-prepare', 'json-send', 'json-collect'):
             from paper_pipeline import json_batch
             if action == 'json-budget':
@@ -234,9 +242,9 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('Content-Type', kind + '; charset=utf-8')
         self.send_header('Cache-Control', 'no-store')
         self.send_header('X-Content-Type-Options', 'nosniff')
-        self.send_header('Content-Security-Policy', "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'")
+        self.send_header('Content-Security-Policy', "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data: blob:; frame-ancestors 'none'")
         self.end_headers()
-        self.wfile.write(body.encode())
+        self.wfile.write(body if isinstance(body, bytes) else body.encode())
 
     def allowed(self):
         return self.headers.get('Host') == f'127.0.0.1:{self.server.server_port}' and self.headers.get('X-App-Token') == self.server.app.token
@@ -247,6 +255,17 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(403, '{}')
         if self.path == '/?token=' + app.token:
             return self.reply(200, (REPO / 'scripts/dashboard.html').read_text().replace('__TOKEN__', app.token), 'text/html')
+        if urlsplit(self.path).path == '/api/png' and self.allowed():
+            try:
+                query = parse_qs(urlsplit(self.path).query)
+                workspace = app.workspace()
+                with workspace_lock(workspace):
+                    event = workspace.current(query['pmid'][0], [query['head'][0]])
+                    file = next(f for f in event['data']['files'] if f['kind']=='png' and f['sha']==query['sha'][0])
+                    raw = workspace.read_asset(file)
+                return self.reply(200, raw, 'image/png')
+            except (ValueError, KeyError, StopIteration, OSError):
+                return self.reply(409, '{"error":"PNGが変更されたか未同期です。確認し直してください"}')
         if self.path == '/api/state' and self.allowed():
             with app.mutex:
                 return self.reply(200, json.dumps(dict(app.state, busy=app.busy, message=app.message,

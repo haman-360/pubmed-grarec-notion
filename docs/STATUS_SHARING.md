@@ -1,4 +1,4 @@
-> **この文書は旧方式の記録です。** 2026-11-13に現行OneDrive版へJSON Batchの手動送信・回収を接続しました。旧API台帳・旧自動回収・Push通知・Notion自動登録は再開していません。現行の操作は [README](../README.md) を参照してください。
+> **この文書は旧方式の記録です。** 2026-11-13に現行OneDrive版へJSON Batchと、PNG確認後のNotion登録ボタンを接続しました。旧台帳の自動処理・定期回収・Push通知・PNG生成APIは再開していません。現行の操作は [README](../README.md) を参照してください。
 
 # Mac・iPhone・iPadで状況を確認する
 

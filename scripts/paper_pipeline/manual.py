@@ -21,8 +21,8 @@ from .store import atomic_write, digest, encode, now
 
 SCHEMA = 'manual-onedrive-v1'
 STAGES = {'missing_pdf': 'PDF取得待ち', 'json_pending': 'JSON作成待ち',
-          'web_pending': 'PNG作成待ち', 'review_pending': 'PNG確認・手動登録待ち',
-          'completed': '手動登録完了', 'attention': '要確認・競合'}
+          'web_pending': 'PNG作成待ち', 'review_pending': 'PNG確認・登録待ち',
+          'completed': '登録完了', 'attention': '要確認・競合'}
 KINDS = {'pdf': '.pdf', 'json': '.json', 'png': '.png'}
 
 
