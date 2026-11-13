@@ -63,6 +63,8 @@ class Application:
             from paper_pipeline.pdf_download import result_path as pdf_result_path
             pdf_path = pdf_result_path(workspace)
             state['pdf_result'] = json.loads(pdf_path.read_text()) if pdf_path.is_file() else None
+            from paper_pipeline.json_batch import status as json_status
+            state['json_batch'] = json_status(self.repo, workspace)
             state['errors'] += self.scan_errors
             for row in state['papers']:
                 errors = [e for e in self.scan_errors if e.startswith('PMID ' + row['pmid'] + ':')]
@@ -80,7 +82,7 @@ class Application:
             self.state = dict(base, papers=[], counts=dict(total=0, **{k: 0 for k in STAGES}), errors=[str(error)])
 
     def run(self, action, data):
-        if action not in ('configure', 'fetch-pdfs') and self.settings['shared_root']:
+        if action not in ('configure', 'fetch-pdfs', 'json-budget', 'json-prepare', 'json-send', 'json-collect') and self.settings['shared_root']:
             with workspace_lock(self.workspace()):
                 return self._run(action, data)
         return self._run(action, data)
@@ -98,6 +100,21 @@ class Application:
             save_settings(self.repo, self.settings)
             return '共有フォルダを設定しました。OneDrive標準アプリで同期します。'
         workspace = self.workspace()
+        if action in ('json-budget', 'json-prepare', 'json-send', 'json-collect'):
+            from paper_pipeline import json_batch
+            if action == 'json-budget':
+                return json_batch.set_budget(self.repo, workspace, data)
+            if action == 'json-prepare':
+                return json_batch.prepare(self.repo, workspace, data.get('items'))
+            if action == 'json-send':
+                return json_batch.submit(self.repo, workspace, data)
+            return json_batch.collect(self.repo, workspace)
+        if action == 'json-results-folder':
+            folder = workspace.path('API_JSON')
+            if not folder.is_dir():
+                raise ValueError('API処理の記録はまだありません')
+            subprocess.run(['open', str(folder)], check=True)
+            return 'API処理の状況と回収候補の保存先を開きました。'
         if action == 'fetch-pdfs':
             from paper_pipeline.pdf_download import download_selected, result_message as pdf_result_message
             def progress(value):
@@ -175,7 +192,7 @@ class Application:
         if action == 'record':
             workspace.update(pmid, data['heads'], data.get('note', ''), data.get('done') is True, data.get('chosen'))
             return '進捗を記録しました。実ファイルのクラウド同期はOneDriveアプリで確認してください。'
-        raise ValueError('この操作は廃止されました。API処理・自動回収・Notion自動送信は利用しません。')
+        raise ValueError('この旧操作は廃止されました。JSON Batchは専用の作成・回収ボタンを使ってください。')
 
     def start(self, action, data):
         with self.mutex:
