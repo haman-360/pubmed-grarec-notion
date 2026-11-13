@@ -26,6 +26,15 @@ STAGES = {'missing_pdf': 'PDF取得待ち', 'json_pending': 'JSON作成待ち',
 KINDS = {'pdf': '.pdf', 'json': '.json', 'png': '.png'}
 
 
+def png_request(pmid, topic, text):
+    """One attachable request, including the complete source JSON inside its text."""
+    name = f'PMID_{pmid}_{topic}.png'
+    return encode(dict(request_type='png-generation-request-v1', pmid=pmid,
+        topic_id=topic, output_filename=name,
+        instructions=f'このファイルはPNG作成依頼です。以下の依頼文に従い画像を1枚生成してください。'
+        f'通常はPDFの追加添付は不要です。完成画像の保存名は {name} です。\n' + text))
+
+
 def pmid_value(value):
     if not isinstance(value, str) or not re.fullmatch(r'[1-9][0-9]{0,8}', value):
         raise ValueError('PMIDは1〜9桁の数字で指定してください')
@@ -239,14 +248,14 @@ class Workspace:
         files = data['files']
         if not any(f['kind'] == 'pdf' for f in files):
             return
-        files.append(self.asset(pmid, 'prompt', 'JSON作成依頼.txt', self.json_prompt(pmid, data).encode()))
+        files.append(self.asset(pmid, 'prompt', f'PMID_{pmid}_JSON作成依頼_PDF添付.txt', self.json_prompt(pmid, data).encode()))
         instruction = (Path(__file__).resolve().parents[2] / 'prompts/grarec-v2.md').read_text()
         for file in list(files):
             if file['kind'] == 'graphic':
                 text = web_prompt_text({'pmid': pmid, 'title': data.get('title', '')},
                     {'id': file['basis']}, file['topic'], file['sha'], instruction, self.read_asset(file).decode())
-                files.append(self.asset(pmid, 'prompt', file['topic'] + '_PNG作成依頼.txt',
-                                        text.encode(), file['topic'], file['sha']))
+                files.append(self.asset(pmid, 'prompt', f"PMID_{pmid}_{file['topic']}_PNG作成依頼.json",
+                                        png_request(pmid, file['topic'], text).encode(), file['topic'], file['sha']))
 
     def scan(self):
         errors, changed = [], 0
@@ -390,8 +399,13 @@ class Workspace:
         schema['properties']['source_hash'] = {'type': 'string', 'const': pdf['sha']}
         schema['required'].append('source_hash')
         paper = dict(pmid=pmid, title=data.get('title', ''), doi='', metadata='{}')
-        return (review_prompt(paper, 'fulltext-v4') + '\n書誌情報が空欄なら添付PDFから確認してください。'
-                '\n以下のSchemaに従い、JSONをmaster.jsonとして作成してください。PDFが別論文なら停止してください。\n' +
+        return (f'# PMID {pmid}：論文PDFから全文JSONを作成する依頼\n'
+                'この依頼文と対象論文のPDFを一緒に渡してください。この工程の完成物はJSONです。'
+                'PNGはJSONをMacアプリへ取り込んだ後、別のPNG作成依頼で作成します。\n'
+                + review_prompt(paper, 'fulltext-v4') + '\n書誌情報が空欄なら添付PDFから確認してください。'
+                f'\n以下のSchemaに従い、JSONを PMID_{pmid}.json としてダウンロードできるようにしてください。'
+                '完成JSONはOneDriveの00_取り込み待ち直下へ保存し、Macアプリの「取り込み・整理」を押します。'
+                '論文別フォルダの作成は不要です。PDFがない・別論文なら停止してください。\n' +
                 json.dumps(schema, ensure_ascii=False, indent=2))
 
     def image_prompt(self, pmid, topic, instruction):
@@ -402,5 +416,27 @@ class Workspace:
         graphic = next((f for f in event['data']['files'] if f['kind'] == 'graphic' and f['topic'] == topic), None)
         if not graphic:
             raise ValueError('画像用JSONがありません')
-        return web_prompt_text({'pmid': pmid, 'title': event['data']['title']}, {'id': event['id']},
-                               topic, graphic['sha'], instruction, self.read_asset(graphic).decode())
+        return (f'PNG作成の依頼です。画像用データは末尾に含まれています。通常はPDFの再添付は不要です。\n'
+                f'完成PNGの保存名：PMID_{pmid}_{topic}.png。00_取り込み待ち直下へ保存してください。\n'
+                + web_prompt_text({'pmid': pmid, 'title': event['data']['title']}, {'id': graphic['basis']},
+                               topic, graphic['sha'], instruction, self.read_asset(graphic).decode()))
+
+    def request_file(self, pmid, expected, topic=None):
+        """Explicit export also works with old records, without replacing medical data."""
+        event = self.current(pmid, expected)
+        data = copy.deepcopy(event['data'])
+        if topic is None:
+            name = f'PMID_{pmid}_JSON作成依頼_PDF添付.txt'
+            text = self.json_prompt(pmid, data)
+            basis = next(f['sha'] for f in data['files'] if f['kind'] == 'pdf')
+        else:
+            instruction = (Path(__file__).resolve().parents[2] / 'prompts/grarec-v2.md').read_text()
+            text = png_request(pmid, topic, self.image_prompt(pmid, topic, instruction))
+            name = f'PMID_{pmid}_{topic}_PNG作成依頼.json'
+            basis = next(f['sha'] for f in data['files'] if f['kind'] == 'graphic' and f['topic'] == topic)
+        file = self.asset(pmid, 'prompt', name, text.encode(), topic or '', basis)
+        if file not in data['files']:
+            data['files'] = [f for f in data['files'] if not (f['kind'] == 'prompt' and f['name'] == name)]
+            data['files'].append(file)
+            self.record(pmid, data, [event['id']])
+        return file

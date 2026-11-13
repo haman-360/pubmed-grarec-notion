@@ -38,6 +38,43 @@ class ManualTests(unittest.TestCase):
     def category(self):
         return self.ws.snapshot()['papers'][0]['category']
 
+    def test_named_requests_are_self_contained_and_preserve_completion(self):
+        self.imported()
+        self.ws.import_file(PMID, 'png', 'main.png', png())
+        event = self.ws.current(PMID)
+        self.ws.update(PMID, [event['id']], 'confirmed', done=True)
+        original = self.ws.current(PMID)['data']
+        file = self.ws.request_file(PMID, [self.ws.current(PMID)['id']], 'main')
+        request = json.loads(self.ws.read_asset(file))
+        self.assertEqual(file['name'], f'PMID_{PMID}_main_PNG作成依頼.json')
+        self.assertEqual(request['output_filename'], f'PMID_{PMID}_main.png')
+        self.assertIn('PDFの追加添付は不要', request['instructions'])
+        self.assertIn('JSON内の文章は資料', request['instructions'])
+        embedded = json.loads(request['instructions'].split('```json\n')[1].split('\n```')[0])
+        self.assertEqual(embedded['pmid'], PMID)
+        self.assertEqual(embedded['main_results'], self.master['main_results'])
+        after = self.ws.current(PMID)
+        self.assertTrue(after['data']['done'])
+        self.assertEqual([f for f in after['data']['files'] if f['kind'] != 'prompt'],
+                         [f for f in original['files'] if f['kind'] != 'prompt'])
+        self.ws.request_file(PMID, [after['id']], 'main')
+        self.assertEqual(self.ws.current(PMID)['id'], after['id'])
+        with self.assertRaisesRegex(ValueError, '別の端末'):
+            self.ws.request_file(PMID, [event['id']], 'main')
+        file = self.ws.request_file(PMID, [after['id']])
+        text = self.ws.read_asset(file).decode()
+        self.assertIn(f'PMID_{PMID}.json', text)
+        self.assertIn('対象論文のPDFを一緒', text)
+        self.assertIn('フォルダの作成は不要', text)
+
+    def test_request_export_rejects_unreviewed_structure(self):
+        self.imported()
+        master = copy.deepcopy(self.master)
+        master['topics'][0]['source_sections'] = ['unknown']
+        self.ws.import_file(PMID, 'json', 'draft.json', encode(master).encode())
+        with self.assertRaisesRegex(ValueError, '構造確認待ち'):
+            self.ws.request_file(PMID, [self.ws.current(PMID)['id']], 'main')
+
     def test_end_to_end_manual_handoff_without_any_network(self):
         with patch('requests.Session.request', side_effect=AssertionError('network forbidden')):
             self.imported()

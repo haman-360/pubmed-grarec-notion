@@ -97,6 +97,8 @@ def _identify(path, root, raw):
         value = json.loads(raw.decode('utf-8-sig'))
         if not isinstance(value, dict):
             raise ValueError('Master JSONを保存してください')
+        if value.get('request_type') == 'png-generation-request-v1':
+            raise ValueError('これはPNG作成依頼です。Webへ渡し、完成したPNGをここに保存してください')
         ids.add(pmid_value(str(value.get('pmid', ''))))
     if len(ids) > 1:
         raise ValueError('フォルダ名・ファイル名・JSONのPMIDが一致しません')

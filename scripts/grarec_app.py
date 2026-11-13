@@ -169,7 +169,7 @@ class Application:
                 pmid_value(pmid)
             for pmid in ids:
                 workspace.add(pmid)
-            return f'{len(ids)}件のPMIDを登録しました。取り込み待ちのPMID_番号フォルダへファイルを保存できます。'
+            return f'{len(ids)}件のPMIDを登録しました。PMID付きのファイルを00_取り込み待ち直下へ保存できます。'
         if action == 'migrate':
             from paper_pipeline.manual_migration import migrate
             from paper_pipeline.workspace import select_state_dir
@@ -191,12 +191,19 @@ class Application:
             workspace.read_asset(file)
             subprocess.run(['open', str(workspace.path(file['path']))], check=True)
             return 'ファイルを開きました。'
+        if action in ('export-json-request', 'export-image-request'):
+            file = workspace.request_file(pmid, data['heads'],
+                data['topic'] if action == 'export-image-request' else None)
+            subprocess.run(['open', '-R', str(workspace.path(file['path']))], check=True)
+            help_text = 'このJSONファイル1個をWebへ添付してください。画像用データと依頼文が入っています。' if action == 'export-image-request' else 'このTXTと対象論文のPDFをWebへ添付してください。完成物は全文JSONです。'
+            return file['name'] + ' の場所を開きました。' + help_text
         if action in ('copy-json', 'copy-image'):
             workspace.current(pmid, data['heads'])
             text = workspace.json_prompt(pmid) if action == 'copy-json' else workspace.image_prompt(
                 pmid, data['topic'], (self.repo / 'prompts/grarec-v2.md').read_text())
             subprocess.run(['/usr/bin/pbcopy'], input=text.encode(), check=True)
-            return f'コピーしました：PMID {pmid}。ChatGPT Webに貼り付けてください。'
+            help_text = f'対象論文のPDFも添付してください。完成JSONは PMID_{pmid}.json で保存します。' if action == 'copy-json' else f'画像用データも含みます。通常PDF添付は不要です。完成PNGは PMID_{pmid}_{data["topic"]}.png で保存します。'
+            return f'コピーしました：PMID {pmid}。ChatGPT Webに貼り付けてください。' + help_text
         if action == 'record':
             workspace.update(pmid, data['heads'], data.get('note', ''), data.get('done') is True, data.get('chosen'))
             return '進捗を記録しました。実ファイルのクラウド同期はOneDriveアプリで確認してください。'

@@ -107,6 +107,38 @@ class IntakeTests(unittest.TestCase):
         self.assertFalse(organize(self.ws)['errors'])
         self.assertEqual(self.stage(), 'review_pending')
 
+    def test_multiple_papers_named_json_go_directly_in_flat_inbox(self):
+        for pmid, name in ((PMID, f'PMID_{PMID}.json'), ('90000002', '90000002_master.json')):
+            self.ws.add(pmid)
+            self.ws.import_file(pmid, 'pdf', 'source.pdf', self.pdf)
+            self.write(name, encode(dict(self.master, pmid=pmid)))
+        result = organize(self.ws)
+        self.assertEqual(result['errors'], [])
+        self.assertEqual(result['archived'], 2)
+        self.assertEqual(self.ws.snapshot()['counts']['web_pending'], 2)
+        self.assertFalse(any(self.inbox.iterdir()))
+
+    def test_request_json_is_not_imported_as_completed_data(self):
+        self.bundle(); organize(self.ws)
+        request = self.ws.request_file(PMID, [self.ws.current(PMID)['id']], 'main')
+        self.write(request['name'], self.ws.read_asset(request))
+        before = self.ws.current(PMID)['id']
+        result = organize(self.ws)
+        self.assertEqual(result['archived'], 0)
+        self.assertIn('これはPNG作成依頼', result['errors'][0])
+        self.assertEqual(self.ws.current(PMID)['id'], before)
+
+    def test_gui_exports_request_and_reveals_file_in_finder(self):
+        self.bundle(); organize(self.ws)
+        app = Application(self.root / 'repo', self.ws.root)
+        with patch('grarec_app.subprocess.run') as run:
+            message = app.run('export-image-request', dict(pmid=PMID,
+                heads=[self.ws.current(PMID)['id']], topic='main'))
+        args = run.call_args.args[0]
+        self.assertEqual(args[:2], ['open', '-R'])
+        self.assertEqual(json.loads(Path(args[2]).read_text())['pmid'], PMID)
+        self.assertIn('JSONファイル1個', message)
+
     def test_missing_pdf_blocks_json_and_png_and_preserves_inputs(self):
         self.write('master.json', encode(self.master))
         self.write('main.png', png())
