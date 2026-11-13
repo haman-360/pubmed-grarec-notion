@@ -72,7 +72,8 @@ def download_selected(workspace, items, progress=None, client=None, finder=None)
     """Network work never holds the shared-folder lock; recheck before adoption."""
     selected = validate_selection(workspace, items)
     client, finder = client or PubMedClient(), finder or PdfFinder()
-    result = dict(id=uuid.uuid4().hex, at=now(), finished_at='', items=[], total=len(selected))
+    method = getattr(type(finder), 'search_method', 'free')
+    result = dict(method=method, id=uuid.uuid4().hex, at=now(), finished_at='', items=[], total=len(selected))
 
     def notify(index, pmid, message):
         if progress:
@@ -88,7 +89,7 @@ def download_selected(workspace, items, progress=None, client=None, finder=None)
     try:
         for index, item in enumerate(selected, 1):
             pmid = item['pmid']
-            entry = dict(pmid=pmid, status='error', reason='', title='', source='', url='', manual_urls=[], file=None)
+            entry = dict(method=method, pmid=pmid, status='error', reason='', title='', source='', url='', manual_urls=[], file=None)
             try:
                 with workspace_lock(workspace):
                     eligible(workspace, pmid, item['heads'])
@@ -98,6 +99,7 @@ def download_selected(workspace, items, progress=None, client=None, finder=None)
                     raise ValueError('PubMedの書誌情報が取得できませんでした')
                 article = records[0]
                 entry['title'] = article.title
+                entry['manual_candidates'] = [asdict(c) for c in finder.manual_check_candidates_for_article(article)]
                 entry['manual_urls'] = list(dict.fromkeys(url for url in
                     [public_url(c.url) for c in finder.manual_check_candidates_for_article(article)] +
                     [f'https://pubmed.ncbi.nlm.nih.gov/{pmid}/'] if url))
@@ -105,6 +107,7 @@ def download_selected(workspace, items, progress=None, client=None, finder=None)
                 with tempfile.TemporaryDirectory(prefix='pubmed-pdf-') as temporary:
                     path = Path(temporary) / ('PMID_' + pmid + '.pdf')
                     found = finder.download_pdf(article, path)
+                    entry['observations'] = list(getattr(finder, 'observations', []))
                     entry.update(source=found.source, url=public_url(found.url))
                     entry['manual_urls'] = list(dict.fromkeys(entry['manual_urls'] + [public_url(u) for u in getattr(finder, 'search_urls', []) if public_url(u)]))
                     if found.success:

@@ -64,6 +64,10 @@ class Application:
             from paper_pipeline.pdf_download import result_path as pdf_result_path
             pdf_path = pdf_result_path(workspace)
             state['pdf_result'] = json.loads(pdf_path.read_text()) if pdf_path.is_file() else None
+            from paper_pipeline.pdf_reports import search_rows
+            from paper_pipeline.paid_pdf import cooldown
+            state['pdf_search_rows'] = search_rows(workspace)
+            state['pdf_cooldowns'] = {p['pmid']: cooldown(workspace, p['pmid']) for p in state['papers']}
             from paper_pipeline.json_batch import status as json_status
             state['json_batch'] = json_status(self.repo, workspace)
             from paper_pipeline.notion_sync import status as notion_status
@@ -131,17 +135,25 @@ class Application:
             try:
                 if action == 'fetch-pdfs-paid':
                     from paper_pipeline.pdf_download import validate_selection, eligible
-                    from paper_pipeline.paid_pdf import PaidPdfFinder
+                    from paper_pipeline.paid_pdf import PaidPdfFinder, cooldown
                     items = validate_selection(workspace, data.get('items'))
                     if len(items) != 1 or data.get('confirmed') is not True:
                         raise ValueError('有料検索は1回1本です。検索API料金への同意を確認してください')
                     eligible(workspace, items[0]['pmid'], items[0]['heads'])
+                    blocked = cooldown(workspace, items[0]['pmid'])
+                    if blocked['blocked']:
+                        raise ValueError(blocked['reason'] + '：' + blocked['until'])
                     result = download_selected(workspace, items, progress, finder=PaidPdfFinder(self.repo, workspace))
                 else:
                     result = download_selected(workspace, data.get('items'), progress)
                 return pdf_result_message(result)
             finally:
                 self.pdf_progress = None
+        if action == 'export-pdf-csv':
+            from paper_pipeline.pdf_reports import export_csv
+            folder = export_csv(workspace)
+            subprocess.run(['open', str(folder)], check=True)
+            return '無料・有料それぞれのPDF検索結果CSVを保存しました。'
         if action == 'open-pdf-result':
             from paper_pipeline.pdf_download import result_path
             result = json.loads(result_path(workspace).read_text())

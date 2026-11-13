@@ -1,7 +1,10 @@
-"""Explicit, cached OpenAI web discovery; downloads use ordinary public HTTP."""
+"""Explicit OpenAI web discovery with a 30-day cooldown and public downloads."""
 import ipaddress
 import json
 import socket
+import uuid
+from datetime import datetime, timedelta, timezone
+from .intake import workspace_lock
 from urllib.parse import urlsplit, urljoin
 
 import requests
@@ -11,6 +14,21 @@ from .pdf_finder import PdfFinder, PdfResult
 from .store import atomic_write, encode, now
 
 MODEL = 'gpt-6.1-sol'
+
+
+def cooldown(workspace, pmid, current=None):
+    current = current or datetime.now(timezone.utc)
+    path = workspace.path('API_PDF/PMID_' + pmid + '.json')
+    if not path.exists():
+        return dict(blocked=False, until='', reason='')
+    try:
+        record = json.loads(path.read_text())
+        until = datetime.fromisoformat(record['at']) + timedelta(days=30)
+        blocked = current < until
+        return dict(blocked=blocked, until=until.isoformat(),
+                    reason=('有料検索から30日間は対象外（重複課金防止）' if blocked else '再検索可能'))
+    except (ValueError, KeyError, TypeError, OSError):
+        return dict(blocked=True, until='', reason='有料検索記録を確認できないため停止')
 
 
 def check_url(url):
@@ -23,6 +41,7 @@ def check_url(url):
 
 
 class PaidPdfFinder(PdfFinder):
+    search_method = 'paid'
     def __init__(self, repo, workspace):
         super().__init__()
         self.key = api_key(repo)
@@ -30,20 +49,19 @@ class PaidPdfFinder(PdfFinder):
             raise ValueError('このMacのOpenAI APIキーを設定してください')
         self.workspace = workspace
         self.search_urls = []
+        self.observations = []
 
     def search(self, article):
         path = self.workspace.path('API_PDF/PMID_' + article.pmid + '.json')
-        if path.exists():
-            record = json.loads(path.read_text())
-            if record.get('status') != 'completed':
-                raise ValueError('前回の有料検索の完了を確認できません。重複課金を避けて停止しました。API_PDFの記録を確認してください')
-            return record['urls']
-        record = dict(pmid=article.pmid, model=MODEL, at=now(), status='sending', usage=None)
-        # Exclusive creation prevents concurrent Macs/processes from overwriting locally.
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open('x') as out:
-            out.write(encode(record))
-        body = dict(model=MODEL, tools=[dict(type='web_search', search_context_size='low')],
+        with workspace_lock(self.workspace):
+            state = cooldown(self.workspace, article.pmid)
+            if state['blocked']:
+                raise ValueError(state['reason'] + ('：' + state['until'] if state['until'] else ''))
+            if path.exists():
+                atomic_write(self.workspace.path('API_PDF/history/' + article.pmid + '_' + uuid.uuid4().hex + '.json'), path.read_bytes())
+            record = dict(pmid=article.pmid, title=article.title, model=MODEL, at=now(), status='sending', usage=None)
+            atomic_write(path, encode(record))
+        body = dict(model=MODEL, service_tier='default', tools=[dict(type='web_search', search_context_size='low')],
                     tool_choice='required', max_tool_calls=2, max_output_tokens=2000,
                     include=['web_search_call.action.sources'],
                     input='Find legally public full-text PDF download URLs for this exact article. '
@@ -114,7 +132,20 @@ class PaidPdfFinder(PdfFinder):
                     elif 'html' in response.headers.get('Content-Type', ''):
                         parser = PublisherPdfLinkParser(response.url)
                         parser.feed(raw.decode(response.encoding or 'utf-8', errors='replace'))
-                        if parser.pdf_url: queue.insert(0, parser.pdf_url)
+                        if parser.pdf_url:
+                            self.observations.append(dict(url=url, kind='pdf_link', evidence='ページの書誌メタデータにPDFリンクあり'))
+                            queue.insert(0, parser.pdf_url)
+                        text = raw.decode(response.encoding or 'utf-8', errors='replace').lower()
+                        if article.doi and article.doi.lower() in text:
+                            for phrase in ('purchase access', 'purchase this article', 'rent this article', 'subscribe to access'):
+                                if phrase in text:
+                                    self.observations.append(dict(url=url, kind='purchase', evidence='対象DOIを含むページに「' + phrase + '」の案内（他の無料版の有無は未確認）'))
+                                    break
+            except requests.HTTPError as error:
+                code = error.response.status_code if error.response is not None else None
+                if code in (401, 403):
+                    self.observations.append(dict(url=url, kind='browser', evidence=f'HTTP {code}：認証・ブラウザー確認の可能性。有料とは断定不可'))
+                continue
             except (ValueError, OSError, requests.RequestException):
                 continue
         return PdfResult(False, 'OpenAI Web検索', reason='一致する公開PDFを取得できませんでした')
