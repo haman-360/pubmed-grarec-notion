@@ -3,7 +3,6 @@ import json
 import secrets
 import subprocess
 import threading
-import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
@@ -245,20 +244,9 @@ class Application:
             finally:
                 with self.mutex:
                     self.busy = False
-        threading.Thread(target=work, daemon=True).start()
-
-    def watch(self):
-        while True:
-            time.sleep(30)
-            with self.mutex:
-                if self.busy:
-                    continue
-                self.busy = True
-            try:
-                self.refresh(scan=True)
-            finally:
-                with self.mutex:
-                    self.busy = False
+        worker = threading.Thread(target=work, daemon=True)
+        worker.start()
+        return worker
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -310,7 +298,8 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError('入力が大きすぎます')
             data = json.loads(self.rfile.read(length))
             action = data.pop('action')
-            self.server.app.start(action, data)
+            worker = self.server.app.start(action, data)
+            worker.join()  # Explicit action returns after completion; no UI polling needed.
             self.reply(200, '{}')
         except (ValueError, KeyError, TypeError, AttributeError) as error:
             self.reply(400, json.dumps({'error': str(error)}))
@@ -320,7 +309,6 @@ if __name__ == '__main__':
     app = Application(REPO)
     server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
     server.app = app
-    threading.Thread(target=app.watch, daemon=True).start()
     threading.Thread(target=app.reporter.watch, daemon=True).start()
     print(f'http://127.0.0.1:{server.server_port}/?token={app.token}', flush=True)
     server.serve_forever()

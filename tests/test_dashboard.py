@@ -181,3 +181,47 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(get({'X-App-Token':app.token,'Host':'attacker.example'})[0],403)
         status,body=get({'X-App-Token':app.token})
         self.assertEqual(status,200);self.assertEqual(json.loads(body)['counts']['total'],1)
+
+
+class ManualActionTests(unittest.TestCase):
+    def test_action_response_waits_for_completion_and_rejects_duplicate(self):
+        app=Application.__new__(Application)
+        app.mutex=threading.Lock(); app.busy=False; app.token='synthetic'
+        entered=threading.Event(); release=threading.Event(); received=threading.Event()
+        def run(action,data):
+            entered.set()
+            if not release.wait(5): raise RuntimeError('test timed out')
+            return 'finished'
+        app.run=run; app.refresh=Mock()
+        server=ThreadingHTTPServer(('127.0.0.1',0),Handler); server.app=app
+        threading.Thread(target=server.serve_forever,daemon=True).start()
+        self.addCleanup(server.server_close); self.addCleanup(server.shutdown)
+        result=[]
+        def request():
+            c=http.client.HTTPConnection('127.0.0.1',server.server_port,timeout=10)
+            try:
+                c.request('POST','/api/action',body=json.dumps({'action':'refresh'}),headers={'X-App-Token':app.token})
+                response=c.getresponse(); result.append((response.status,response.read(),app.busy))
+            finally:
+                c.close(); received.set()
+        client=threading.Thread(target=request,daemon=True); client.start()
+        try:
+            self.assertTrue(entered.wait(2))
+            self.assertTrue(app.busy)
+            self.assertFalse(received.is_set())
+            with self.assertRaisesRegex(ValueError,'処理中'):
+                app.start('refresh',{})
+        finally:
+            release.set(); client.join(5)
+        self.assertEqual(result,[(200,b'{}',False)])
+        self.assertEqual(app.message,'finished')
+        app.refresh.assert_called_once_with(scan=True)
+
+    def test_action_failure_releases_busy_and_records_reason(self):
+        app=Application.__new__(Application)
+        app.mutex=threading.Lock(); app.busy=False
+        app.run=Mock(side_effect=ValueError('synthetic failure')); app.refresh=Mock()
+        app.start('refresh',{}).join(2)
+        self.assertFalse(app.busy)
+        self.assertIn('synthetic failure',app.message)
+        app.refresh.assert_called_once_with()
