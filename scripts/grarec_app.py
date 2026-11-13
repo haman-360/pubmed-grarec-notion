@@ -26,6 +26,7 @@ class Application:
         self.busy = False
         self.message = '共通の取り込み待ちに保存し、「取り込み・整理」でまとめて進められます。'
         self.intake_result = None
+        self.pdf_progress = None
         self.scan_errors = []
         self.state = {}
         self.reporter = StatusReporter(repo)
@@ -59,6 +60,9 @@ class Application:
             result_path = workspace.path('状況/' + workspace.device_id + '/取り込み結果.json')
             if result_path.is_file():
                 self.intake_result = json.loads(result_path.read_text())
+            from paper_pipeline.pdf_download import result_path as pdf_result_path
+            pdf_path = pdf_result_path(workspace)
+            state['pdf_result'] = json.loads(pdf_path.read_text()) if pdf_path.is_file() else None
             state['errors'] += self.scan_errors
             for row in state['papers']:
                 errors = [e for e in self.scan_errors if e.startswith('PMID ' + row['pmid'] + ':')]
@@ -76,7 +80,7 @@ class Application:
             self.state = dict(base, papers=[], counts=dict(total=0, **{k: 0 for k in STAGES}), errors=[str(error)])
 
     def run(self, action, data):
-        if action != 'configure' and self.settings['shared_root']:
+        if action not in ('configure', 'fetch-pdfs') and self.settings['shared_root']:
             with workspace_lock(self.workspace()):
                 return self._run(action, data)
         return self._run(action, data)
@@ -94,6 +98,34 @@ class Application:
             save_settings(self.repo, self.settings)
             return '共有フォルダを設定しました。OneDrive標準アプリで同期します。'
         workspace = self.workspace()
+        if action == 'fetch-pdfs':
+            from paper_pipeline.pdf_download import download_selected, result_message as pdf_result_message
+            def progress(value):
+                self.pdf_progress = value
+                self.refresh()
+            try:
+                result = download_selected(workspace, data.get('items'), progress)
+                return pdf_result_message(result)
+            finally:
+                self.pdf_progress = None
+        if action == 'open-pdf-result':
+            from paper_pipeline.pdf_download import result_path
+            result = json.loads(result_path(workspace).read_text())
+            if result['id'] != data.get('run'):
+                raise ValueError('取得結果が更新されています。画面を更新してください')
+            entry = next((e for e in result['items'] if e['pmid'] == data.get('pmid')), None)
+            if entry and data.get('url'):
+                from paper_pipeline.pdf_download import public_url
+                url = data['url']
+                if url not in entry['manual_urls'] or public_url(url) != url:
+                    raise ValueError('取得結果の手動確認先を選んでください')
+                subprocess.run(['open', url], check=True)
+                return '手動確認先をブラウザーで開きました。'
+            if not entry or not entry.get('file'):
+                raise ValueError('保管されたPDFがありません')
+            workspace.read_asset(entry['file'])
+            subprocess.run(['open', str(workspace.path(entry['file']['path']))], check=True)
+            return '保存したPDFを開きました。候補の場合は原本を照合してください。'
         if action == 'organize':
             self.intake_result = organize(workspace)
             return result_message(self.intake_result)
@@ -201,6 +233,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == '/api/state' and self.allowed():
             with app.mutex:
                 return self.reply(200, json.dumps(dict(app.state, busy=app.busy, message=app.message,
+                                                       pdf_progress=app.pdf_progress,
                                                        sharing=app.reporter.status()), ensure_ascii=False))
         self.reply(403, '{}')
 
