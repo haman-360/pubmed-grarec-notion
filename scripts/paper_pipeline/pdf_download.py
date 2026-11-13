@@ -106,6 +106,7 @@ def download_selected(workspace, items, progress=None, client=None, finder=None)
                     path = Path(temporary) / ('PMID_' + pmid + '.pdf')
                     found = finder.download_pdf(article, path)
                     entry.update(source=found.source, url=public_url(found.url))
+                    entry['manual_urls'] = list(dict.fromkeys(entry['manual_urls'] + [public_url(u) for u in getattr(finder, 'search_urls', []) if public_url(u)]))
                     if found.success:
                         info = inspect_pdf(path)
                         raw = path.read_bytes()

@@ -85,7 +85,7 @@ class Application:
             self.state = dict(base, papers=[], counts=dict(total=0, **{k: 0 for k in STAGES}), errors=[str(error)])
 
     def run(self, action, data):
-        if action not in ('configure', 'fetch-pdfs', 'json-budget', 'json-prepare', 'json-send', 'json-collect', 'notion-prepare', 'notion-send') and self.settings['shared_root']:
+        if action not in ('configure', 'fetch-pdfs', 'fetch-pdfs-paid', 'json-budget', 'json-prepare', 'json-send', 'json-collect', 'notion-prepare', 'notion-send') and self.settings['shared_root']:
             with workspace_lock(self.workspace()):
                 return self._run(action, data)
         return self._run(action, data)
@@ -123,13 +123,22 @@ class Application:
                 raise ValueError('API処理の記録はまだありません')
             subprocess.run(['open', str(folder)], check=True)
             return 'API処理の状況と回収候補の保存先を開きました。'
-        if action == 'fetch-pdfs':
+        if action in ('fetch-pdfs', 'fetch-pdfs-paid'):
             from paper_pipeline.pdf_download import download_selected, result_message as pdf_result_message
             def progress(value):
                 self.pdf_progress = value
                 self.refresh()
             try:
-                result = download_selected(workspace, data.get('items'), progress)
+                if action == 'fetch-pdfs-paid':
+                    from paper_pipeline.pdf_download import validate_selection, eligible
+                    from paper_pipeline.paid_pdf import PaidPdfFinder
+                    items = validate_selection(workspace, data.get('items'))
+                    if len(items) != 1 or data.get('confirmed') is not True:
+                        raise ValueError('有料検索は1回1本です。検索API料金への同意を確認してください')
+                    eligible(workspace, items[0]['pmid'], items[0]['heads'])
+                    result = download_selected(workspace, items, progress, finder=PaidPdfFinder(self.repo, workspace))
+                else:
+                    result = download_selected(workspace, data.get('items'), progress)
                 return pdf_result_message(result)
             finally:
                 self.pdf_progress = None

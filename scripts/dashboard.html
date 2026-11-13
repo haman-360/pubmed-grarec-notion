@@ -9,7 +9,7 @@
 <p class="hint" id="location"></p><p class="hint">どの端末でもOneDriveの「00_取り込み待ち」へ保存できます。Macで「取り込み・整理」を押すと、途中の工程をまとめて進められます。Mac停止中もアップロード済みのファイルを閲覧できます。工程の件数は次の整理まで変わりません。</p>
 <div class="cards" id="cards"></div><p id="observed" class="hint"></p>
 <section aria-label="工程と操作"><h2>工程を選んで進める</h2><div class="flow">
-<div class="step"><b>1　PDF取得待ち</b><button class="secondary" onclick="showStage('missing_pdf')">手動：対象の論文を見る</button><button onclick="openPdfPanel()">自動取得</button><small>入手したPDFを取り込み待ちへ保存</small></div>
+<div class="step"><b>1　PDF取得待ち</b><button class="secondary" onclick="showStage('missing_pdf')">手動：対象の論文を見る</button><button onclick="openPdfPanel()">自動取得（無料）</button><button onclick="openPdfPanel(null,true)">自動取得（有料）</button><small>入手したPDFを取り込み待ちへ保存</small></div>
 <div class="step"><b>2　JSON作成待ち</b><button class="secondary" onclick="showStage('json_pending')">手動：依頼文を準備</button><button onclick="openJsonPanel()">APIでJSON作成・回収</button><small>JSON作成依頼TXT＋PDFをWebへ。完成物：PMID_番号.json</small></div>
 <div class="step"><b>3　PNG作成待ち</b><button class="secondary" onclick="showStage('web_pending')">手動：画像依頼文を準備</button><small>PNG作成依頼JSONを1個Webへ。通常PDF不要。完成物：PMID_番号_テーマID.png</small></div>
 <div class="step"><b>4　確認・登録待ち</b><button class="secondary" onclick="showStage('review_pending')">手動：確認・登録する</button><button onclick="openNotionPanel()">PNG確認・Notion登録</button><small>原文と照合し、Notionへアップロード</small></div>
@@ -37,9 +37,9 @@
 <p class="hint">新規ページのHuman Checkedはオフのままです。PNGの確認記録と、論文全体の医学的な確認は区別します。既存ページの内容は保持し、この版のテーマ・添付を追加します。PDFはOneDriveに保管します。</p>
 <button id="notion-send" onclick="sendNotion()">確認した論文をNotionへ登録・再開</button></div>
 <button class="secondary" onclick="$('notion-panel').hidden=true">閉じる</button><p id="notion-observed" class="hint"></p><div id="notion-results"></div></section>
-<section id="pdf-panel" hidden><h2>PDFを自動取得する</h2>
+<section id="pdf-panel" hidden><h2 id="pdf-heading">PDFを自動取得する（無料）</h2><p id="pdf-paid-help" hidden>OpenAIのWeb検索で公開PDFを探します。論文購入ではありません。未取得でも検索・モデル利用料が発生します。1回1本・最大2ツール呼出・出力上限2,000トークン。金額上限の保証ではありません。JSON Batchの予算台帳とは別にAPI_PDFへ利用量を記録します。同じ論文の完了した検索は再利用します。初回の有料検索は1台のMacで行ってください。</p><label id="pdf-paid-label" hidden><input type="checkbox" id="pdf-paid-confirm" onchange="renderPdfOptions()"> 選択論文のPMID・タイトル・DOIをOpenAIへ送信し、検索料金が発生することを確認しました。</label>
 <p class="hint">PDF取得待ちの論文を選び、下のボタンで開始します。公開PDFを順番に検索し、OneDriveの共通フォルダへ保存します。認証が必要な論文は手動取得へ引き継ぎます。処理中はこのMacのアプリを開いておいてください。</p>
-<div class="actions"><button class="secondary" onclick="selectAllPdf()">取得待ちを選択（最大50本）</button><button class="secondary" onclick="pdfSelection.clear();renderPdfOptions()">選択を解除</button></div>
+<div class="actions"><button class="secondary" onclick="selectAllPdf()">取得待ちを選択（無料50本／有料1本）</button><button class="secondary" onclick="pdfSelection.clear();renderPdfOptions()">選択を解除</button></div>
 <div id="pdf-options" class="json-options"></div><p id="pdf-selected" class="hint"></p>
 <button id="pdf-submit" onclick="fetchSelectedPdfs()">選択した論文のPDFを取得</button><button class="secondary" onclick="$('pdf-panel').hidden=true">閉じる</button>
 </section>
@@ -101,13 +101,14 @@ for(let item of preview.items){let box=document.createElement('div');line(box,'P
 let jobsSig=JSON.stringify(n.jobs||[]);if(jobsSig!==notionJobsSignature){notionJobsSignature=jobsSig;$('notion-results').replaceChildren();for(let job of n.jobs||[]){let box=document.createElement('details');line(box,'PMID '+job.pmid+' ／ '+(notionNames[job.status]||'準備中'),'summary');line(box,job.message,'p');line(box,job.topics.map(t=>t.topic+'：'+(t.status==='COMPLETED'?'登録済み':'未完了')).join(' ／ '),'p');notionPageLink(box,job.page_id);$('notion-results').append(box)}}updateNotionSend()}
 $('notion-reviewer').oninput=updateNotionSend;$('notion-note').oninput=updateNotionSend;
 function pdfRows(){return (state?.papers||[]).filter(p=>p.category==='missing_pdf'&&p.heads.length===1)}
-function openPdfPanel(pmid){$('pdf-panel').hidden=false;if(pmid){pdfSelection.clear();let p=pdfRows().find(p=>p.pmid===pmid);if(p)pdfSelection.set(pmid,p.heads)}renderPdfOptions();$('pdf-panel').scrollIntoView({behavior:'smooth'})}
-function selectAllPdf(){pdfSelection.clear();for(let p of pdfRows().slice(0,50))pdfSelection.set(p.pmid,p.heads);renderPdfOptions()}
+let pdfPaid=false;
+function openPdfPanel(pmid,paid=false){pdfPaid=paid;pdfSelection.clear();$('pdf-paid-confirm').checked=false;$('pdf-paid-help').hidden=!paid;$('pdf-paid-label').hidden=!paid;$('pdf-heading').textContent='PDFを自動取得する（'+(paid?'有料':'無料')+'）';$('pdf-panel').hidden=false;if(pmid){pdfSelection.clear();let p=pdfRows().find(p=>p.pmid===pmid);if(p)pdfSelection.set(pmid,p.heads)}renderPdfOptions();$('pdf-panel').scrollIntoView({behavior:'smooth'})}
+function selectAllPdf(){pdfSelection.clear();for(let p of pdfRows().slice(0,pdfPaid?1:50))pdfSelection.set(p.pmid,p.heads);renderPdfOptions()}
 function renderPdfOptions(){let rows=pdfRows();for(let id of pdfSelection.keys())if(!rows.some(p=>p.pmid===id))pdfSelection.delete(id);
 let sig=JSON.stringify([rows.map(p=>[p.pmid,p.title,p.heads]),[...pdfSelection],state.busy]);
 if(sig!==pdfOptionsSignature){pdfOptionsSignature=sig;$('pdf-options').replaceChildren();for(let p of rows){let label=document.createElement('label'),check=document.createElement('input');check.type='checkbox';check.checked=pdfSelection.has(p.pmid);check.disabled=state.busy;check.onchange=()=>{if(check.checked)pdfSelection.set(p.pmid,p.heads);else pdfSelection.delete(p.pmid);renderPdfOptions()};label.append(check,document.createTextNode('PMID '+p.pmid+' ／ '+(p.title||'論文名は取得時に確認')));$('pdf-options').append(label)}if(!rows.length)line($('pdf-options'),'PDF取得待ちの論文はありません。先にPMIDを登録してください。','p')}
-$('pdf-selected').textContent=pdfSelection.size+'本を選択 ／ AI APIキーは不要です';$('pdf-submit').disabled=state.busy||!pdfSelection.size||pdfSelection.size>50}
-async function fetchSelectedPdfs(){let items=[...pdfSelection].map(([pmid,heads])=>({pmid,heads}));await act('fetch-pdfs',{items});pdfSelection.clear();renderPdfOptions()}
+$('pdf-selected').textContent=pdfSelection.size+'本を選択 ／ '+(pdfPaid?'有料検索：最大1本・このMacのAPIキーを使用':'無料取得：AI APIキー不要');$('pdf-submit').textContent=pdfPaid?'確認した1本を有料検索・取得':'選択した論文のPDFを無料取得';$('pdf-submit').disabled=state.busy||!pdfSelection.size||pdfSelection.size>(pdfPaid?1:50)||(pdfPaid&&(!$('pdf-paid-confirm').checked||!state.json_batch?.key_ready))}
+async function fetchSelectedPdfs(){let items=[...pdfSelection].map(([pmid,heads])=>({pmid,heads}));await act(pdfPaid?'fetch-pdfs-paid':'fetch-pdfs',{items,confirmed:pdfPaid&&$('pdf-paid-confirm').checked});$('pdf-paid-confirm').checked=false;pdfSelection.clear();renderPdfOptions()}
 function renderPdfResult(){let result=state.pdf_result;$('pdf-result').hidden=!result;if(!result)return;let sig=JSON.stringify(result);if(sig===pdfResultSignature)return;pdfResultSignature=sig;
 $('pdf-result-time').textContent='開始：'+date(result.at)+' ／ '+(result.finished_at?'終了：'+date(result.finished_at):'処理中、または途中で終了（アプリ再起動後は未取得分を選んで再実行）');$('pdf-results').replaceChildren();
 const names={downloaded:'保存済み',candidate:'PDF候補・要照合',not_found:'未取得・手動確認',skipped:'保留',error:'取得エラー'};
