@@ -248,12 +248,86 @@ def organize(workspace, minimum_age=2):
                 error(path, exc)
                 if kind in ('pdf', 'json'):
                     blocked = True
+    result['archive_cleaned'] = cleanup_archive(workspace)
     result['pending_files'] = inventory(workspace)['pending_files']
     atomic_write(workspace.path('状況/' + workspace.device_id + '/取り込み結果.json'), encode(result))
     return result
 
 
+def cleanup_archive(workspace, timestamp=None):
+    """Delete only byte-identical, recorded paper copies after 30 observed days.
+
+    First observation, not source mtime, starts retention (also for old archives).
+    The caller holds workspace_lock. Each Mac keeps its own conservative clock.
+    """
+    timestamp = time.time() if timestamp is None else timestamp
+    root = workspace.path(ARCHIVE)
+    journal = workspace.path('状況/' + workspace.device_id + '/保管整理.json')
+    state = json.loads(journal.read_text()) if journal.exists() else {'seen': {}, 'deleted': []}
+    candidates = []
+    for path in sorted(root.rglob('*')):
+        if path.is_symlink() or not path.is_file():
+            continue
+        if any(parent.is_symlink() for parent in path.parents):
+            continue
+        relative = str(path.relative_to(root))
+        observed = state['seen'].setdefault(relative, timestamp)
+        if timestamp - max(observed, path.stat().st_mtime) >= 30 * 86400:
+            candidates.append(path)
+    # Persist retention clocks before attempting any removal.
+    atomic_write(journal, encode(state))
+    copies = defaultdict(list)
+    if candidates:
+        for folder in (workspace.root / 'papers').glob('PMID_*'):
+            try:
+                workspace.current(folder.name[5:])  # Conflicts/incomplete sync: retain.
+                for event in workspace.events(folder.name[5:]).values():
+                    for file in event['data']['files']:
+                        if file['kind'] in ('pdf', 'json', 'draft', 'png', 'note'):
+                            copies[file['sha']].append(file)
+            except (ValueError, OSError, KeyError):
+                continue
+    removed = 0
+    for path in candidates:
+        try:
+            raw = _read(path, root, 2)
+            for file in copies.get(digest(raw), []):
+                target = workspace.path(file['path'])
+                if not target.is_relative_to(workspace.root / 'papers'):
+                    continue
+                if any(parent.is_symlink() for parent in target.parents) or target.is_symlink():
+                    continue
+                try:
+                    if workspace.read_asset(file) != raw:
+                        continue
+                except (OSError, ValueError):
+                    continue
+                if _read(path, root, 2) != raw:
+                    break
+                # Durable audit before deletion; interrupted operations are identifiable.
+                entry = dict(path=str(path.relative_to(root)), sha=digest(raw),
+                             preserved=file['path'], at=now(), status='verified')
+                state['deleted'].append(entry)
+                atomic_write(journal, encode(state))
+                path.unlink()
+                entry['status'] = 'deleted'
+                state['seen'].pop(entry['path'], None)
+                atomic_write(journal, encode(state))
+                removed += 1
+                break
+        except (OSError, ValueError):
+            continue
+    for folder in sorted(root.rglob('*'), key=lambda p: len(p.parts), reverse=True):
+        if folder.is_dir() and not folder.is_symlink():
+            try:
+                folder.rmdir()  # Only empty directories.
+            except OSError:
+                pass
+    return removed
+
+
 def result_message(result):
     return (f"整理完了：新規PMID {result['registered']}件、取り込み {result['imported']}ファイル、"
             f"取り込み済みへ移動 {result['archived']}ファイル（既存 {result['skipped']}）。"
-            f"未整理 {result['pending_files']}ファイル。")
+            f"未整理 {result['pending_files']}ファイル。"
+            f"保存確認済みの古い保管ファイルを {result.get('archive_cleaned', 0)}件整理しました。")

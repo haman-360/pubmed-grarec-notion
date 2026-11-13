@@ -49,6 +49,33 @@ class IntakeTests(unittest.TestCase):
     def stage(self):
         return self.ws.snapshot()['papers'][0]['category']
 
+    def test_archive_cleanup_requires_retention_and_verified_copy(self):
+        from paper_pipeline.intake import cleanup_archive
+        self.bundle(); organize(self.ws)
+        archive = self.ws.path(ARCHIVE)
+        paths = [p for p in archive.rglob('*') if p.is_file()]
+        self.assertEqual(len(paths), 4)
+        self.assertEqual(cleanup_archive(self.ws), 0)
+        # A missing stored PDF must keep its archived original.
+        pdf = next(f for f in self.ws.current(PMID)['data']['files'] if f['kind'] == 'pdf')
+        self.ws.path(pdf['path']).unlink()
+        self.assertEqual(cleanup_archive(self.ws, time.time() + 31 * 86400), 3)
+        remaining = [p for p in archive.rglob('*') if p.is_file()]
+        self.assertEqual(len(remaining), 1)
+        self.assertEqual(remaining[0].suffix, '.pdf')
+        self.assertEqual(remaining[0].read_bytes(), self.pdf)
+
+    def test_archive_cleanup_keeps_changed_copy_and_unstored_list(self):
+        from paper_pipeline.intake import cleanup_archive
+        self.bundle(); organize(self.ws)
+        file = next(f for f in self.ws.current(PMID)['data']['files'] if f['kind'] == 'json')
+        self.ws.path(file['path']).write_text('{}')
+        self.write('希望PMID.txt', PMID)
+        organize(self.ws)
+        self.assertEqual(cleanup_archive(self.ws, time.time() + 31 * 86400), 3)
+        names = [p.name for p in self.ws.path(ARCHIVE).rglob('*') if p.is_file()]
+        self.assertEqual(set(names), {'master.json', '希望PMID.txt'})
+
     def test_flat_bundle_skips_intermediate_stages_and_preserves_all_inputs(self):
         self.bundle()
         with patch('requests.Session.request', side_effect=AssertionError('no network')):
