@@ -75,6 +75,38 @@ class ManualTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, '構造確認待ち'):
             self.ws.request_file(PMID, [self.ws.current(PMID)['id']], 'main')
 
+    def test_clipboard_png_request_and_filename_preserve_paper(self):
+        self.imported()
+        app = Application.__new__(Application)
+        app.repo = Path(__file__).resolve().parents[1]
+        app.workspace = lambda: self.ws
+        before = self.ws.current(PMID)
+        data = dict(pmid=PMID, heads=[before['id']], topic='main')
+        with patch('grarec_app.subprocess.run') as clipboard:
+            app._run('copy-image', data)
+            request = json.loads(clipboard.call_args.kwargs['input'])
+            self.assertEqual(request['request_type'], 'png-generation-request-v1')
+            self.assertEqual(request['output_filename'], f'PMID_{PMID}_main.png')
+            embedded = json.loads(request['instructions'].split('```json\n')[1].split('\n```')[0])
+            self.assertEqual(embedded['pmid'], PMID)
+            self.assertEqual(embedded['main_results'], self.master['main_results'])
+            app._run('copy-image-name', data)
+            self.assertEqual(clipboard.call_args.kwargs['input'], f'PMID_{PMID}_main.png'.encode())
+        self.assertEqual(self.ws.current(PMID), before)
+
+    def test_png_clipboard_rejects_stale_paper_and_unknown_topic(self):
+        self.imported()
+        app = Application.__new__(Application)
+        app.repo = Path(__file__).resolve().parents[1]
+        app.workspace = lambda: self.ws
+        for action in ('copy-image', 'copy-image-name'):
+            with patch('grarec_app.subprocess.run') as clipboard:
+                with self.assertRaises(ValueError):
+                    app._run(action, dict(pmid=PMID, heads=['old'], topic='main'))
+                with self.assertRaises(ValueError):
+                    app._run(action, dict(pmid=PMID, heads=[self.ws.current(PMID)['id']], topic='unknown'))
+                clipboard.assert_not_called()
+
     def test_end_to_end_manual_handoff_without_any_network(self):
         with patch('requests.Session.request', side_effect=AssertionError('network forbidden')):
             self.imported()

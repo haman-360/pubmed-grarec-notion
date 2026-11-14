@@ -363,7 +363,7 @@ class Workspace:
         lines.extend(f'{label}: {counts[key]}本' for key, label in STAGES.items())
         pending = snapshot.get('intake', {}).get('pending_files', 0)
         lines.extend([f'取り込み待ち: {pending}ファイル（工程の件数には未反映）',
-                      '00_取り込み待ちへ保存し、Macの「取り込み・整理」を実行してください。', ''])
+                      '00_取り込み待ちへ保存し、Macの「取り込み待ちを処理」を実行してください。', ''])
         table = []
         for row in snapshot['papers']:
             lines.extend([f"PMID {row['pmid']}  {row['title']}", STAGES[row['category']],
@@ -404,7 +404,7 @@ class Workspace:
                 'PNGはJSONをMacアプリへ取り込んだ後、別のPNG作成依頼で作成します。\n'
                 + review_prompt(paper, 'fulltext-v4') + '\n書誌情報が空欄なら添付PDFから確認してください。'
                 f'\n以下のSchemaに従い、JSONを PMID_{pmid}.json としてダウンロードできるようにしてください。'
-                '完成JSONはOneDriveの00_取り込み待ち直下へ保存し、Macアプリの「取り込み・整理」を押します。'
+                '完成JSONはOneDriveの00_取り込み待ち直下へ保存し、Macアプリの「取り込み待ちを処理」を押します。'
                 '論文別フォルダの作成は不要です。PDFがない・別論文なら停止してください。\n' +
                 json.dumps(schema, ensure_ascii=False, indent=2))
 

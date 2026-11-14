@@ -6,7 +6,7 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
-from paper_pipeline.manual import Workspace, STAGES, local_settings, save_settings, suggested_root, pmid_value
+from paper_pipeline.manual import Workspace, STAGES, local_settings, save_settings, suggested_root, pmid_value, png_request
 from paper_pipeline.manual_status import StatusReporter
 from paper_pipeline.intake import (PENDING, ARCHIVE, ensure_folders, inventory, organize,
                                    parse_pmids, result_message, workspace_lock)
@@ -24,7 +24,7 @@ class Application:
         self.token = secrets.token_urlsafe(32)
         self.mutex = threading.Lock()
         self.busy = False
-        self.message = '共通の取り込み待ちに保存し、「取り込み・整理」でまとめて進められます。'
+        self.message = '共通の取り込み待ちに保存し、「取り込み待ちを処理」でまとめて進められます。'
         self.intake_result = None
         self.pdf_progress = None
         self.scan_errors = []
@@ -217,11 +217,17 @@ class Application:
             subprocess.run(['open', '-R', str(workspace.path(file['path']))], check=True)
             help_text = 'このJSONファイル1個をWebへ添付してください。画像用データと依頼文が入っています。' if action == 'export-image-request' else 'このTXTと対象論文のPDFをWebへ添付してください。完成物は全文JSONです。'
             return file['name'] + ' の場所を開きました。' + help_text
-        if action in ('copy-json', 'copy-image'):
+        if action in ('copy-json', 'copy-image', 'copy-image-name'):
             workspace.current(pmid, data['heads'])
             text = workspace.json_prompt(pmid) if action == 'copy-json' else workspace.image_prompt(
                 pmid, data['topic'], (self.repo / 'prompts/grarec-v2.md').read_text())
+            if action == 'copy-image':
+                text = png_request(pmid, data['topic'], text)
+            elif action == 'copy-image-name':
+                text = f'PMID_{pmid}_{data["topic"]}.png'
             subprocess.run(['/usr/bin/pbcopy'], input=text.encode(), check=True)
+            if action == 'copy-image-name':
+                return f'保存ファイル名をコピーしました：{text}。完成PNGをこの名前で00_取り込み待ちへ保存してください。'
             help_text = f'対象論文のPDFも添付してください。完成JSONは PMID_{pmid}.json で保存します。' if action == 'copy-json' else f'画像用データも含みます。通常PDF添付は不要です。完成PNGは PMID_{pmid}_{data["topic"]}.png で保存します。'
             return f'コピーしました：PMID {pmid}。ChatGPT Webに貼り付けてください。' + help_text
         if action == 'record':
