@@ -13,9 +13,9 @@ const manual=s.workflow==='manual-onedrive-v1';
 if(workflow!==(s.workflow||'legacy')){workflow=s.workflow||'legacy';renderMetrics(manual?manualFields:legacyFields);}
 $('latest-panel').hidden=manual;$('notification-panel').hidden=manual;
 $('total').textContent=s.counts.total;for(const [k] of fields)$(k).textContent=s.counts[k];$('device').textContent='確認端末：'+s.device_name;$('updated').textContent='Macでの最終確認 '+format(s.observed_at);
-const stale=Date.now()-Date.parse(s.observed_at)>2*60*1000;
-$('health').textContent=stale?'最後に共有された状況':manual?'Macと同じ分類で共有しています':s.busy?'Macで処理中':s.counts.json_running?'JSONの作成・回収待ち':'現在、JSONの作成・回収待ちはありません';
-alertMessage(stale?'Macからの共有が2分以上更新されていません。アプリ終了・スリープ・通信状況によっては、最後に共有した件数を表示します。':manual?'':'旧方式の記録です。Macで最新版のアプリを開くと、OneDrive版の状況に切り替わります。');
+$('health').textContent=manual?'最後に共有された状況':s.busy?'Macで処理中':s.counts.json_running?'JSONの作成・回収待ち':'現在、JSONの作成・回収待ちはありません';
+$('sharing-guide').hidden=!manual;
+alertMessage(manual?'':'旧方式の記録です。Macで最新版のアプリを開くと、OneDrive版の状況に切り替わります。');
 if(s.last_event){$('event').textContent=s.last_event.count+'本のJSONを回収・保存しました';$('event-time').textContent=format(s.last_event.at)+' ／ '+s.device_name;}
 if(reg&&!manual)await notificationState();
 }catch(e){alertMessage(e.message);}finally{loading=false;}}
