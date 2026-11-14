@@ -394,7 +394,7 @@ class HybridTests(unittest.TestCase):
             with self.subTest(size=size), self.assertRaisesRegex(ValueError,'3:2'):
                 import_image(self.store,revision,'main',self.image(size=size))
 
-    def test_gallery_image_fills_empty_property_and_preserves_existing_image(self):
+    def test_gallery_appends_image_and_preserves_existing_images(self):
         from paper_pipeline.notion import rich
         for existing in ([],[{'name':'User image','type':'external','external':{'url':'https://example.test/user.png'}}]):
             with self.subTest(existing=bool(existing)):
@@ -408,14 +408,13 @@ class HybridTests(unittest.TestCase):
                 client=Notion(self.store,api,'db'); client.sync(revision)
                 saved=api.pages[page['id']]['properties']
                 self.assertFalse(saved['Human Checked']['checkbox'])
-                if existing:
-                    self.assertEqual(saved['Graphic Image']['files'],existing)
-                else:
-                    state=json.loads(self.rows(revision)[0]['notion'])
-                    self.assertEqual(saved['Graphic Image']['files'][0]['file_upload']['id'],state['image_upload']['id'])
-                    self.assertEqual(len(api.uploads),3)
-                calls=len(api.calls); client.sync(self.store.one('revisions',revision['id']))
-                self.assertEqual(len(api.calls),calls)
+                self.assertEqual(saved['Graphic Image']['files'][:len(existing)],existing)
+                state=json.loads(self.rows(revision)[0]['notion'])
+                self.assertEqual(saved['Graphic Image']['files'][-1]['file_upload']['id'],state['image_upload']['id'])
+                self.assertEqual(len(api.uploads),3)
+                writes=len([c for c in api.calls if c[0]!='GET' and not c[1].endswith('/query')])
+                client.sync(self.store.one('revisions',revision['id']))
+                self.assertEqual(len([c for c in api.calls if c[0]!='GET' and not c[1].endswith('/query')]),writes)
 
     def test_modified_image_json_or_master_blocks_all_notion_calls(self):
         revision,_=self.paper()

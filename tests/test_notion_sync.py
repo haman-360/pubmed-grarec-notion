@@ -15,7 +15,7 @@ from pypdf import PdfWriter
 from paper_pipeline import notion_sync as ns
 from paper_pipeline.graphics import adapt_legacy
 from paper_pipeline.manual import Workspace
-from paper_pipeline.notion import rich
+from paper_pipeline.notion import rich, NotionHTTPError, NotionAPI, attachment_name
 from paper_pipeline.store import Store, encode
 from grarec_app import Application, Handler
 from test_paper_pipeline import FakeNotion as BaseFakeNotion, sample_summary, png
@@ -25,6 +25,9 @@ PMID = '90000001'
 
 class FakeNotion(BaseFakeNotion):
     def handle(self, method, path, **kwargs):
+        for b in kwargs.get('json', {}).get('children', []):
+            if b.get('type') == 'file' and len(b['file'].get('name', '')) > 100:
+                raise NotionHTTPError(400, 'validation_error', True)
         result = super().handle(method, path, **kwargs)
         if path == '/data_sources/ds/query':
             archived = kwargs.get('json',{}).get('is_archived',False)
@@ -154,6 +157,111 @@ class NotionSyncTests(unittest.TestCase):
         ns.submit(self.repo,self.ws,self.confirmation(preview),self.api)
         self.assertEqual(len(self.api.pages),1);self.assertEqual(len(self.api.uploads),6)
         self.assertTrue(self.ws.current(PMID)['data']['done'])
+
+    def two_topics(self):
+        second=copy.deepcopy(self.master['topics'][0])
+        second.update(topic_id='completion-acceptability',topic_title='Second topic')
+        self.master['topics'].append(second)
+        self.master['visualization_strategy'].update(mode='topics',independent_question_count=2)
+        self.ws.import_file(PMID,'json','two.json',encode(self.master).encode())
+        self.ws.import_file(PMID,'png','main.png',png())
+        self.ws.import_file(PMID,'png','completion-acceptability.png',png((1200,800)))
+        self.api.properties['Graphic Image']={'type':'files'}
+
+    def test_all_pngs_in_gallery_preserve_user_files_and_repeat_without_duplicates(self):
+        self.two_topics(); page=self.existing_page()
+        files=[{'name':'Personal image','type':'external','external':{'url':'https://example.test/keep.png'}},
+               {'name':'Uploaded by user','type':'file','file':{'url':'https://notion.test/keep.png?signature=old','expiry_time':'tomorrow'}}]
+        page['properties']['Graphic Image']={'files':copy.deepcopy(files)}
+        self.assertIn('1/1',self.send())
+        gallery=page['properties']['Graphic Image']['files']
+        self.assertEqual(len(gallery),4)
+        self.assertEqual(gallery[0],files[0]); self.assertEqual(gallery[1]['file']['url'],files[1]['file']['url'])
+        self.assertNotIn('expiry_time',gallery[1]['file'])
+        self.assertTrue(page['properties']['Human Checked']['checkbox'])
+        self.assertTrue(all(len(u['filename'])<100 for u in self.api.uploads.values()))
+        before=len(self.mutations()); store=Store(ns.local_root(self.repo,self.ws))
+        try:
+            client=ns.client_for(self.repo,store,self.api);rev=store.rows('SELECT * FROM revisions')[0]
+            client.sync(rev);ns.verify_remote(client,store,rev)
+        finally:store.close()
+        self.assertEqual(len(self.mutations()),before)
+
+    def test_gallery_lost_response_resumes_and_completed_old_topic_is_backfilled(self):
+        self.two_topics(); original=self.api.call; fired=[False]
+        def lost(method,path,**kwargs):
+            result=original(method,path,**kwargs)
+            if not fired[0] and 'Graphic Image' in kwargs.get('json',{}).get('properties',{}):
+                fired[0]=True;raise TimeoutError('accepted but response lost')
+            return result
+        self.api.call=lost
+        self.assertIn('0/1',self.send())
+        page=next(iter(self.api.pages.values())); self.assertEqual(len(page['properties']['Graphic Image']['files']),2)
+        before=(len(self.api.uploads),sum(map(len,self.api.blocks.values())))
+        self.assertIn('1/1',self.send())
+        self.assertEqual((len(self.api.uploads),sum(map(len,self.api.blocks.values()))),before)
+        # Simulate a page completed by the previous single-image gallery implementation.
+        page['properties']['Graphic Image']['files'].pop()
+        store=Store(ns.local_root(self.repo,self.ws))
+        try:
+            client=ns.client_for(self.repo,store,self.api);rev=store.rows('SELECT * FROM revisions')[0]
+            with self.assertRaisesRegex(ValueError,'全PNG'):ns.verify_remote(client,store,rev)
+            client.sync(rev);ns.verify_remote(client,store,rev)
+        finally:store.close()
+        self.assertEqual(len(page['properties']['Graphic Image']['files']),2)
+        self.assertEqual((len(self.api.uploads),sum(map(len,self.api.blocks.values()))),before)
+
+    def test_hosted_gallery_urls_are_matched_despite_rotating_signatures_and_renaming(self):
+        self.two_topics(); self.send();page=next(iter(self.api.pages.values()))
+        for index,f in enumerate(page['properties']['Graphic Image']['files']):
+            upload=f['file_upload']['id'];f.clear();f.update(name='renamed '+str(index),type='file',file={'url':'https://notion.test/'+upload+'?signature=new'})
+            for blocks in self.api.blocks.values():
+                for b in blocks:
+                    if b['type']=='image' and b['image'].get('file_upload',{}).get('id')==upload:
+                        caption=b['image']['caption'];b['image']={'type':'file','file':{'url':'https://notion.test/'+upload+'?signature=other'},'caption':caption}
+        before=len(self.mutations());store=Store(ns.local_root(self.repo,self.ws))
+        try:ns.client_for(self.repo,store,self.api).sync(store.rows('SELECT * FROM revisions')[0])
+        finally:store.close()
+        self.assertEqual(len(self.mutations()),before)
+
+    def test_legacy_long_uploaded_name_resumes_without_reupload_or_duplicate_blocks(self):
+        self.two_topics();original=self.api.call;fired=[False]
+        def rejected(method,path,**kwargs):
+            children=kwargs.get('json',{}).get('children',[])
+            if not fired[0] and any(b['type']=='file' for b in children):
+                fired[0]=True;raise NotionHTTPError(400,'validation_error',True)
+            return original(method,path,**kwargs)
+        self.api.call=rejected;self.assertIn('0/1',self.send())
+        row=next(r for r in self.rows('graphics') if json.loads(r['notion']).get('json_upload'))
+        state=json.loads(row['notion']);self.assertNotIn('json_attach_intent',state)
+        original_upload=state['json_upload']['id'];state['json_upload']['name']='x'*96+'.json'
+        store=Store(ns.local_root(self.repo,self.ws));store.update('graphics',row['id'],notion=encode(state));store.close()
+        self.assertIn('1/1',self.send())
+        self.assertEqual(len(self.api.uploads),6)
+        files=[b for bs in self.api.blocks.values() for b in bs if b['type']=='file']
+        matched=[b for b in files if b['file']['file_upload']['id']==original_upload]
+        self.assertEqual(len(matched),1);self.assertLessEqual(len(matched[0]['file']['name']),100)
+        self.assertEqual(len(next(iter(self.api.pages.values()))['properties']['Graphic Image']['files']),2)
+
+    def test_unknown_attach_failure_remains_blocked_without_resending(self):
+        original=self.api.call;fired=[False]
+        def unknown(method,path,**kwargs):
+            if not fired[0] and any(b['type']=='file' for b in kwargs.get('json',{}).get('children',[])):
+                fired[0]=True;raise TimeoutError('unknown')
+            return original(method,path,**kwargs)
+        self.api.call=unknown;self.send();before=len(self.mutations());self.send()
+        self.assertEqual(len(self.mutations()),before)
+        self.assertFalse(self.ws.current(PMID)['data']['done'])
+
+    def test_notion_validation_error_reports_safe_reason_without_echoing_payload(self):
+        session=Mock();session.headers={}
+        session.request.return_value.status_code=400
+        session.request.return_value.json.return_value={'code':'validation_error','message':'body.children[0].file.name.length should be <= 100; secret-submitted-text'}
+        with self.assertRaises(NotionHTTPError) as error:
+            NotionAPI('secret-token',session).call('PATCH','/blocks/test/children',json={})
+        self.assertIn('100文字',str(error.exception));self.assertNotIn('secret',str(error.exception))
+        self.assertEqual(session.request.call_count,1)
+        self.assertLessEqual(len(attachment_name('日'*150+'.json')),100)
 
     def test_preview_endpoint_requires_token_current_head_and_known_png(self):
         app=Application(self.repo,self.ws.root)

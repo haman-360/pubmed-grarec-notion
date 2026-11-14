@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import json
 import mimetypes
+import re
 import time
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 
 import requests
 
@@ -16,6 +18,41 @@ def rich(text):
 
 def plain(block):
     return ''.join(x.get('plain_text',x.get('text',{}).get('content','')) for x in block.get(block.get('type'),{}).get('rich_text',[]))
+
+
+def attachment_name(name):
+    # File uploads allow longer names than file blocks (100 characters).
+    if len(name) <= 100:
+        return name
+    suffix = Path(name).suffix[:10]
+    return name[:70] + '_' + digest(name)[:16] + suffix
+
+
+def file_key(item):
+    kind = item.get('type')
+    if kind == 'file_upload':
+        return (kind, item[kind]['id'])
+    if kind in ('file', 'external'):
+        url = item[kind]['url']
+        if kind == 'file':
+            parts = urlsplit(url)
+            url = urlunsplit((parts.scheme, parts.netloc, parts.path, '', ''))
+        return (kind, url)
+    raise ValueError('既存のGraphic Imageに未対応のファイル形式があります。変更せず停止します')
+
+
+def file_payload(item):
+    kind = item['type']
+    key = 'id' if kind == 'file_upload' else 'url'
+    file_key(item)
+    return dict(name=item.get('name', ''), type=kind, **{kind: {key: item[kind][key]}})
+
+
+class NotionHTTPError(RuntimeError):
+    def __init__(self, status, code='', filename_too_long=False):
+        self.status, self.code = status, code
+        detail = '：添付ファイル名は100文字以内にしてください' if filename_too_long else ''
+        super().__init__(f'Notion HTTP {status}' + (f' ({code})' if code else '') + detail)
 
 
 def content_blocks(summary):
@@ -46,7 +83,15 @@ class NotionAPI:
             try:
                 response = self.session.request(method,'https://api.notion.com/v1'+path,timeout=120,**kwargs)
                 if response.status_code >= 400:
-                    raise RuntimeError(f'Notion HTTP {response.status_code}')
+                    try:
+                        error = response.json()
+                    except ValueError:
+                        error = {}
+                    code = error.get('code', '') if isinstance(error, dict) else ''
+                    code = code if isinstance(code, str) and re.fullmatch('[a-z_]+', code) else ''
+                    # Don't echo provider messages: they can include submitted content.
+                    too_long = isinstance(error, dict) and 'file.name.length' in str(error.get('message', ''))
+                    raise NotionHTTPError(response.status_code, code, too_long)
                 return response.json()
             except (requests.RequestException,RuntimeError):
                 if retry == (2 if method=='GET' else 0):
@@ -147,7 +192,7 @@ class Notion:
                 raise ValueError('Notion添付送信結果が未確定です。次回再確認します')
         if path.stat().st_size > min(self.file_limit,20*1024*1024):
             raise ValueError('ファイル上限超過：自動縮小や公開URL化は行いません')
-        name = revision['id']+'_'+digest(path.read_bytes())[:12]+path.suffix
+        name = kind+'_'+digest(revision['id'])[:16]+'_'+digest(path.read_bytes())[:12]+path.suffix
         content_type = mimetypes.guess_type(name)[0]
         if not entry.get('id') or status.get('status') != 'pending':
             upload = self.api.call('POST','/file_uploads',json={'mode':'single_part','filename':name,'content_type':content_type})
@@ -185,6 +230,52 @@ class Notion:
                          _master=str(Path(row['json_path']).parent.parent/'master.json'))
             self._sync_one(proxy)
             refresh_manifest(self.store, revision['id'])
+        self.sync_gallery(revision)
+
+    def sync_gallery(self, revision, verify_only=False):
+        """Reconcile every approved image, including topics completed by older versions."""
+        from .graphics import active_graphics
+        if self.properties is None:
+            self.setup()
+        if self.properties.get('Graphic Image', {}).get('type') != 'files':
+            return
+        paper = self.store.one('papers', revision['paper_id'])
+        images = []
+        for row in active_graphics(self.store, revision['id']):
+            if row['status'] != 'COMPLETED':
+                continue
+            state = json.loads(row['notion'])
+            marker = 'image:'+revision['id']+':'+row['topic_id']+':'+row['json_hash'][:12]+':'+row['image_hash'][:12]
+            matches = [b for b in self.children(state['section_id']) if b['id'] == state.get('image_block') and
+                       b['type'] == 'image' and ''.join(t.get('plain_text', t.get('text', {}).get('content', ''))
+                       for t in b['image'].get('caption', [])) == marker]
+            if len(matches) != 1 or state.get('page_id') != paper['page_id']:
+                raise ValueError('Graphic Imageの追加元を確認できません。既存画像を保持して停止します')
+            images.append((file_key(matches[0]['image']), state.get('image_upload')))
+        page = self.api.call('GET', '/pages/'+paper['page_id'])
+        existing = page['properties'].get('Graphic Image', {}).get('files', [])
+        keys = {file_key(f) for f in existing}
+        additions = []
+        for key, upload in images:
+            if key in keys:
+                continue
+            if verify_only:
+                raise ValueError('Graphic Imageに全PNGが登録されていません')
+            if not upload:
+                raise ValueError('Graphic Imageのアップロード記録がありません。既存画像は変更していません')
+            additions.append(dict(name=attachment_name(upload['name']), type='file_upload', file_upload={'id':upload['id']}))
+            keys.add(key)
+        if not additions:
+            return
+        payload = [file_payload(f) for f in existing] + additions
+        if len(payload) > 100:
+            raise ValueError('Graphic Imageが100件を超えます。既存画像は削除しません')
+        # Read before every explicit retry. A lost PATCH response will not duplicate images.
+        self.api.call('PATCH', '/pages/'+paper['page_id'], json={'properties':{'Graphic Image':{'files':payload}}})
+        verified = self.api.call('GET', '/pages/'+paper['page_id'])['properties']['Graphic Image']['files']
+        actual = {file_key(f) for f in verified}
+        if not keys.issubset(actual):
+            raise ValueError('Graphic Imageの全PNG・既存ファイルの再取得確認に失敗しました')
 
     def _sync_one(self, revision):
         if self.properties is None:
@@ -269,24 +360,21 @@ class Notion:
             block_type = 'image' if kind=='image' else 'file'
             item = {'object':'block','type':block_type,block_type:{'type':'file_upload','file_upload':{'id':upload['id']},'caption':rich(marker)}}
             if kind!='image':
-                item['file']['name'] = upload['name']
+                item['file']['name'] = attachment_name(upload['name'])
             state[kind+'_attach_intent'] = True
             self.save(revision,state)
-            response = self.api.call('PATCH','/blocks/'+section_id+'/children',json={'children':[item]})
+            try:
+                response = self.api.call('PATCH','/blocks/'+section_id+'/children',json={'children':[item]})
+            except NotionHTTPError as error:
+                if error.status == 400 and error.code == 'validation_error':
+                    # Definitive rejection: a later explicit resume may send corrected input.
+                    state.pop(kind+'_attach_intent', None)
+                    self.save(revision,state)
+                raise
             state[kind+'_block'] = response['results'][0]['id']
             self.save(revision,state)
         # Never change an existing page's cover or clinical properties.
         fresh_page = self.api.call('GET','/pages/'+page['id'])
-        # The existing gallery uses this files property rather than page cover.
-        # Fill only an empty slot; preserve images chosen by the user.
-        if self.properties.get('Graphic Image',{}).get('type') == 'files' and not fresh_page['properties'].get('Graphic Image',{}).get('files'):
-            image_upload = state.get('image_upload')
-            if image_upload:
-                self.api.call('PATCH','/pages/'+page['id'],json={'properties':{'Graphic Image':{'files':[
-                    {'name':image_upload['name'],'type':'file_upload','file_upload':{'id':image_upload['id']}}]}}})
-                fresh_page = self.api.call('GET','/pages/'+page['id'])
-                if not fresh_page['properties'].get('Graphic Image',{}).get('files'):
-                    raise ValueError('ギャラリー画像の再取得確認に失敗しました')
         checked = fresh_page['properties'].get('Human Checked',{}).get('checkbox',False)
         if state.get('created_new') and not checked and not fresh_page.get('cover'):
             image_upload = state.get('image_upload')

@@ -299,6 +299,7 @@ def verify_remote(client, store, revision):
             if not any(b['id'] == state.get(kind+'_block') and b['type'] == block_type and
                 ''.join(t.get('plain_text', t.get('text',{}).get('content','')) for t in b[block_type].get('caption',[])) == kind+':'+marker_id for b in children):
                 raise ValueError('登録したNotion添付を再確認できません')
+    client.sync_gallery(revision, verify_only=True)
     return page['id']
 
 
