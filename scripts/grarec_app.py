@@ -88,7 +88,7 @@ class Application:
             self.state = dict(base, papers=[], counts=dict(total=0, **{k: 0 for k in STAGES}), errors=[str(error)])
 
     def run(self, action, data):
-        if action not in ('configure', 'fetch-pdfs', 'fetch-pdfs-paid', 'json-budget', 'json-prepare', 'json-send', 'json-collect', 'notion-prepare', 'notion-send') and self.settings['shared_root']:
+        if action not in ('configure', 'fetch-pdfs', 'fetch-pdfs-paid', 'json-budget', 'json-prepare', 'json-send', 'json-collect', 'json-retry-prepare', 'json-retry-send', 'notion-prepare', 'notion-send') and self.settings['shared_root']:
             with workspace_lock(self.workspace()):
                 return self._run(action, data)
         return self._run(action, data)
@@ -111,12 +111,16 @@ class Application:
             if action == 'notion-prepare':
                 return notion_sync.prepare(self.repo, workspace, data.get('items'))
             return notion_sync.submit(self.repo, workspace, data)
-        if action in ('json-budget', 'json-prepare', 'json-send', 'json-collect'):
+        if action in ('json-budget', 'json-prepare', 'json-send', 'json-collect', 'json-retry-prepare', 'json-retry-send'):
             from paper_pipeline import json_batch
             if action == 'json-budget':
                 return json_batch.set_budget(self.repo, workspace, data)
             if action == 'json-prepare':
                 return json_batch.prepare(self.repo, workspace, data.get('items'))
+            if action == 'json-retry-prepare':
+                return json_batch.prepare_retry(self.repo, workspace, data.get('revision_id'))
+            if action == 'json-retry-send':
+                return json_batch.submit_retry(self.repo, workspace, data)
             if action == 'json-send':
                 return json_batch.submit(self.repo, workspace, data)
             return json_batch.collect(self.repo, workspace)

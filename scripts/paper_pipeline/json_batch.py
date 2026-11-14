@@ -17,6 +17,8 @@ from .store import Store, atomic_write, digest, encode, now, uid
 
 SHARED = 'API_JSON'
 MAX_SELECTION = 5
+MAX_RETRIES = 1
+MAX_RETRY_RESERVE = 1.0
 
 
 def api_key(repo):
@@ -97,10 +99,11 @@ def publish(workspace, store):
         jobs.append(dict(id=revision['id'], pmid=binding.get('pmid'), source_hash=binding.get('source_hash'), status=revision['status'],
                          message=revision['error'], at=revision['created_at'],
                          result=store.setting('result:' + revision['id'], ''),
+                         retry=retry_info(store, revision, attempts),
                          attempts=[{k: a[k] for k in ('status', 'batch_id', 'reserve', 'actual')} for a in attempts]))
     budget = store.setting('budget', {})
     # Credentials and account balances never go to OneDrive.
-    report = dict(at=now(), jobs=jobs, preview=store.setting('preview'),
+    report = dict(at=now(), jobs=jobs, preview=store.setting('preview'), retry_preview=store.setting('retry_preview'),
                   budget_checked_at=budget.get('checked_at'), budget_end=budget.get('end'))
     atomic_write(workspace.path(SHARED + '/status.json'), encode(report))
 
@@ -259,6 +262,104 @@ def check_binding(workspace, store, revision):
     _, pdf = eligible(workspace, binding['pmid'], binding['heads'])
     if pdf['sha'] != binding['source_hash']:
         raise ValueError('原本が変更されています。準備からやり直してください')
+
+
+def failure_reason(store, attempt):
+    """Only terminal results saved by collect are evidence; missing results are ambiguous."""
+    if attempt['status'] != 'review_required' or not attempt['batch_id'] or attempt['stage'] != 'analysis':
+        return ''
+    try:
+        records = []
+        for kind in ('output_file_id', 'error_file_id'):
+            path = store.root / 'batches' / (attempt['id'] + '_' + kind + '.jsonl')
+            if path.is_file():
+                records.extend(json.loads(line) for line in path.read_text().splitlines() if line.strip())
+        matches = [r for r in records if r.get('custom_id') == attempt['id']]
+        if len(matches) != 1:
+            return ''
+        record = matches[0]
+        response = record.get('response') or {}
+        body = response.get('body') or {}
+        if body.get('output'):
+            return ''
+        error = body.get('error') or {}
+        code = response.get('status_code')
+        if code in (500, 502, 503, 504) and error:
+            return 'サーバー混雑・一時障害（HTTP ' + str(code) + '）'
+        if code == 429 and error.get('code') == 'rate_limit_exceeded':
+            return '一時的な利用制限（HTTP 429）'
+        if not response and (record.get('error') or {}).get('code') == 'batch_expired':
+            return 'Batchの処理期限切れ'
+    except (OSError, ValueError, TypeError, AttributeError):
+        pass
+    return ''
+
+
+def retry_info(store, revision, attempts):
+    reason = failure_reason(store, attempts[-1]) if attempts else ''
+    used = max(0, len(attempts) - 1)
+    allowed = (bool(reason) and used < MAX_RETRIES and revision['status'] == 'review_required'
+               and not revision['summary'])
+    return dict(allowed=allowed, reason=reason, used=used, limit=MAX_RETRIES, cap=MAX_RETRY_RESERVE)
+
+
+def retry_target(workspace, store, revision_id):
+    revision = store.one('revisions', revision_id)
+    attempts = store.rows('SELECT * FROM attempts WHERE revision_id=? ORDER BY created_at, id', (revision_id,))
+    info = retry_info(store, revision, attempts)
+    if not info['allowed']:
+        raise ValueError('再試行は失敗を確認できた処理だけ、1回までです。結果不明・検証エラーは再送しません')
+    check_binding(workspace, store, revision)
+    source = store.one('sources', revision['source_id'])
+    if digest((store.root / source['path']).read_bytes()) != source['hash']:
+        raise ValueError('担当Macの原本が変更されています')
+    estimate = JsonBatches(store, None).estimate(revision, 'analysis')
+    previous = sum(a['actual'] if a['actual'] is not None else a['reserve'] for a in attempts)
+    if not math.isfinite(estimate) or estimate <= 0 or estimate > MAX_RETRY_RESERVE:
+        raise ValueError('再試行の追加見積が上限 $1.00 を超えるため停止しました')
+    if previous + estimate > 4:
+        raise ValueError('過去の使用・予約額と合わせて1処理版の上限 $4.00 を超えます')
+    paper = store.one('papers', revision['paper_id'])
+    item = dict(id=revision_id, pmid=paper['pmid'], title=paper['title'], attempt_id=attempts[-1]['id'],
+                reason=info['reason'], number=info['used'] + 1, limit=MAX_RETRIES,
+                reserve=estimate, previous=previous, total=round(previous + estimate, 6),
+                cap=MAX_RETRY_RESERVE, config_hash=digest(revision['config']))
+    return revision, item
+
+
+def prepare_retry(repo, workspace, revision_id):
+    with ledger(repo, workspace) as store, workspace_lock(workspace):
+        store.set_setting('retry_preview', None)
+        _, item = retry_target(workspace, store, revision_id)
+        store.set_setting('retry_preview', dict(id=uid(), item=item))
+    return '再試行の見積もりを準備しました。過去の履歴・費用予約を残したまま、1件だけ確認して再送できます。'
+
+
+def submit_retry(repo, workspace, data, api=None):
+    if data.get('confirmed') is not True:
+        raise ValueError('再試行回数・追加見積・累計額とPDFの外部送信を確認してください')
+    with ledger(repo, workspace) as store:
+        preview = store.setting('retry_preview')
+        if not preview or preview['id'] != data.get('preview_id'):
+            raise ValueError('再試行の見積もりを準備し直してください')
+        # Consume before any external call; double clicks and interrupted sends cannot reuse consent.
+        store.set_setting('retry_preview', None)
+        with workspace_lock(workspace):
+            revision, item = retry_target(workspace, store, preview['item']['id'])
+            if item != preview['item']:
+                raise ValueError('処理記録・見積もりが変わりました。再試行の準備からやり直してください')
+            api = api or JsonAPI(api_key(repo))
+            engine = JsonBatches(store, api)
+            # Reuse all period/balance/expiry caps; unknown old costs retain their reservation.
+            attempt = store.reserve(revision, 'analysis', item['reserve'])
+            store.update('attempts', attempt['id'], details=encode(dict(retry_of=item['attempt_id'], confirmed_at=now())))
+            engine.send_reserved(revision, 'analysis', store.one('attempts', attempt['id']))
+            outcome = store.one('attempts', attempt['id'])['status']
+    if outcome == 'submitted':
+        return '1件を再送しました（再試行1/1回）。過去の履歴・費用予約は保持しています。後で「状況確認・JSON回収」を押してください。'
+    if outcome == 'unknown':
+        return '再送の応答が不明です。追加再送せず「状況確認・JSON回収」で照合してください。費用予約は保持しています。'
+    return '再試行はBatch作成前に停止しました。再試行回数の上限に達したため、記録を確認してください。'
 
 
 def submit(repo, workspace, data, api=None):

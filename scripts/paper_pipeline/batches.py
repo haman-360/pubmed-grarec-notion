@@ -278,27 +278,32 @@ class Batches:
                 self.store.update('revisions',revision['id'],status='budget_wait',error=str(error))
                 print(f"{revision['id']}: {error}")
                 continue
-            try:
-                body = prepared_body if prepared_body is not None else self.request_body(revision, stage)
-                request = {'custom_id':attempt['id'],'method':'POST','url':'/v1/responses' if stage=='analysis' else '/v1/images/generations','body':body}
-                path = self.store.root / 'batches' / (attempt['id']+'.jsonl')
-                atomic_write(path, encode(request)+'\n')
-                input_id = self.api.upload(path,'batch')
-            except Exception as error:
-                self.store.update('attempts',attempt['id'],status='rejected',actual=0,details=encode({'error':str(error)[:300]}))
-                self.store.update('revisions',revision['id'],status=stage+'_ready',error='Batch作成前に失敗しました')
-                continue
-            # Persist intent BEFORE POST. Any interruption from this point is ambiguous.
-            self.store.update('attempts',attempt['id'],status='submitting',input_file_id=input_id)
-            self.store.update('revisions',revision['id'],status=stage+'_submitted',error='')
-            try:
-                batch = self.api.create(input_id, stage, attempt['id'])
-                self.store.update('attempts',attempt['id'],batch_id=batch['id'],status='submitted')
-            except Exception:
-                self.store.update('attempts',attempt['id'],status='unknown')
-                self.store.update('revisions',revision['id'],error='Batch送信結果が不明です。再送せず照合します。')
-            count += 1
+            count += self.send_reserved(revision, stage, attempt, prepared_body)
         return count
+
+    def send_reserved(self, revision, stage, attempt, prepared_body=None):
+        """Send one reserved attempt; persist intent before the non-retried POST."""
+        try:
+            body = prepared_body if prepared_body is not None else self.request_body(revision, stage)
+            request = {'custom_id':attempt['id'],'method':'POST','url':'/v1/responses' if stage=='analysis' else '/v1/images/generations','body':body}
+            path = self.store.root / 'batches' / (attempt['id']+'.jsonl')
+            atomic_write(path, encode(request)+'\n')
+            input_id = self.api.upload(path,'batch')
+        except Exception as error:
+            details = dict(json.loads(attempt['details']), error=str(error)[:300])
+            self.store.update('attempts',attempt['id'],status='rejected',actual=0,details=encode(details))
+            self.store.update('revisions',revision['id'],status=stage+'_ready',error='Batch作成前に失敗しました')
+            return 0
+        # Persist intent BEFORE POST. Any interruption from this point is ambiguous.
+        self.store.update('attempts',attempt['id'],status='submitting',input_file_id=input_id)
+        self.store.update('revisions',revision['id'],status=stage+'_submitted',error='')
+        try:
+            batch = self.api.create(input_id, stage, attempt['id'])
+            self.store.update('attempts',attempt['id'],batch_id=batch['id'],status='submitted')
+        except Exception:
+            self.store.update('attempts',attempt['id'],status='unknown')
+            self.store.update('revisions',revision['id'],error='Batch送信結果が不明です。再送せず照合します。')
+        return 1
 
     def collect(self):
         attempts = self.store.rows("SELECT * FROM attempts WHERE status IN ('reserved','submitting','unknown','submitted','legacy_submitted')")
@@ -330,7 +335,8 @@ class Batches:
             matches = [r for r in records if r.get('custom_id') == target]
             if len(matches) != 1:
                 # Keep reservation: absent output is not proof of zero cost.
-                self.store.update('attempts',attempt['id'],status='review_required',details=encode({'error':'Terminal Batch has missing/duplicate result', 'batch_status':batch['status']}))
+                details.update(error='Terminal Batch has missing/duplicate result', batch_status=batch['status'])
+                self.store.update('attempts',attempt['id'],status='review_required',details=encode(details))
                 self.store.update('revisions',attempt['revision_id'],status='review_required',error='Batch結果が欠落/重複しています')
                 continue
             self.accept(attempt,matches[0])
