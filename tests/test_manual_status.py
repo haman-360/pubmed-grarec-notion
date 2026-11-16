@@ -33,7 +33,8 @@ class ManualStatusTests(unittest.TestCase):
             args = client.return_value.call.call_args.args
             self.assertEqual(args[0], '/api/report')
             payload = args[1]
-            self.assertEqual(payload['counts'], app.state['counts'])
+            self.assertEqual(payload['counts'], {k: v for k, v in app.state['counts'].items()
+                                                if k not in ('archived', 'deferred')})
             self.assertEqual(payload['workflow'], SCHEMA)
             self.assertEqual(payload['device_name'], app.state['device'])
             self.assertEqual(set(payload), {'workflow', 'source_id', 'device_name', 'observed_at',

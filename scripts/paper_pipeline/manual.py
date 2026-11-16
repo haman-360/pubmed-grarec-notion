@@ -12,7 +12,9 @@ import json
 import re
 import socket
 import uuid
-from datetime import datetime
+import calendar
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 from pathlib import Path
 from urllib.parse import quote
 
@@ -22,8 +24,28 @@ from .store import atomic_write, digest, encode, now
 SCHEMA = 'manual-onedrive-v1'
 STAGES = {'missing_pdf': 'PDF取得待ち', 'json_pending': 'JSON作成待ち',
           'web_pending': 'PNG作成待ち', 'review_pending': 'PNG確認・登録待ち',
-          'completed': '登録完了', 'attention': '要確認・競合'}
+          'completed': '登録完了', 'attention': '要確認・競合',
+          'deferred': '再確認待ち', 'archived': 'アーカイブ'}
 KINDS = {'pdf': '.pdf', 'json': '.json', 'png': '.png'}
+CHECK_RESULTS = ('有料のみ', 'PDFが見つからない', 'アクセスできない', 'その他')
+
+
+def today():
+    return datetime.now(ZoneInfo('Asia/Tokyo')).date()
+
+
+def next_month(day):
+    year, month = day.year + (day.month == 12), day.month % 12 + 1
+    return day.replace(year=year, month=month, day=min(day.day, calendar.monthrange(year, month)[1]))
+
+
+def calendar_date(value):
+    if not isinstance(value, str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}', value):
+        raise ValueError('日付はYYYY-MM-DDで指定してください')
+    try:
+        return date.fromisoformat(value)
+    except ValueError as error:
+        raise ValueError('有効な日付を指定してください') from error
 
 
 def png_request(pmid, topic, text):
@@ -136,11 +158,13 @@ class Workspace:
             raise ValueError('別の端末で更新されています。一覧を更新してください')
         return heads[0]
 
-    def record(self, pmid, data, parents):
+    def record(self, pmid, data, parents, management=None):
         # UUID files, rather than replacement of one shared database, preserve forks.
         event = dict(schema=SCHEMA, id=uuid.uuid4().hex, pmid=pmid_value(pmid),
                      at=now(), device=self.device_name, device_id=self.device_id,
                      parents=parents, data=copy.deepcopy(data))
+        if management is not None:
+            event['management'] = management
         atomic_write(self.path(f"papers/PMID_{pmid}/records/{event['id']}.json"), encode(event))
         self.incoming(pmid)
         return event
@@ -179,6 +203,8 @@ class Workspace:
             raise ValueError('PDF・JSON・PNGを対応するフォルダに保存してください')
         event = self.current(pmid, expected)
         data = copy.deepcopy(event['data'])
+        if data.get('archive'):
+            raise ValueError('アーカイブ中です。作業対象に戻してから取り込んでください')
         files = data['files']
         if any(f['sha'] == digest(raw) and f['kind'] == kind and f['name'] == name for f in files):
             return event
@@ -189,6 +215,8 @@ class Workspace:
             # New source invalidates all downstream selections, but old events retain them.
             files = [self.asset(pmid, kind, name, raw)]
             data.pop('structure_wait', None)
+            if data.get('pdf_recheck'):
+                data['pdf_recheck']['active'] = False
         elif kind == 'json':
             if len(raw) > 8 * 1024 * 1024:
                 raise ValueError('JSONは8MB以下で保存してください')
@@ -265,7 +293,8 @@ class Workspace:
                 pmid_value(pmid)
                 if not self.heads(pmid):
                     self.add(pmid)
-                self.current(pmid)
+                if self.current(pmid)['data'].get('archive'):
+                    continue
                 # Old inbox versions stay in place. Never re-adopt them on the next scan.
                 seen = {(f['kind'], f.get('topic', '') if f['kind'] == 'png' else '', f['sha']) for e in self.events(pmid).values()
                         for f in e['data']['files']}
@@ -290,12 +319,17 @@ class Workspace:
         return changed, errors
 
     def category(self, data):
+        if data.get('archive'):
+            return 'archived'
         if data.get('structure_wait'):
             return 'attention'
         files = data['files']
         graphics = {f['topic']: f for f in files if f['kind'] == 'graphic'}
         pngs = {f['topic']: f for f in files if f['kind'] == 'png'}
         if not any(f['kind'] == 'pdf' for f in files):
+            check = data.get('pdf_recheck', {})
+            if check.get('active') and calendar_date(check['next_on']) > today():
+                return 'deferred'
             return 'missing_pdf'
         if not any(f['kind'] == 'json' for f in files):
             return 'json_pending'
@@ -304,6 +338,52 @@ class Workspace:
         if any(t not in pngs or pngs[t].get('basis') != g['sha'] for t, g in graphics.items()):
             return 'web_pending'
         return 'completed' if data.get('done') else 'review_pending'
+
+    def manage(self, pmid, expected, action, **values):
+        if not isinstance(expected, list) or len(expected) != 1:
+            raise ValueError('一覧を更新して、競合のない論文を選んでください')
+        event = self.current(pmid, expected)
+        data = copy.deepcopy(event['data'])
+        if action == 'archive':
+            reason = values.get('reason', '')
+            if reason not in ('', '古い', '内容が対象外', '重複する内容', 'その他'):
+                raise ValueError('対象から外す理由を選んでください')
+            note = values.get('note', '')
+            if not isinstance(note, str) or len(note) > 2000:
+                raise ValueError('補足メモは2000文字以内で指定してください')
+            data['archive'] = dict(reason=reason, note=note.strip(), on=today().isoformat())
+            detail = copy.deepcopy(data['archive'])
+        elif action == 'restore':
+            if not data.get('archive'):
+                raise ValueError('アーカイブ中の論文を選んでください')
+            data.pop('archive')
+            detail = {}
+        elif action in ('defer', 'reschedule', 'resume'):
+            if data.get('archive') or any(f['kind'] == 'pdf' for f in data['files']):
+                raise ValueError('アーカイブされていないPDF未取得の論文を選んでください')
+            check = data.get('pdf_recheck', {})
+            if action != 'defer' and not check.get('active'):
+                raise ValueError('再確認待ちの記録を選んでください')
+            if action == 'resume':
+                check['active'] = False
+            else:
+                next_on = calendar_date(values.get('next_on', next_month(today()).isoformat()))
+                if next_on <= today():
+                    raise ValueError('再確認日は明日以降にしてください。すぐ探す場合は「今すぐ再開」を選んでください')
+                if action == 'defer':
+                    checked = calendar_date(values.get('checked_on', today().isoformat()))
+                    if checked > today():
+                        raise ValueError('確認日は今日以前にしてください')
+                    result, note = values.get('result'), values.get('note', '')
+                    if result not in CHECK_RESULTS or not isinstance(note, str) or len(note) > 2000:
+                        raise ValueError('確認結果を選択し、補足メモは2000文字以内で指定してください')
+                    check = dict(checked_on=checked.isoformat(), result=result, note=note.strip())
+                check.update(active=True, next_on=next_on.isoformat())
+            data['pdf_recheck'] = check
+            detail = copy.deepcopy(check)
+        else:
+            raise ValueError('対象の管理操作を選んでください')
+        return self.record(pmid, data, [event['id']], dict(action=action, **detail))
 
     def update(self, pmid, expected, note, done=False, chosen=None):
         heads = self.heads(pmid)
@@ -333,9 +413,12 @@ class Workspace:
                 data = copy.deepcopy(event['data'])
                 category = self.category(data) if len(heads) == 1 else 'attention'
                 missing = [f['name'] for f in data['files'] if not self.path(f['path']).is_file()]
-                if missing:
+                if missing and category != 'archived':
                     category = 'attention'
                 rows.append(dict(pmid=pmid, **data, category=category, at=event['at'], device=event['device'],
+                    recheck_due=(category == 'missing_pdf' and bool(data.get('pdf_recheck', {}).get('active'))),
+                    management_history=[dict(at=e['at'], device=e['device'], **e['management'])
+                        for e in sorted(self.events(pmid).values(), key=lambda e: (e['at'], e['id'])) if e.get('management')],
                     heads=[e['id'] for e in heads], conflicts=heads if len(heads) > 1 else [],
                     missing=missing, folder=str(self.folder(pmid))))
             except (ValueError, OSError, KeyError, TypeError) as error:
@@ -344,7 +427,8 @@ class Workspace:
                                  at='', device='', heads=[], conflicts=[], missing=[], folder=str(folder)))
         counts = {key: sum(p['category'] == key for p in rows) for key in STAGES}
         counts['total'] = len(rows)
-        return dict(papers=rows, counts=counts, errors=errors, root=str(self.root), device=self.device_name)
+        return dict(papers=rows, counts=counts, errors=errors, root=str(self.root), device=self.device_name,
+                    today=today().isoformat(), default_recheck_on=next_month(today()).isoformat())
 
     def export_view(self, snapshot):
         """Per-device views never overwrite another Mac's observations."""
@@ -366,15 +450,19 @@ class Workspace:
                       '00_取り込み待ちへ保存し、Macの「取り込み待ちを処理」を実行してください。', ''])
         table = []
         for row in snapshot['papers']:
+            check, archive = row.get('pdf_recheck', {}), row.get('archive', {})
+            management = ('対象から外した理由：' + (archive.get('reason') or '未指定') + ' ' + archive.get('note', '')) if archive else ''
+            if check:
+                management += f" 手動確認：{check['checked_on']} ／ {check['result']} ／ 次回：{check['next_on']}" + ('（解除済み）' if not check['active'] else '')
             lines.extend([f"PMID {row['pmid']}  {row['title']}", STAGES[row['category']],
-                          f"更新: {row['at']} / {row['device']}", row['note']])
+                          f"更新: {row['at']} / {row['device']}", row['note'], management])
             links = []
             for file in row['files']:
                 lines.append('  ' + file['kind'] + ': ' + file['path'])
                 links.append('<a href="../../' + quote(file['path']) + '">' + html.escape(file['name']) + '</a>')
             lines.append('')
             table.append('<tr><td>' + html.escape(row['pmid']) + '</td><td>' + html.escape(row['title']) +
-                         '</td><td>' + STAGES[row['category']] + '</td><td>' + html.escape(row['at'] + ' / ' + row['device']) +
+                         '</td><td>' + STAGES[row['category']] + '<br>' + html.escape(management) + '</td><td>' + html.escape(row['at'] + ' / ' + row['device']) +
                          '</td><td>' + '<br>'.join(links) + '</td></tr>')
         lines.extend(snapshot['errors'])
         atomic_write(folder / '状況.txt', '\n'.join(lines))

@@ -98,3 +98,40 @@ test('retry screen shows preserved cost, limits, explicit consent and owner/busy
     set('state.json_batch.jobs[0].retry={allowed:false,used:1,limit:1};renderJsonPanel()');
     assert.equal(run('document.querySelectorAll().length'),0);
 });
+
+test('archived and deferred papers stay out of active search; due papers lead all sort orders',()=>{
+    const {run,set}=dashboard();
+    set("state.papers[0].category='archived';state.papers[1].category='deferred';state.papers[2].recheck_due=true;state.papers.push({pmid:'5',title:'New',category:'missing_pdf',heads:['e'],files:[]})");
+    assert.deepEqual(run('pdfRows().map(p=>p.pmid)'),['3','5']);
+    for(const sort of ['easy','hard','recent']){
+        set(`$('pdf-history-sort').value='${sort}'`);
+        assert.deepEqual(run('paperRows().map(p=>p.pmid)'),['3','5']);
+    }
+    set("view='archived'");assert.deepEqual(run('paperRows().map(p=>p.pmid)'),['1']);
+    set("view='total'");assert.equal(run('paperRows().length'),5);
+});
+
+test('waiting list sorts by next check date independently of search history filters',()=>{
+    const {run,set}=dashboard();
+    set("state.papers[0].category='deferred';state.papers[0].pdf_recheck={next_on:'2027-01-01'};state.papers[1].category='deferred';state.papers[1].pdf_recheck={next_on:'2026-12-16'};view='deferred';$('pdf-history-method').value='paid'");
+    assert.deepEqual(run('paperRows().map(p=>p.pmid)'),['2','1']);
+});
+
+test('management form defaults to calendar month, sends edited date, and reschedules without replacing the check',async()=>{
+    const {run,set}=dashboard();
+    set(`state.today='2026-11-16';state.default_recheck_on='2026-12-16';
+        $('management-panel').scrollIntoView=()=>{};$('management-title').focus=()=>{};
+        var recorded=[];act=async(action,data)=>{recorded.push({action,data});return true};
+        openManagement(state.papers[0],'defer');`);
+    assert.equal(run("$('next-check-on').value"),'2026-12-16');
+    assert.equal(run("$('check-on').value"),'2026-11-16');
+    set("$('next-check-on').value='2027-01-20';$('management-note').value='Publisher inaccessible'");
+    await set('saveManagement()');
+    assert.deepEqual(run('recorded[0]'),{action:'manage-paper',data:{pmid:'1',heads:['a'],operation:'defer',next_on:'2027-01-20',checked_on:'2026-11-16',result:'有料のみ',note:'Publisher inaccessible'}});
+    set("state.papers[0].pdf_recheck={next_on:'2027-01-20'};openManagement(state.papers[0],'reschedule');$('next-check-on').value='2027-02-01'");
+    await set('saveManagement()');
+    assert.deepEqual(run('recorded[1].data'),{pmid:'1',heads:['a'],operation:'reschedule',next_on:'2027-02-01'});
+    set("openManagement(state.papers[0],'archive');$('archive-reason').value='古い'");
+    await set('saveManagement()');
+    assert.deepEqual(run('recorded[2].data'),{pmid:'1',heads:['a'],operation:'archive',reason:'古い',note:''});
+});

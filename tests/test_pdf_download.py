@@ -69,6 +69,18 @@ class DownloadTests(unittest.TestCase):
         self.assertFalse(self.ws.current(PMID)['data']['done'])
         self.assertEqual(json.loads(result_path(self.ws).read_text()), result)
 
+    def test_archive_during_download_keeps_candidate_without_reactivating_paper(self):
+        def archive_before_return(article, destination):
+            result = self.download(article, destination)
+            self.ws.manage(PMID, [self.ws.current(PMID)['id']], 'archive', reason='古い')
+            return result
+        self.finder.download_pdf.side_effect = archive_before_return
+        result = self.run_download()
+        self.assertEqual(result['items'][0]['status'], 'candidate')
+        self.assertEqual(self.ws.snapshot()['papers'][0]['category'], 'archived')
+        self.assertFalse(self.ws.current(PMID)['data']['files'])
+        self.assertEqual(self.ws.read_asset(result['items'][0]['file']), self.raw)
+
     def test_existing_pdf_is_never_downloaded_or_replaced(self):
         self.ws.import_file(PMID, 'pdf', 'manual.pdf', self.raw)
         before = self.ws.current(PMID)

@@ -3,7 +3,7 @@ import json
 import threading
 from pathlib import Path
 
-from .manual import SCHEMA, STAGES
+from .manual import SCHEMA
 from .store import now
 
 
@@ -20,8 +20,14 @@ class StatusReporter:
         if not self.config_path.is_file():
             return
         # Never queue paper data, paths, notes, credentials, or the old API ledger.
+        # The existing mobile site accepts six stages. Keep that contract:
+        # archived papers are excluded; deferred PDFs remain PDF acquisition work.
+        keys = ('missing_pdf', 'json_pending', 'web_pending', 'review_pending', 'completed', 'attention')
+        counts = {k: snapshot['counts'][k] for k in keys}
+        counts['missing_pdf'] += snapshot['counts'].get('deferred', 0)
+        counts['total'] = sum(counts.values())
         payload = dict(workflow=SCHEMA, device_name=snapshot['device'], observed_at=now(),
-                       busy=False, counts={k: snapshot['counts'][k] for k in ('total', *STAGES)},
+                       busy=False, counts=counts,
                        last_event=None)
         with self.lock:
             self.pending = payload

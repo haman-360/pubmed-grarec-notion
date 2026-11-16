@@ -13,7 +13,7 @@ button,input,textarea,select{font:inherit}button{border:1px solid transparent;bo
 <div id="home-view"><div id="home-top" class="home-top"><div id="total-card"></div><section id="intake-view"><header><h2>取り込み待ちをまとめて処理</h2><strong class="intake-count" id="intake-count">取り込み待ち：—</strong></header><p class="hint">PDF・完成JSON・PNGを、PMIDごとに振り分けます。</p>
 <div class="actions"><button onclick="act('organize')">取り込み待ちを処理</button><button class="secondary" onclick="act('intake-folder')">フォルダを開く</button></div>
 <details><summary>保存するファイル名・取り込み方法</summary><p>OneDriveの <b>00_取り込み待ち</b> 直下へ保存してください。</p><ul><li>PDF：PMID_番号.pdf</li><li>完成JSON：PMID_番号.json</li><li>PNG：PMID_番号_テーマID.png</li></ul><p class="hint">PDF・JSON・PNGは混在していても取り込めます。PNGのテーマIDは作成画面で確認・コピーできます。PMID不明・候補が複数・保存途中のファイルは残して理由を表示します。PNG作成依頼JSONはWebへ渡すもので、ここへ入れるのは完成したPNGです。</p><p class="hint">保存しただけでは工程の件数は変わりません。処理はこのボタンを押したときに行います。取り込みに成功した入力は01_取り込み済みに保管します。定期的な自動処理は行いません。</p><button class="secondary" onclick="act('archive-folder')">取り込み済みを開く</button></details>
-<details><summary>最終確認時の取り込み待ちファイル</summary><div id="pending-list" class="pending-list"></div></details><details id="intake-result" class="result-box" hidden><summary id="intake-result-label">前回の処理結果</summary><p class="intake-result" id="intake-summary"></p><p class="errors" id="intake-errors"></p></details></section></div><div class="cards" id="cards"></div><div class="actions setup-tools"><button data-nav onclick="navigate('add')">PMIDを追加</button><button class="secondary" data-nav onclick="navigate('settings')">このMacの設定</button></div></div>
+<details><summary>最終確認時の取り込み待ちファイル</summary><div id="pending-list" class="pending-list"></div></details><details id="intake-result" class="result-box" hidden><summary id="intake-result-label">前回の処理結果</summary><p class="intake-result" id="intake-summary"></p><p class="errors" id="intake-errors"></p></details></section></div><div class="cards" id="cards"></div><div class="actions setup-tools" id="parked-cards"></div><div class="actions setup-tools"><button data-nav onclick="navigate('add')">PMIDを追加</button><button class="secondary" data-nav onclick="navigate('settings')">このMacの設定</button></div></div>
 <div id="view-heading" class="view-heading" hidden><button class="secondary" data-nav onclick="navigate('home')">← 論文処理のいまへ</button><h2 id="view-title" tabindex="-1"></h2><p id="view-description" class="hint"></p><div id="stage-actions" class="actions stage-tools"></div></div>
 <section id="json-panel" hidden><h2>PDFからJSONを作成する — Batch API</h2>
 <p class="hint">PDF取得済み・JSON未作成の論文を最大5本選びます。API担当Macから送信・回収します。送信後はMacを停止してもAPI側の処理は続き、担当Macで回収するとOneDrive保存と工程更新を行います。手動作成も引き続き利用できます。</p>
@@ -47,18 +47,28 @@ button,input,textarea,select{font:inherit}button{border:1px solid transparent;bo
 <button id="pdf-submit" onclick="fetchSelectedPdfs()">選択した論文のPDFを取得</button><button class="secondary" data-nav onclick="closePanel()">閉じる</button>
 </section>
 
+<section id="management-panel" hidden>
+<h2 id="management-title" tabindex="-1"></h2><p id="management-paper"></p><p id="management-help" class="hint"></p>
+<form onsubmit="event.preventDefault();saveManagement()">
+<div id="archive-fields"><label>理由（任意） <select id="archive-reason"><option value="">指定しない</option><option>古い</option><option>内容が対象外</option><option>重複する内容</option><option>その他</option></select></label></div>
+<div id="check-fields" class="row"><label>確認日 <input id="check-on" type="date"></label><label>確認結果 <select id="check-result"><option>有料のみ</option><option>PDFが見つからない</option><option>アクセスできない</option><option>その他</option></select></label></div>
+<p id="next-check-field"><label>次回確認日 <input id="next-check-on" type="date"></label></p>
+<p id="management-note-field"><label>補足メモ（任意）<textarea id="management-note" maxlength="2000"></textarea></label></p>
+<div class="actions"><button id="management-save" type="submit">保存</button><button class="secondary" type="button" data-nav onclick="closeManagement()">閉じる</button></div>
+</form></section>
 <section id="paper-list" hidden><header><h2 id="list-title">対象の論文</h2><input id="find" aria-label="PMID・論文名で検索" placeholder="PMID・論文名で検索" oninput="resetPage()"></header>
 <div class="filterbar"><strong id="filter-label"></strong><button class="secondary" data-nav onclick="clearSearch()">検索をクリア</button></div>
+<div id="pdf-queues" class="actions filterbar" hidden></div>
 <div id="pdf-filters" class="filterbar" hidden><label>検索方法 <select id="pdf-history-method" onchange="resetPage()"><option value="all">無料・有料</option><option value="free">無料</option><option value="paid">有料</option><option value="unsearched">未検索</option></select></label><label>並び順 <select id="pdf-history-sort" onchange="resetPage()"><option value="easy">難易度 低→中→高</option><option value="hard">難易度 高→中→低</option><option value="recent">検索日時の新しい順</option></select></label></div>
 <div class="table"><table><thead><tr><th>PMID・論文</th><th id="status-heading">状況</th><th>操作</th></tr></thead><tbody id="papers"></tbody></table></div><div class="pager"><span id="page-info"></span><button class="secondary" data-nav id="page-prev" onclick="changePage(-1)">前へ</button><button class="secondary" data-nav id="page-next" onclick="changePage(1)">次へ</button></div></section>
 <section id="pdf-result" hidden><details><summary>前回のPDF取得結果</summary><p id="pdf-result-time" class="hint"></p><div id="pdf-results"></div></details></section>
 <section id="add-view" hidden><h2>PMIDを追加</h2><p class="hint">PMIDを入力するか、PubMed Abstractから出力したTXTを選んでください。</p><input type="file" accept=".txt,text/plain" id="txt" aria-label="PMIDのTXT"><p><textarea id="pmids" aria-label="登録するPMID" placeholder="PMIDを1行1件で入力。PMID: 番号・PubMed URLも使えます"></textarea></p><button onclick="act('add',{pmids:$('pmids').value})">PMIDを登録</button></section>
 <section id="settings-view" hidden><h2>このMacの設定</h2><p class="hint" id="location"></p><div class="actions"><button onclick="act('folder')">共通フォルダ</button><button class="secondary" onclick="act('view')">最終状況ファイル</button></div><details id="setup"><summary>OneDrive共通フォルダ・端末名</summary><p>自宅と職場で同じOneDriveの <b>PubMed_GraRec</b> フォルダを指定します。各Macの保存パスは違っていても構いません。初回は空の専用フォルダを使用します。</p><label>このMacの共通フォルダ<br><input id="root" class="wide" placeholder="/Users/ユーザー名/Library/CloudStorage/OneDrive-個人用/PubMed_GraRec"></label><p><label>端末名 <input id="device" placeholder="職場 Mac"></label></p><button onclick="act('configure',{root:$('root').value,device:$('device').value})">設定を保存</button><p><button class="secondary" onclick="act('migrate')">このMacの旧台帳からファイルをコピー</button></p><small>旧台帳と元ファイルは保持します。共有フォルダに登録済みのPMIDは上書きしません。APIキー・SQLite台帳は共有しません。</small></details></section>
 
-<footer><details><summary>保存状況・端末間の共有について</summary><p id="sharing" role="status"></p><p>OneDriveへの保存とクラウドへの同期完了は別です。他端末の変更は「保存状況を確認」で読み込みます。iPhone・iPadの<a href="https://pubmed-progress-thama.fairkayak3.chatgpt.site" target="_blank" rel="noopener">論文処理のいま</a>には、Macから最後に共有した件数を表示します。</p></details></footer></main>
+<footer><details><summary>保存状況・端末間の共有について</summary><p id="sharing" role="status"></p><p>OneDriveへの保存とクラウドへの同期完了は別です。他端末の変更は「保存状況を確認」で読み込みます。iPhone・iPadの<a href="https://pubmed-progress-thama.fairkayak3.chatgpt.site" target="_blank" rel="noopener">論文処理のいま</a>には、Macから最後に共有した件数を表示します。iPhone・iPadの件数はアーカイブを除き、再確認待ちはPDF取得待ちに含みます。</p></details></footer></main>
 <script>
 const token='__TOKEN__';const $=id=>document.getElementById(id);let state=null,filter='total',signature='',initialized=false;const pdfSelection=new Map();let pdfOptionsSignature='',pdfResultSignature='';
-const categories=[['total','登録している論文','すべての論文'],['missing_pdf','PDF取得待ち','公開PDFの自動取得・手動保存'],['json_pending','JSON作成待ち','Web・Batch APIでJSONを作成'],['web_pending','PNG作成待ち','JSONからテーマ別に作成'],['review_pending','PNG確認・登録待ち','原文照合後にNotion登録'],['completed','登録完了','確認と登録を記録済み'],['attention','要確認・競合','未同期・複数端末の更新など']];
+const categories=[['total','登録している論文','すべての論文'],['missing_pdf','PDF取得待ち','公開PDFの自動取得・手動保存'],['json_pending','JSON作成待ち','Web・Batch APIでJSONを作成'],['web_pending','PNG作成待ち','JSONからテーマ別に作成'],['review_pending','PNG確認・登録待ち','原文照合後にNotion登録'],['completed','登録完了','確認と登録を記録済み'],['attention','要確認・競合','未同期・複数端末の更新など'],['deferred','再確認待ち','次回確認日まで待つ論文'],['archived','アーカイブ','対象から外した論文・復帰']];
 const label=k=>categories.find(x=>x[0]===k)?.[1]||k;const date=s=>s?new Date(s).toLocaleString('ja-JP'):'';
 async function api(path,data){let r=await fetch(path,{method:data?'POST':'GET',headers:{'X-App-Token':token,'Content-Type':'application/json'},body:data?JSON.stringify(data):undefined});let v=await r.json();if(!r.ok)throw Error(v.error||'接続を確認してください');return v}
 let actionPending=false;
@@ -127,7 +137,9 @@ let view='home', activePanel='', page=1, viewSignature='';
 const pageSize=10;
 const stageHelp={
     total:'すべての論文の現在地を確認できます。「この工程で作業する」から続けてください。',
-    missing_pdf:'PDFを探す論文を選びます。難易度は手動入手の目安で、取得成功率や有料限定を意味しません。',
+    archived:'対象から外した理由と履歴を確認できます。ファイルは保持され、作業対象に戻せます。',
+    deferred:'次回確認日の早い順です。起動・手動更新時に期日を迎えた論文が「今探す」に戻ります。自動検索は行いません。',
+    missing_pdf:'今探す論文です。再確認日を迎えた論文を先頭に表示します。難易度は手動入手の目安で、取得成功率や有料限定を意味しません。',
     json_pending:'APIで作成するか、Web ChatGPTへ依頼するかを選びます。送信済みの結果もここで回収できます。',
     web_pending:'依頼文入りJSONをコピーしてWeb ChatGPTへ貼り付けます。完成PNGは指定の名前で取り込み待ちへ保存してください。',
     review_pending:'JSONと必要なPNGが揃った論文です。画像を確認してNotionへ登録できます。',
@@ -141,7 +153,7 @@ const viewName=key=>({home:'論文処理のいま',history:'PDF検索履歴',int
 function navButton(parent,text,callback){let b=document.createElement('button');b.className='secondary';b.textContent=text;b.dataset.nav='';b.onclick=callback;parent.append(b);return b}
 function navigate(key){
     if(!Object.hasOwn(stageHelp,key)&&key!=='home')key='home';
-    if(view!==key){view=key;filter=key;page=1;$('find').value='';activePanel='';signature='';}
+    if(view!==key){closeManagement();view=key;filter=key;page=1;$('find').value='';activePanel='';signature='';}
     renderView();renderCards();renderPapers();renderPdfResult();if(state)renderActionButtons();
     window.scrollTo({top:0,behavior:'smooth'});
     if(key!=='home')$('view-title').focus({preventScroll:true});
@@ -161,6 +173,8 @@ function renderView(){
     $('paper-list').hidden=!(categories.some(c=>c[0]===view)||view==='history')||Boolean(activePanel);
     $('pdf-filters').hidden=!['missing_pdf','history'].includes(view);
     $('status-heading').textContent=['missing_pdf','history'].includes(view)?'検索状況・難易度':'現在の状況';
+    let queue=$('pdf-queues');queue.hidden=!['missing_pdf','deferred'].includes(view);queue.replaceChildren();
+    if(!queue.hidden)for(let [key,name] of [['missing_pdf','今探す'],['deferred','再確認待ち']]){let b=navButton(queue,name+' '+(state?.counts[key]??0)+'本',()=>navigate(key));b.setAttribute('aria-pressed',String(view===key));}
     if(viewSignature===view)return;viewSignature=view;$('stage-actions').replaceChildren();let actions=$('stage-actions');
     if(view==='missing_pdf'){
         navButton(actions,'無料でPDFを検索',()=>openPdfPanel());navButton(actions,'有料でPDFを検索',()=>openPdfPanel(null,true));
@@ -172,7 +186,7 @@ function renderView(){
     if(['missing_pdf','json_pending','web_pending','review_pending','attention'].includes(view))navButton(actions,'取り込み待ちを開く・処理',()=>navigate('intake'));
 }
 function renderCards(){
-    if(!$('cards').children.length)for(let [key,name,help] of categories){let b=navButton($(key==='total'?'total-card':'cards'),'',()=>navigate(key));b.className='card';b.id='card-'+key;line(b,name,'span');line(b,'','strong');line(b,help)}
+    if(!$('cards').children.length)for(let [key,name,help] of categories){let b=navButton($(key==='total'?'total-card':['deferred','archived'].includes(key)?'parked-cards':'cards'),'',()=>navigate(key));b.className=['deferred','archived'].includes(key)?'secondary':'card';b.id='card-'+key;line(b,name,'span');line(b,'','strong');line(b,help)}
     for(let [key] of categories){let b=$('card-'+key);b.querySelector('strong').textContent=(state?.counts[key]??0)+'本';b.setAttribute('aria-label',label(key)+' '+(state?.counts[key]??0)+'本')}
 }
 function renderProgress(){
@@ -201,10 +215,12 @@ function paperRows(){
         rows=rows.filter(p=>method==='all'||(method==='unsearched'?!historyFor(p.pmid).length:selectedHistory(p.pmid).length));
         let recent=p=>selectedHistory(p.pmid).map(r=>r.at||'').sort().at(-1)||'';
         rows.sort((a,b)=>{
+            if(view==='missing_pdf'&&Boolean(a.recheck_due)!==Boolean(b.recheck_due))return a.recheck_due?-1:1;
             if(sort==='recent')return recent(b).localeCompare(recent(a))||a.pmid.localeCompare(b.pmid);
             let ra=pdfRank(a.pmid),rb=pdfRank(b.pmid);return (sort==='hard'&&ra<3&&rb<3?rb-ra:ra-rb)||a.pmid.localeCompare(b.pmid);
         });
     }
+    if(view==='deferred')rows.sort((a,b)=>(a.pdf_recheck?.next_on||'').localeCompare(b.pdf_recheck?.next_on||'')||a.pmid.localeCompare(b.pmid));
     return rows;
 }
 function manualLink(parent,url){
@@ -229,6 +245,7 @@ function paperDetails(parent,p){
     line(details,'更新：'+date(p.at)+' ／ '+(p.device||''),'p');if(p.note)line(details,p.note,'p');
     for(let f of p.files){let box=document.createElement('details');line(box,({pdf:'論文PDF',json:'完成JSON',graphic:'画像用データ',prompt:'Web作成依頼',png:'完成PNG',draft:'JSON構造確認待ち'}[f.kind]||f.kind)+' ／ '+f.name,'summary');line(box,f.path,'small');if(p.heads.length===1)button(box,'開く','open-file',{pmid:p.pmid,heads:p.heads,path:f.path});details.append(box)}
     if(p.heads.length===1)button(details,'論文の受け渡しフォルダ','folder',{pmid:p.pmid});
+    if(p.management_history?.length){let history=document.createElement('details');line(history,'手動確認・対象変更の履歴','summary');for(let h of [...p.management_history].reverse()){line(history,date(h.at)+' ／ '+h.device,'small');line(history,managementText(h),'p')}details.append(history)}
     recordControls(details,p);parent.append(details);
 }
 function jsonManualActions(parent,p){
@@ -264,8 +281,9 @@ function renderPapers(){
     for(let p of rows){
         let row=document.createElement('tr');row.dataset.pmid=p.pmid;let title=cell(row,'PMID '+p.pmid);let text=line(title,p.title||'論文名はPDF取得・JSON保存後に表示','p');text.className='paper-title';
         let progress=cell(row,'');let actions=cell(row,'');let controls=document.createElement('div');controls.className='row-actions';actions.append(controls);
-        if(['missing_pdf','history'].includes(view))searchDetails(progress,p);
-        else {line(progress,p.structure_wait?'生成済み・構造確認待ち':label(p.category),'strong');
+        managementStatus(progress,p);
+        if(['missing_pdf','deferred','history'].includes(view))searchDetails(progress,p);
+        else {if(!p.archive)line(progress,p.structure_wait?'生成済み・構造確認待ち':label(p.category),'strong');
             let job=(state.json_batch?.jobs||[]).find(j=>j.pmid===p.pmid&&j.source_hash===p.files.find(f=>f.kind==='pdf')?.sha);
             if(job)line(progress,'API：'+(jsonNames[job.status]||job.status),'p');
             if(view==='attention'){if(p.structure_wait)line(progress,p.structure_wait,'p');if(p.note)line(progress,p.note,'p');if(p.conflicts.length)line(progress,'複数端末の記録があります。「保存ファイル・記録」から採用する記録を選んでください。','p')}
@@ -274,11 +292,12 @@ function renderPapers(){
         if(view==='total'){navButton(controls,'この工程で作業する',()=>navigate(p.category));}
         if(view==='history'){let current=state.papers.find(x=>x.pmid===p.pmid);if(current)navButton(controls,'現在の工程で作業する',()=>navigate(current.category));}
         if(p.heads.length===1){
+            managementControls(actions,p);
             if(view==='missing_pdf'){navButton(controls,'無料で検索',()=>openPdfPanel(p.pmid));if(!state.pdf_cooldowns?.[p.pmid]?.blocked)navButton(controls,'有料で検索',()=>openPdfPanel(p.pmid,true));else line(controls,'有料検索は再検索制限中','small');}
             if(view==='json_pending'){navButton(controls,'APIで作成・回収',()=>openJsonPanel(p.pmid));jsonManualActions(controls,p)}
             if(view==='web_pending'&&!p.structure_wait)pngActions(actions,p);
             if(view==='review_pending'){navButton(controls,'PNG確認・Notion登録',()=>openNotionPanel(p.pmid));line(actions,'手動で登録した場合は「保存ファイル・記録」で完了を記録できます。','small')}
-            if(view==='attention'&&p.files.some(f=>f.kind==='pdf')){let repair=document.createElement('details');line(repair,'JSONを作り直す','summary');jsonManualActions(repair,p);actions.append(repair)}
+            if(view==='attention'&&!p.archive&&p.files.some(f=>f.kind==='pdf')){let repair=document.createElement('details');line(repair,'JSONを作り直す','summary');jsonManualActions(repair,p);actions.append(repair)}
         }
         let notion=(state.notion_sync?.jobs||[]).find(j=>j.pmid===p.pmid);if(notion&&['completed','review_pending','attention','total'].includes(view)){line(progress,notionNames[notion.status]||notion.status,'p');notionPageLink(progress,notion.page_id)}
         if(view!=='history')paperDetails(title,p);
@@ -288,8 +307,60 @@ function renderPapers(){
     if(!rows.length){let row=document.createElement('tr'),c=cell(row,'該当する論文はありません。');c.colSpan=3;$('papers').append(row)}
 }
 
+let managementTarget=null;
+const managementNames={archive:'対象から外す（アーカイブ）',restore:'作業対象に戻す',defer:'入手できず・再確認を延期',reschedule:'再確認日を変更',resume:'今すぐ再開'};
+function managementText(h){
+    let text=managementNames[h.action]||'';
+    if(h.reason)text+=' ／ '+h.reason;
+    if(h.checked_on)text+=' ／ 確認 '+h.checked_on+'・'+h.result+' ／ 次回 '+h.next_on;
+    if(h.note)text+=' ／ '+h.note;
+    return text;
+}
+function managementStatus(parent,p){
+    if(p.archive){line(parent,'アーカイブ · '+p.archive.on,'strong');line(parent,'理由：'+(p.archive.reason||'未指定')+(p.archive.note?' ／ '+p.archive.note:''),'p')}
+    let check=p.pdf_recheck;if(!check)return;
+    let active=check.active&&!p.archive&&!p.files?.some(f=>f.kind==='pdf');
+    let badge=line(parent,p.recheck_due?'再確認日になりました':active?'再確認待ち':'前回の手動確認','strong');badge.className='badge';
+    line(parent,check.checked_on+' 確認 ／ '+check.result,'p');
+    if(active)line(parent,'次回：'+check.next_on,'p');
+    if(check.note)line(parent,check.note,'p');
+}
+function managementControls(parent,p){
+    let box=document.createElement('div');box.className='row-actions';box.style.marginTop='12px';parent.append(box);
+    if(p.archive){button(box,'作業対象に戻す','manage-paper',{pmid:p.pmid,heads:p.heads,operation:'restore'});return}
+    if(!p.files.some(f=>f.kind==='pdf')){
+        if(p.pdf_recheck?.active){button(box,'今すぐ再開','manage-paper',{pmid:p.pmid,heads:p.heads,operation:'resume'});navButton(box,'再確認日を変更',()=>openManagement(p,'reschedule'))}
+        navButton(box,'入手できず・再確認を延期',()=>openManagement(p,'defer'));
+    }
+    navButton(box,'対象から外す',()=>openManagement(p,'archive'));
+}
+function closeManagement(){managementTarget=null;$('management-panel').hidden=true}
+function openManagement(p,operation){
+    managementTarget={pmid:p.pmid,heads:[...p.heads],operation};
+    $('management-title').textContent=managementNames[operation];$('management-paper').textContent='PMID '+p.pmid+' ／ '+p.title;
+    $('management-help').textContent=operation==='archive'?'通常の作業一覧から外します。保存ファイル・検索履歴は残り、後から戻せます。送信済みのAPI処理は停止されません。':'再確認日になるまで「今探す」から外します。期日が来ても自動検索や有料API送信は行いません。';
+    $('archive-fields').hidden=operation!=='archive';$('check-fields').hidden=operation!=='defer';$('next-check-field').hidden=operation==='archive';$('management-note-field').hidden=operation==='reschedule';
+    $('archive-reason').value='';$('management-note').value='';$('check-result').value='有料のみ';
+    $('check-on').value=state.today;$('check-on').max=state.today;
+    $('next-check-on').value=operation==='reschedule'?p.pdf_recheck.next_on:state.default_recheck_on;
+    $('next-check-on').min=state.today;
+    $('check-on').required=operation==='defer';$('next-check-on').required=operation!=='archive';
+    $('management-save').textContent=operation==='archive'?'アーカイブに移す':'記録する';$('management-save').disabled=Boolean(state.busy);
+    $('management-panel').hidden=false;$('management-panel').scrollIntoView({behavior:'smooth'});$('management-title').focus();
+}
+async function saveManagement(){
+    if(!managementTarget)return;
+    let target=managementTarget,data={...target};
+    if(data.operation==='archive'){data.reason=$('archive-reason').value;data.note=$('management-note').value}
+    else {data.next_on=$('next-check-on').value;if(data.operation==='defer'){data.checked_on=$('check-on').value;data.result=$('check-result').value;data.note=$('management-note').value}}
+    if(await act('manage-paper',data)){
+        if(state.message?.startsWith('要確認:'))return;
+        if(managementTarget===target)closeManagement();
+    }
+}
+
 function recordControls(parent,p){let record=document.createElement('details');line(record,p.conflicts.length?'競合した記録を確認・選択':'確認・登録の記録','summary');let choice;
-if(p.conflicts.length){line(record,'同時更新された版を保持しています。各版の内容とファイルを確認して採用する版を選んでください。他の版は履歴に残ります。','p');choice=document.createElement('select');for(let e of p.conflicts){let opt=document.createElement('option');opt.value=e.id;opt.textContent=date(e.at)+' / '+e.device+' / '+e.id.slice(0,8);choice.append(opt);let details=document.createElement('details');line(details,opt.textContent,'summary');line(details,e.data.note,'p');for(let f of e.data.files)line(details,f.kind+' '+f.path,'p');record.append(details)}record.append(choice)}
+if(p.conflicts.length){line(record,'同時更新された版を保持しています。各版の内容とファイルを確認して採用する版を選んでください。他の版は履歴に残ります。','p');choice=document.createElement('select');for(let e of p.conflicts){let opt=document.createElement('option');opt.value=e.id;opt.textContent=date(e.at)+' / '+e.device+' / '+e.id.slice(0,8);choice.append(opt);let details=document.createElement('details');line(details,opt.textContent,'summary');line(details,e.data.note,'p');managementStatus(details,e.data);for(let f of e.data.files)line(details,f.kind+' '+f.path,'p');record.append(details)}record.append(choice)}
 let note=document.createElement('textarea');note.className='record-note';note.placeholder='確認内容、作業メモ、登録したNotionページのURLなど';record.append(note);let done=document.createElement('input');done.type='checkbox';let dl=document.createElement('label');dl.append(done,document.createTextNode(' 原文・JSON・PNGを確認し、手動で登録を終えました'));record.append(dl);let save=button(record,'この内容で記録','record');save.onclick=()=>act('record',{pmid:p.pmid,heads:p.heads,note:note.value,done:done.checked,chosen:choice?.value});if(p.heads.length)parent.append(record);}
 async function refresh(){try{state=await api('/api/state');state.busy=state.busy||actionPending;$('message').textContent=state.busy?(state.pdf_progress?'PDF取得 '+state.pdf_progress.index+'/'+state.pdf_progress.total+' ／ PMID '+state.pdf_progress.pmid+'：'+state.pdf_progress.message:'記録・確認中…'):state.message;$('errors').textContent=state.errors.join('\n');$('sharing').textContent=state.sharing?.message||'';
 $('observed').textContent='このMacでの最終集計：'+(date(state.observed_at)||'未集計')+' ／ OneDriveへの同期完了時刻ではありません';

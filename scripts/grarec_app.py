@@ -74,7 +74,7 @@ class Application:
             state['errors'] += self.scan_errors
             for row in state['papers']:
                 errors = [e for e in self.scan_errors if e.startswith('PMID ' + row['pmid'] + ':')]
-                if errors and row['category'] != 'attention':
+                if errors and row['category'] not in ('attention', 'archived'):
                     state['counts'][row['category']] -= 1
                     state['counts']['attention'] += 1
                     row['category'] = 'attention'
@@ -191,15 +191,28 @@ class Application:
                 raise ValueError('PMIDを入力してください')
             for pmid in ids:
                 pmid_value(pmid)
+            archived = []
             for pmid in ids:
                 workspace.add(pmid)
-            return f'{len(ids)}件のPMIDを登録しました。PMID付きのファイルを00_取り込み待ち直下へ保存できます。'
+                if any(e['data'].get('archive') for e in workspace.heads(pmid)):
+                    archived.append(pmid)
+            message = f'{len(ids)}件のPMIDを確認・登録しました。既存の記録は保持します。'
+            if archived:
+                message += '\nアーカイブ中：PMID ' + '、'.join(archived) + '。「アーカイブ」で理由を確認し、必要なら作業対象に戻してください。'
+            return message
         if action == 'migrate':
             from paper_pipeline.manual_migration import migrate
             from paper_pipeline.workspace import select_state_dir
             result = migrate(workspace, select_state_dir(self.repo))
             return f"旧台帳から{result['copied']}件をコピー（既存{result['skipped']}件は保持）。" + '\n'.join(result['warnings'])
         pmid = data.get('pmid')
+        if action == 'manage-paper':
+            operation = data.get('operation')
+            workspace.manage(pmid, data.get('heads'), operation,
+                             **{k: data[k] for k in ('reason', 'note', 'checked_on', 'next_on', 'result') if k in data})
+            return {'archive': '対象から外しました。ファイルと履歴はアーカイブに残っています。',
+                    'restore': '作業対象に戻しました。', 'defer': '確認結果と次回確認日を記録しました。',
+                    'reschedule': '次回確認日を変更しました。', 'resume': '再確認待ちを解除しました。'}[operation]
         if action == 'folder':
             folder = workspace.incoming(pmid) if pmid else workspace.root
             subprocess.run(['open', str(folder)], check=True)
