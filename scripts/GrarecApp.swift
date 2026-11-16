@@ -34,6 +34,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUIDelega
         edit.addItem(withTitle: "すべて選択", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
         NSApp.mainMenu = menu
     }
+    func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
+        // Links with target="_blank" open in the user's default browser.
+        guard navigationAction.targetFrame == nil,
+              let url = navigationAction.request.url,
+              let scheme = url.scheme?.lowercased(),
+              ["http", "https"].contains(scheme) else { return nil }
+        NSWorkspace.shared.open(url)
+        return nil
+    }
     func webView(_ webView: WKWebView, runOpenPanelWith parameters: WKOpenPanelParameters, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping ([URL]?) -> Void) {
         let panel = NSOpenPanel(); panel.canChooseDirectories = false; panel.allowsMultipleSelection = false
         panel.allowedFileTypes = ["txt"]
