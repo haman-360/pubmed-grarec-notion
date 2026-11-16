@@ -7,6 +7,8 @@ PDF → JSON → PNG → 確認・Notionへの登録を、PDF自動取得・JSON
 
 `PubMed-grareko-notion.app` または `PubMedGraRecAuto.command` を開きます。`PubMedGraRec.command` も同じ画面を開きます。
 
+アプリアイコンは `assets/app-icon.png` を使用します。別のMacで更新した場合も、`PubMedGraRecAuto.command` を開くとアイコンを含めてアプリが再作成されます。起動中のアプリへの反映には終了・再起動が必要です。
+
 Macでは「論文処理のいま」が入口です。工程カードを押すと、その工程の論文と操作だけを表示します。iPhone・iPadの進捗画面は従来どおりです。区分は次の6つです。
 
 - PDF取得待ち
