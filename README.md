@@ -7,6 +7,14 @@ PDF → JSON → PNG → 確認・Notionへの登録を、PDF自動取得・JSON
 
 `PubMed-grareko-notion.app` または `PubMedGraRecAuto.command` を開きます。`PubMedGraRec.command` も同じ画面を開きます。
 
+**別のMacで `.app` が見つからない場合**：`.app` とPython環境（`.venv`）はGit管理外のため、GitHubから同期してもコピーされません。各Macで次の準備を行います。
+
+1. 初回は `SetupPaperPipeline.command` を開き、終了コードが `0` になることを確認します。Python環境を準備済みなら省略できます。
+2. `PubMedGraRecAuto.command` を開きます。このMac用の `.app` を作成して起動します。作成にはmacOSのCommand Line Tools（`swiftc`）が必要です。
+3. 以後は、このリポジトリ内の `PubMed-grareko-notion.app` を開けます。アプリは隣接するスクリプトとPython環境を使うため、`.app` だけを別のフォルダへ移動しないでください。Dockへ追加しておくと便利です。
+
+起動後は「このMacの設定」で、このMacのOneDrive共通フォルダを指定してください。端末ごとの設定はGitHub経由では同期されません。
+
 Macでは「論文処理のいま」が入口です。工程カードを押すと、その工程の論文と操作だけを表示します。iPhone・iPadの進捗画面は従来どおりです。区分は次の6つです。
 
 - PDF取得待ち
