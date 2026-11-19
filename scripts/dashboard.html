@@ -6,7 +6,15 @@ main{max-width:1280px;margin:auto;padding:30px}header,.row,.actions,.filterbar,.
 h1{font-size:34px;letter-spacing:.02em;margin:8px 0}h2{font-size:21px;margin:0 0 12px}h3{font-size:16px;margin:8px 0}.eyebrow{letter-spacing:.16em;font-size:12px;color:#587770;font-weight:700}.sub,.hint,small{color:#5b756f}.sub{margin:4px 0 18px}.hint{line-height:1.7;overflow-wrap:anywhere}small{display:block}p{margin:10px 0}
 button,input,textarea,select{font:inherit}button{border:1px solid transparent;border-radius:9px;background:#1a514b;color:white;padding:10px 16px;cursor:pointer}button.secondary{background:#edf3f1;color:#24564f;border-color:#d5e3df}button:hover{filter:brightness(.96)}button:disabled{opacity:.45;cursor:not-allowed}button:focus-visible,a:focus-visible,summary:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #79b5ab;outline-offset:3px}input,textarea,select{padding:9px;border:1px solid #c8d9d4;border-radius:7px;background:white;color:inherit}textarea{width:100%;min-height:90px}input[type=checkbox]{accent-color:#1a514b}a,summary{color:#24685e}summary{cursor:pointer}details{margin:10px 0}section{background:white;border:1px solid #dce6e2;border-radius:16px;padding:22px;margin-top:18px}.home-top{display:grid;grid-template-columns:minmax(250px,.7fr) minmax(0,1.3fr);gap:16px;margin-top:20px}.home-top section{margin:0}.home-top #intake-view h2{font-size:18px}.home-top .intake-count{font-size:14px}#total-card .card{height:100%;min-height:220px}.cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:20px}.card{width:100%;text-align:left;background:white;border:1px solid #dce6e2;border-radius:18px;padding:24px;color:#193330;min-height:135px}.card span{color:#5b756f}.card strong{display:block;font-size:38px;margin:8px 0}.card small{font-size:12px}#total-card .card{grid-column:1/-1;background:#194e48;color:white;min-height:140px}#total-card .card span,#total-card .card small{color:#c8ded8}#total-card .card strong{font-size:52px}.card[aria-pressed=true]{outline:2px solid #79b5ab}
 #message{position:sticky;top:8px;z-index:10;max-height:140px;overflow:auto;white-space:pre-wrap;border-radius:10px;background:#e9f2ef;padding:12px;margin:14px 0}#message:empty,#errors:empty{display:none}.errors{white-space:pre-wrap;color:#914c12}#progress-strip,#transition{background:#e7f1ef;border-radius:10px;padding:12px;margin:12px 0}#transition button{margin:4px}.view-heading{margin:20px 0 0}.view-heading h2{font-size:27px;margin:10px 0 0}.table{overflow-x:auto}table{border-collapse:collapse;width:100%;text-align:left;table-layout:fixed}th{background:#f3f7f5;color:#54736c;font-size:13px}th,td{padding:16px 12px;border-bottom:1px solid #e6eeeb;vertical-align:top;overflow-wrap:anywhere}th:first-child{width:37%}th:nth-child(2){width:29%}td p{margin:6px 0}.paper-title{font-weight:600;color:#213f39}.row-actions{display:flex;flex-wrap:wrap;gap:7px}.row-actions button{padding:8px 11px;font-size:13px}.badge{display:inline-block;background:#edf4f1;border-radius:6px;padding:3px 8px;margin:2px 4px 2px 0;font-size:13px}.search-reason{font-size:13px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.link-list{display:flex;gap:7px;flex-wrap:wrap;max-height:230px;overflow:auto;margin:10px 0}.link-list a{display:block;border:1px solid #d8e6e1;border-radius:6px;padding:4px 8px;font-size:13px;max-width:100%;overflow-wrap:anywhere}.paper-details{margin-top:12px}.file-item,.topic-item{border-top:1px solid #e6eeeb;padding:10px 0}.topic-item button{margin:4px 4px 4px 0}.filename{font-size:12px;overflow-wrap:anywhere}.pager{justify-content:flex-end;margin-top:16px}.filterbar{margin:14px 0}#find{min-width:250px;flex:1}.json-options{max-height:260px;overflow:auto}.json-options label{display:flex;align-items:flex-start;gap:10px;padding:9px 0;border-bottom:1px solid #e6eeeb}.json-options input{margin-top:7px}.confirm{display:block;padding:12px;background:#f2f7f5;margin:10px 0}.wide{width:100%;max-width:850px}.result-box{background:#f3f7f5;padding:12px;border-radius:9px}.intake-result{white-space:pre-wrap}#intake-result{max-height:220px;overflow:auto}.pending-list{max-height:180px;overflow:auto;white-space:pre-wrap}.intake-count{font-size:19px}.record-note{width:100%}#observed{font-size:13px}#pdf-results,#json-jobs,#notion-results{max-height:420px;overflow:auto}.stage-help{padding:10px 0}.stage-tools{margin-top:16px}footer{margin-top:24px;font-size:12px;color:#698078}.setup-tools{margin-top:20px}
+.json-estimate-table{background:white}
+.json-estimate-table th,.json-estimate-table td{padding:10px 12px}
+.json-estimate-table th:first-child{width:7em}
+.json-estimate-table th:nth-child(2){width:auto}
+.json-estimate-table th:last-child{width:9em;text-align:right}
+.json-estimate-table td:first-child,.json-estimate-table td:last-child{font-variant-numeric:tabular-nums;white-space:nowrap}
+.json-estimate-table td:last-child{text-align:right}
 @media(max-width:850px){.home-top{grid-template-columns:1fr}main{padding:18px}.cards{grid-template-columns:repeat(2,minmax(0,1fr))}h1{font-size:28px}.table table{min-width:760px}}
+@media(max-width:520px){.json-estimate-table th,.json-estimate-table td{padding:8px 6px}.json-estimate-table th:first-child{width:6.5em}.json-estimate-table th:last-child{width:7em}}
 </style><main>
 <header><div><div class="eyebrow">PUBMED WORKSPACE · MAC</div><h1>論文処理のいま</h1><p class="sub">進めたい工程を選んで、その場で作業できます。</p></div><div class="actions"><button class="secondary" data-nav onclick="navigate('home')">ホーム</button><button class="secondary" data-manual-refresh onclick="manualRefresh()">保存状況を確認</button></div></header>
 <p id="observed" class="hint"></p><div id="progress-strip" hidden></div><div id="message" role="status"></div><p class="errors" id="errors"></p><div id="transition" role="status" hidden></div>
@@ -24,7 +32,15 @@ button,input,textarea,select{font:inherit}button{border:1px solid transparent;bo
 <button id="json-budget-save" onclick="saveJsonBudget()">担当Mac・予算を保存</button><p class="hint">期間$20・1処理版$4まで。残高の確認は24時間有効です。見積もりは請求上限の保証ではありません。</p></details>
 <div id="json-options" class="json-options"></div><p id="json-selected" class="hint"></p>
 <button id="json-prepare" onclick="prepareJson()">選択した論文の見積もりを準備</button>
-<div id="json-preview" class="result-box" hidden><p id="json-estimate"></p><label class="confirm"><input id="json-send-confirm" type="checkbox" onchange="renderJsonPanel()"> 表示した論文PDFをOpenAIへ送り、見積費用でBatch JSON作成を依頼します。</label><button id="json-send" onclick="sendJson()">確認した対象をBatchへ送信</button></div>
+<div id="json-preview" class="result-box" hidden>
+<table class="json-estimate-table" aria-label="送信前の見積もり">
+<thead><tr><th scope="col">PMID</th><th scope="col">論文タイトル</th><th scope="col">見積・予算枠</th></tr></thead>
+<tbody id="json-estimate-rows"></tbody>
+</table>
+<p><strong>見積・予算枠合計 <span id="json-estimate-total"></span></strong></p>
+<small id="json-estimate-count-note" hidden>「予算枠」の論文は、送信時にPDFをアップロードしてトークン数を確認します。</small>
+<small>実際の請求額は使用量に応じて確定します。トークン数の確認後に予算を超える場合は生成を停止します。</small>
+<label class="confirm"><input id="json-send-confirm" type="checkbox" onchange="renderJsonPanel()"> 表示した論文PDFをOpenAIへ送り、見積費用でBatch JSON作成を依頼します。</label><button id="json-send" onclick="sendJson()">確認した対象をBatchへ送信</button></div>
 <div id="json-retry-preview" class="result-box" hidden><p id="json-retry-estimate"></p><label class="confirm"><input id="json-retry-confirm" type="checkbox" onchange="renderJsonPanel()"> 過去の履歴・費用予約を残すこと、再試行回数・追加見積・累計額を確認し、この1件のPDFをOpenAIへ再送します。</label><button id="json-retry-send" onclick="sendJsonRetry()">確認した1件を再送（最大1回）</button></div>
 <p class="hint">失敗した処理は下の履歴を開き「再試行の見積もりを確認」から操作します。一時的なAPIエラー・期限切れを確認できた場合だけ、同じ原本で再試行1回（初回を含め計2回）・追加見積$1まで。過去分込みで1処理版$4・期間$20まで。結果不明やJSON検証エラーは再送しません。</p>
 <div class="actions"><button id="json-collect" onclick="act('json-collect')">状況確認・JSON回収</button><button class="secondary" onclick="act('json-results-folder')">API結果フォルダ</button><button class="secondary" data-nav onclick="closePanel()">閉じる</button></div>
@@ -87,6 +103,21 @@ async function prepareJson(){await act('json-prepare',{items:[...jsonSelection].
 async function sendJson(){await act('json-send',{preview_id:state.json_batch?.preview?.id,confirmed:$('json-send-confirm').checked});$('json-send-confirm').checked=false;jsonSelection.clear();renderJsonPanel()}
 async function prepareJsonRetry(revisionId){if(await act('json-retry-prepare',{revision_id:revisionId}))$('json-retry-preview').scrollIntoView({behavior:'smooth'})}
 async function sendJsonRetry(){await act('json-retry-send',{preview_id:state.json_batch?.retry_preview?.id,confirmed:$('json-retry-confirm').checked});$('json-retry-confirm').checked=false;renderJsonPanel()}
+function renderJsonEstimate(preview){
+    const rows=$('json-estimate-rows');
+    rows.replaceChildren();
+    for(const item of preview.items){
+        const row=document.createElement('tr');
+        cell(row,item.pmid);
+        cell(row,item.title||'論文名未登録');
+        const amount=cell(row,'');
+        line(amount,'$'+item.reserve.toFixed(3),'strong');
+        line(amount,item.needs_count?'予算枠':'予約見積');
+        rows.append(row);
+    }
+    $('json-estimate-total').textContent='$'+preview.total.toFixed(3);
+    $('json-estimate-count-note').hidden=!preview.items.some(item=>item.needs_count);
+}
 function jsonRetryEstimate(item){return 'PMID '+item.pmid+' ／ '+item.title+'\n原因：'+item.reason+'\n再試行 '+item.number+'/'+item.limit+'回（初回を含め計2回まで）\n過去の使用・予約 $'+item.previous.toFixed(6)+' ＋ 今回の追加見積 $'+item.reserve.toFixed(6)+' ＝ 累計 $'+item.total.toFixed(6)+'\n追加見積の上限 $'+item.cap.toFixed(2)+' ／ 同じ処理版の累計上限 $4.00 ／ 期間上限 $20.00\n未確定の過去費用は予約を保持します。見積もりは実際の請求額や請求上限の保証ではありません。'}
 function renderJsonPanel(){let b=state.json_batch||{},rows=jsonRows(),locked=state.busy||!b.is_owner;
 $('json-owner').textContent='API担当：'+(b.owner||'未設定')+' ／ このMacのAPIキー：'+(b.key_ready?'設定あり':'未設定')+' ／ モデル：gpt-6.1-sol（Batch）';
@@ -94,7 +125,13 @@ $('json-checked').textContent='API記録の更新：'+(date(b.at)||'未記録')+
 for(let id of jsonSelection.keys())if(!rows.some(p=>p.pmid===id))jsonSelection.delete(id);
 let sig=JSON.stringify([rows.map(p=>[p.pmid,p.title,p.heads]),[...jsonSelection],locked]);if(sig!==jsonOptionsSignature){jsonOptionsSignature=sig;$('json-options').replaceChildren();for(let p of rows){let lab=document.createElement('label'),check=document.createElement('input');check.type='checkbox';check.checked=jsonSelection.has(p.pmid);check.disabled=locked;check.onchange=()=>{if(check.checked)jsonSelection.set(p.pmid,p.heads);else jsonSelection.delete(p.pmid);renderJsonPanel()};lab.append(check,document.createTextNode('PMID '+p.pmid+' ／ '+(p.title||'論文名未登録')));$('json-options').append(lab)}if(!rows.length)line($('json-options'),'未送信のJSON作成待ちはありません。送信済み分は下の回収ボタンで確認してください。','p')}
 $('json-selected').textContent=jsonSelection.size+'本を選択（最大5本）。見積もりの準備はAPI送信を行いません。';
-let preview=b.preview;$('json-preview').hidden=!preview;if((preview?.id||'')!==jsonPreviewId){jsonPreviewId=preview?.id||'';$('json-send-confirm').checked=false}if(preview)$('json-estimate').textContent=preview.items.map(i=>'PMID '+i.pmid+' '+i.title+(i.needs_count?' ／ 入力確認が必要：送信時にPDFをアップロードしトークン計数。予算枠 $4.000':' ／ 予約見積 $'+i.reserve.toFixed(3))).join('\n')+'\n見積・予算枠合計 $'+preview.total.toFixed(3)+'（請求額ではありません。トークン確認後に予算超過なら生成を停止）';$('json-estimate').style.whiteSpace='pre-wrap';
+const preview=b.preview;
+$('json-preview').hidden=!preview;
+if((preview?.id||'')!==jsonPreviewId){
+    jsonPreviewId=preview?.id||'';
+    $('json-send-confirm').checked=false;
+    if(preview)renderJsonEstimate(preview);
+}
 $('json-prepare').disabled=locked||!jsonSelection.size||jsonSelection.size>5;$('json-send').disabled=locked||!b.key_ready||!preview||!$('json-send-confirm').checked;$('json-collect').disabled=locked||!b.key_ready;$('json-budget-save').disabled=state.busy||(b.configured&&!b.is_owner);
 let retry=b.retry_preview;$('json-retry-preview').hidden=!retry;if((retry?.id||'')!==jsonRetryPreviewId){jsonRetryPreviewId=retry?.id||'';$('json-retry-confirm').checked=false}if(retry)$('json-retry-estimate').textContent=jsonRetryEstimate(retry.item);$('json-retry-estimate').style.whiteSpace='pre-wrap';$('json-retry-send').disabled=locked||!b.key_ready||!retry||!$('json-retry-confirm').checked;
 let jobsSig=JSON.stringify([b.jobs||[],locked]);if(jobsSig!==jsonJobsSignature){jsonJobsSignature=jobsSig;$('json-jobs').replaceChildren();for(let job of b.jobs||[]){let box=document.createElement('details');line(box,'PMID '+job.pmid+' ／ '+(jsonNames[job.status]||job.status),'summary');line(box,job.message,'p');for(let a of job.attempts){line(box,'送信：'+({unknown:'応答不明・再送せず照合待ち',submitting:'送信結果の照合待ち',submitted:'送信済み',completed:'回収済み',rejected:'Batch作成前に停止',review_required:'要確認'}[a.status]||a.status)+' ／ '+(a.batch_id||'Batch ID照合待ち'),'p');line(box,'予約 $'+a.reserve.toFixed(3)+' ／ '+(a.actual===null?'費用未確定・予約保持':'usage換算 $'+a.actual.toFixed(4)),'p')}if(job.result)line(box,'OneDrive内の保管先：'+job.result,'p');if(job.retry?.reason)line(box,'確認した原因：'+job.retry.reason,'p');if(job.retry?.allowed){let retryButton=document.createElement('button');retryButton.textContent='再試行の見積もりを確認';retryButton.setAttribute('data-json-retry','');retryButton.onclick=()=>prepareJsonRetry(job.id);box.append(retryButton)}else if(job.retry?.used>=job.retry?.limit)line(box,'再試行回数の上限に達しています。','p');$('json-jobs').append(box)}}for(let el of document.querySelectorAll('[data-json-retry]'))el.disabled=locked;}
