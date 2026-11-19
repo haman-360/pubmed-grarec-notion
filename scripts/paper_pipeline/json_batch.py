@@ -421,7 +421,18 @@ def collect(repo, workspace, api=None):
         # Retry local adoption first, including after an interrupted save.
         adopt(workspace, store)
         try:
-            JsonBatches(store, api or JsonAPI(api_key(repo))).collect()
+            collected = JsonBatches(store, api or JsonAPI(api_key(repo))).collect()
         finally:
             adopt(workspace, store)
-    return 'Batchの状況を確認し、完了分のJSONを回収しました。未完了分は後で再確認してください。'
+        costs = [store.one('attempts', attempt_id)['actual'] for attempt_id in collected]
+    if not costs:
+        return '今回、新たに終了を確認したBatchはありません。回収済み分の費用は処理履歴で確認できます。'
+
+    known = [cost for cost in costs if cost is not None]
+    lines = [f'今回、Batchの終了結果を{len(costs)}件確認しました。']
+    if known:
+        lines.append(f'使用量からの費用概算（{len(known)}件） 約 ${math.fsum(known):.4f} USD')
+    if len(known) < len(costs):
+        lines.append(f'費用未確定 {len(costs) - len(known)}件。予約額を保持しています。')
+    lines.append('論文ごとの費用とJSONの保存状況は処理履歴で確認できます。')
+    return '\n'.join(lines)

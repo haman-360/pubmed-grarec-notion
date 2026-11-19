@@ -306,6 +306,7 @@ class Batches:
         return 1
 
     def collect(self):
+        collected = []
         attempts = self.store.rows("SELECT * FROM attempts WHERE status IN ('reserved','submitting','unknown','submitted','legacy_submitted')")
         for attempt in attempts:
             if json.loads(attempt['details']).get('mode') == 'direct':
@@ -338,8 +339,10 @@ class Batches:
                 details.update(error='Terminal Batch has missing/duplicate result', batch_status=batch['status'])
                 self.store.update('attempts',attempt['id'],status='review_required',details=encode(details))
                 self.store.update('revisions',attempt['revision_id'],status='review_required',error='Batch結果が欠落/重複しています')
-                continue
-            self.accept(attempt,matches[0])
+            else:
+                self.accept(attempt,matches[0])
+            collected.append(attempt['id'])
+        return collected
 
     def actual_cost(self, usage, stage, rates):
         if not isinstance(usage, dict) or not all(isinstance(usage.get(k), int) and usage[k] >= 0 for k in ('input_tokens','output_tokens')):

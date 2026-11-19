@@ -220,7 +220,7 @@ function renderJsonJobs(jobs,locked){
         line(box,job.message,'p');
         for(const a of job.attempts){
             line(box,'送信：'+({unknown:'応答不明・再送せず照合待ち',submitting:'送信結果の照合待ち',submitted:'送信済み',completed:'回収済み',rejected:'Batch作成前に停止',review_required:'要確認'}[a.status]||a.status)+' ／ '+(a.batch_id||'Batch ID照合待ち'),'p');
-            line(box,'予約 $'+a.reserve.toFixed(3)+' ／ '+(a.actual===null?'費用未確定・予約保持':'usage換算 $'+a.actual.toFixed(4)),'p');
+            line(box,'予約 $'+a.reserve.toFixed(3)+' ／ '+(a.actual===null?'費用未確定・予約保持':a.status==='rejected'?'Batch生成費用 $0.0000':'使用量からの費用概算 $'+a.actual.toFixed(4)),'p');
         }
         if(job.result)line(box,'OneDrive内の保管先：'+job.result,'p');
         if(job.retry?.reason)line(box,'確認した原因：'+job.retry.reason,'p');

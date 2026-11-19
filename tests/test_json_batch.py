@@ -75,7 +75,8 @@ class JsonBatchTests(unittest.TestCase):
         self.assertEqual(request['url'], '/v1/responses')
         self.assertEqual(request['body']['text']['format']['schema']['properties']['source_hash']['enum'], [digest(self.raw)])
         self.assertEqual(request['body']['max_output_tokens'], 32000)
-        self.complete(); jb.collect(self.repo, self.ws, self.api)
+        self.complete(); message = jb.collect(self.repo, self.ws, self.api)
+        self.assertIn('使用量からの費用概算（1件） 約 $0.0035 USD', message)
         self.assertEqual(self.ws.snapshot()['counts']['web_pending'], 1)
         event = self.ws.current(PMID)
         self.assertFalse(event['data']['done'])
@@ -86,9 +87,32 @@ class JsonBatchTests(unittest.TestCase):
         self.assertEqual(report['jobs'][0]['status'], 'saved')
         self.assertTrue(self.ws.path(report['jobs'][0]['result']).is_file())
         self.assertEqual(self.rows('attempts')[0]['actual'], .0035)
-        jb.collect(self.repo, self.ws, self.api)
+        message = jb.collect(self.repo, self.ws, self.api)
+        self.assertIn('新たに終了を確認したBatchはありません', message)
+        self.assertNotIn('$0.0035', message)
         self.assertEqual(self.ws.current(PMID)['id'], event['id'])
         self.assertEqual(self.api.posts, 1)
+
+    def test_collection_totals_known_usage_with_failed_and_pending_batches(self):
+        self.send()
+        self.complete()
+        for number in range(2, 5):
+            pmid = str(int(PMID) + number)
+            self.ws.add(pmid)
+            self.ws.import_file(pmid, 'pdf', 'source.pdf', self.raw + b'\n' * number)
+            jb.prepare(self.repo, self.ws, [dict(pmid=pmid, heads=[self.ws.current(pmid)['id']])])
+            preview = jb.status(self.repo, self.ws)['preview']
+            jb.submit(self.repo, self.ws, dict(confirmed=True, preview_id=preview['id']), self.api)
+        _, incomplete, missing_usage, pending = self.rows('attempts')
+        self.api.complete(incomplete, dict(status='incomplete', usage=dict(input_tokens=2000, output_tokens=100)))
+        self.api.complete(missing_usage, {}, status=503)
+        message = jb.collect(self.repo, self.ws, self.api)
+        self.assertIn('Batchの終了結果を3件', message)
+        self.assertIn('使用量からの費用概算（2件） 約 $0.0060 USD', message)
+        self.assertIn('費用未確定 1件', message)
+        attempts = {a['id']: a for a in self.rows('attempts')}
+        self.assertEqual(attempts[incomplete['id']]['status'], 'review_required')
+        self.assertEqual(attempts[pending['id']]['status'], 'submitted')
 
     def test_prepare_and_double_click_never_send_unselected_or_duplicate(self):
         self.ws.add('90000002')
@@ -247,7 +271,9 @@ class JsonBatchTests(unittest.TestCase):
 
     def test_unknown_usage_with_valid_json_saves_but_retains_reserve(self):
         self.send(); self.complete(usage=None)
-        jb.collect(self.repo, self.ws, self.api)
+        message = jb.collect(self.repo, self.ws, self.api)
+        self.assertIn('費用未確定 1件', message)
+        self.assertNotIn('$0.0000', message)
         self.assertEqual(self.ws.snapshot()['counts']['web_pending'], 1)
         self.assertIsNone(self.rows('attempts')[0]['actual'])
 
@@ -492,8 +518,9 @@ class JsonBatchTests(unittest.TestCase):
             app.run('json-prepare', {'items':[dict(pmid=PMID, heads=[self.ws.current(PMID)['id']])]})
             app.refresh(); preview = app.state['json_batch']['preview']
             app.run('json-send', dict(confirmed=True, preview_id=preview['id']))
-            self.complete(); app.run('json-collect', {})
+            self.complete(); app.start('json-collect', {}).join()
         app.refresh()
+        self.assertIn('約 $0.0035 USD', app.message)
         self.assertEqual(app.state['counts']['web_pending'], 1)
         self.assertEqual(app.state['json_batch']['jobs'][0]['status'], 'saved')
         self.assertEqual([b['stage'] for b in self.api.batches.values()], ['analysis'])
