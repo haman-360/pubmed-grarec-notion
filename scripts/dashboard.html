@@ -27,6 +27,7 @@ button,input,textarea,select{font:inherit}button{border:1px solid transparent;bo
 <p class="hint">PDF取得済み・JSON未作成の論文を最大5本選びます。API担当Macから送信・回収します。送信後はMacを停止してもAPI側の処理は続き、担当Macで回収するとOneDrive保存と工程更新を行います。手動作成も引き続き利用できます。</p>
 <p id="json-owner" class="hint"></p><details id="json-budget-details"><summary>APIキー・担当Mac・予算の設定</summary>
 <p class="hint">担当Macのリポジトリ直下の .env に OPENAI_API_KEY を設定してください。キーと費用台帳はこのMac内に保存します。初回は1台だけで設定し、OneDrive同期後に他のMacを開いてください。</p>
+<p><a href="https://platform.openai.com/settings/organization/billing/overview" target="_blank" rel="noopener noreferrer">OpenAIのAPI残高を確認（ブラウザで開く）</a></p>
 <div class="row"><label>確認した購入済み残高（USD） <input id="json-balance" type="number" min="0" step="0.01"></label><label>他の処理の使用・予約額（USD） <input id="json-other" type="number" min="0" step="0.01" value="0"></label><label>予算期間の終了日／残高有効期限の早い方（UTC） <input id="json-end" type="date"></label></div>
 <label class="confirm"><input id="json-budget-confirm" type="checkbox"> 購入済み残高と自動チャージ無効を確認し、旧Batchを含む他の未精算額を入力しました。このMacをAPI担当にします。</label>
 <button id="json-budget-save" onclick="saveJsonBudget()">担当Mac・予算を保存</button><p class="hint">期間$20・1処理版$4まで。残高の確認は24時間有効です。見積もりは請求上限の保証ではありません。</p></details>
