@@ -10,6 +10,7 @@ from paper_pipeline.manual import Workspace, STAGES, local_settings, save_settin
 from paper_pipeline.manual_status import StatusReporter
 from paper_pipeline.intake import (PENDING, ARCHIVE, ensure_folders, inventory, organize,
                                    parse_pmids, result_message, workspace_lock)
+from paper_pipeline import ledger_inbox
 from paper_pipeline.store import now
 
 REPO = Path(__file__).resolve().parents[1]
@@ -31,6 +32,9 @@ class Application:
         self.state = {}
         self.reporter = StatusReporter(repo)
         self.refresh(scan=True)
+        if self.state.get('configured') and self.state.get('observed_at'):
+            if ledger_inbox.key_path(self.repo, self.workspace()).is_file():
+                self.start('ledger-receive', {})
 
     def workspace(self):
         if not self.settings['shared_root']:
@@ -106,6 +110,12 @@ class Application:
             save_settings(self.repo, self.settings)
             return '共有フォルダを設定しました。OneDrive標準アプリで同期します。'
         workspace = self.workspace()
+        if action == 'ledger-code':
+            code = ledger_inbox.pairing_code(self.repo, workspace)
+            subprocess.run(['/usr/bin/pbcopy'], input=code.encode(), check=True)
+            return '接続コードをコピーしました。研究台帳の「グラレコの受信Macを設定」に貼り付けてください。'
+        if action == 'ledger-receive':
+            return ledger_inbox.receive(self.repo, workspace)
         if action in ('notion-prepare', 'notion-send'):
             from paper_pipeline import notion_sync
             if action == 'notion-prepare':
