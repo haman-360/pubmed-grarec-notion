@@ -13,8 +13,29 @@ button,input,textarea,select{font:inherit}button{border:1px solid transparent;bo
 .json-estimate-table th:last-child{width:9em;text-align:right}
 .json-estimate-table td:first-child,.json-estimate-table td:last-child{font-variant-numeric:tabular-nums;white-space:nowrap}
 .json-estimate-table td:last-child{text-align:right}
+#json-retry-preview{margin-top:12px}
+.json-retry-paper{display:flex;flex-wrap:wrap;gap:4px 12px;overflow-wrap:anywhere}
+.json-retry-paper span{white-space:nowrap;font-variant-numeric:tabular-nums}
+.json-retry-details{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px;margin:12px 0;overflow-wrap:anywhere}
+.json-retry-details dt{font-weight:600;color:#54736c}
+.json-retry-details dd{margin:0}
+.json-retry-costs{background:white;margin-bottom:8px}
+.json-retry-costs th,.json-retry-costs td{padding:10px 12px}
+.json-retry-costs th:first-child{width:auto}
+.json-retry-costs thead th:nth-child(2){width:8rem}
+.json-retry-costs thead th:last-child{width:7rem}
+.json-retry-costs tr > :not(:first-child){text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.json-retry-costs tbody th{background:transparent;color:inherit;font-size:inherit}
+.json-retry-current{background:#e7f1ef;font-weight:700}
+#json-retry-preview .confirm{display:flex;align-items:baseline;gap:8px}
 @media(max-width:850px){.home-top{grid-template-columns:1fr}main{padding:18px}.cards{grid-template-columns:repeat(2,minmax(0,1fr))}h1{font-size:28px}.table table{min-width:760px}}
-@media(max-width:520px){.json-estimate-table th,.json-estimate-table td{padding:8px 6px}.json-estimate-table th:first-child{width:6.5em}.json-estimate-table th:last-child{width:7em}}
+@media(max-width:520px){
+.json-estimate-table th,.json-estimate-table td,.json-retry-costs th,.json-retry-costs td{padding:8px 6px}
+.json-estimate-table th:first-child{width:6.5em}
+.json-estimate-table th:last-child{width:7em}
+.json-retry-costs thead th:nth-child(2){width:6rem}
+.json-retry-costs thead th:last-child{width:4rem}
+}
 </style><main>
 <header><div><div class="eyebrow">PUBMED WORKSPACE · MAC</div><h1>論文処理のいま</h1><p class="sub">進めたい工程を選んで、その場で作業できます。</p></div><div class="actions"><button class="secondary" data-nav onclick="navigate('home')">ホーム</button><button class="secondary" data-manual-refresh onclick="manualRefresh()">保存状況を確認</button></div></header>
 <p id="observed" class="hint"></p><div id="progress-strip" hidden></div><div id="message" role="status"></div><p class="errors" id="errors"></p><div id="transition" role="status" hidden></div>
@@ -43,7 +64,25 @@ button,input,textarea,select{font:inherit}button{border:1px solid transparent;bo
 <small id="json-estimate-count-note" hidden>「予算枠」の論文は、送信時にPDFをアップロードしてトークン数を確認します。</small>
 <small>実際の請求額は使用量に応じて確定します。トークン数の確認後に予算を超える場合は生成を停止します。</small>
 <label class="confirm"><input id="json-send-confirm" type="checkbox" onchange="renderJsonPanel()"> 表示した論文PDFをOpenAIへ送り、見積費用でBatch JSON作成を依頼します。</label><button id="json-send" onclick="sendJson()">確認した対象をBatchへ送信</button></div>
-<div id="json-retry-preview" class="result-box" hidden><p id="json-retry-estimate"></p><label class="confirm"><input id="json-retry-confirm" type="checkbox" onchange="renderJsonPanel()"> 過去の履歴・費用予約を残すこと、再試行回数・追加見積・累計額を確認し、この1件のPDFをOpenAIへ再送します。</label><button id="json-retry-send" onclick="sendJsonRetry()">確認した1件を再送（最大1回）</button></div>
+<div id="json-retry-preview" class="result-box" role="region" aria-labelledby="json-retry-heading" hidden>
+<h3 id="json-retry-heading">再試行の見積もり</h3>
+<p class="json-retry-paper"><span id="json-retry-pmid"></span><strong id="json-retry-title"></strong></p>
+<dl class="json-retry-details">
+<dt>前回の失敗理由</dt><dd id="json-retry-reason"></dd>
+<dt>再試行回数</dt><dd id="json-retry-count"></dd>
+</dl>
+<table class="json-retry-costs" aria-label="再試行の費用と上限">
+<thead><tr><th scope="col">項目</th><th scope="col">金額（USD）</th><th scope="col">上限</th></tr></thead>
+<tbody>
+<tr><th scope="row">過去の使用・予約</th><td id="json-retry-previous"></td><td>—</td></tr>
+<tr class="json-retry-current"><th scope="row">今回の追加見積</th><td id="json-retry-reserve"></td><td id="json-retry-cap"></td></tr>
+<tr><th scope="row">累計（同じ処理版）</th><td id="json-retry-total"></td><td>$4.00</td></tr>
+</tbody>
+</table>
+<small>期間全体の上限 $20.00。未確定の過去費用は予約を保持します。実際の請求額は使用量に応じて確定します。</small>
+<label class="confirm"><input id="json-retry-confirm" type="checkbox" onchange="renderJsonPanel()"><span>過去の履歴・費用予約を残すこと、再試行回数・追加見積・累計額を確認し、この1件のPDFをOpenAIへ再送します。</span></label>
+<button id="json-retry-send" onclick="sendJsonRetry()">確認した1件を再送（最大1回）</button>
+</div>
 <p class="hint">失敗した処理は下の履歴を開き「再試行の見積もりを確認」から操作します。一時的なAPIエラー・期限切れを確認できた場合だけ、同じ原本で再試行1回（初回を含め計2回）・追加見積$1まで。過去分込みで1処理版$4・期間$20まで。結果不明やJSON検証エラーは再送しません。</p>
 <div class="actions"><button id="json-collect" onclick="act('json-collect')">状況確認・JSON回収</button><button class="secondary" onclick="act('json-results-folder')">API結果フォルダ</button><button class="secondary" data-nav onclick="closePanel()">閉じる</button></div>
 <p class="hint">回収はこのボタンを押したときだけです。JSON保存済みならPNG作成待ちへ進みます。手動作成・原本差し替え等が先にあった場合はAPI結果を候補として残します。</p>
@@ -125,7 +164,16 @@ function renderJsonEstimate(preview){
     $('json-estimate-total').textContent='$'+preview.total.toFixed(3);
     $('json-estimate-count-note').hidden=!preview.items.some(item=>item.needs_count);
 }
-function jsonRetryEstimate(item){return 'PMID '+item.pmid+' ／ '+item.title+'\n原因：'+item.reason+'\n再試行 '+item.number+'/'+item.limit+'回（初回を含め計2回まで）\n過去の使用・予約 $'+item.previous.toFixed(6)+' ＋ 今回の追加見積 $'+item.reserve.toFixed(6)+' ＝ 累計 $'+item.total.toFixed(6)+'\n追加見積の上限 $'+item.cap.toFixed(2)+' ／ 同じ処理版の累計上限 $4.00 ／ 期間上限 $20.00\n未確定の過去費用は予約を保持します。見積もりは実際の請求額や請求上限の保証ではありません。'}
+function renderJsonRetryEstimate(item){
+    $('json-retry-pmid').textContent='PMID '+item.pmid;
+    $('json-retry-title').textContent=item.title||'論文名未登録';
+    $('json-retry-reason').textContent=item.reason;
+    $('json-retry-count').textContent=item.number+' / '+item.limit+'回（初回を含め計'+(1+item.limit)+'回まで）';
+    $('json-retry-previous').textContent='$'+item.previous.toFixed(6);
+    $('json-retry-reserve').textContent='$'+item.reserve.toFixed(6);
+    $('json-retry-total').textContent='$'+item.total.toFixed(6);
+    $('json-retry-cap').textContent='$'+item.cap.toFixed(2);
+}
 function renderJsonPanel(){let b=state.json_batch||{},rows=jsonRows(),locked=state.busy||!b.is_owner;
 $('json-owner').textContent='API担当：'+(b.owner||'未設定')+' ／ このMacのAPIキー：'+(b.key_ready?'設定あり':'未設定')+' ／ モデル：gpt-6.1-sol（Batch）';
 $('json-checked').textContent='API記録の更新：'+(date(b.at)||'未記録')+' ／ 残高確認：'+(date(b.budget_checked_at)||'未確認');
@@ -142,7 +190,14 @@ if((preview?.id||'')!==jsonPreviewId){
     if(preview)renderJsonEstimate(preview);
 }
 $('json-prepare').disabled=locked||!jsonSelection.size||jsonSelection.size>5;$('json-send').disabled=locked||!b.key_ready||!preview||!$('json-send-confirm').checked;$('json-collect').disabled=locked||!b.key_ready;$('json-budget-save').disabled=state.busy||(b.configured&&!b.is_owner);
-let retry=b.retry_preview;$('json-retry-preview').hidden=!retry;if((retry?.id||'')!==jsonRetryPreviewId){jsonRetryPreviewId=retry?.id||'';$('json-retry-confirm').checked=false}if(retry)$('json-retry-estimate').textContent=jsonRetryEstimate(retry.item);$('json-retry-estimate').style.whiteSpace='pre-wrap';$('json-retry-send').disabled=locked||!b.key_ready||!retry||!$('json-retry-confirm').checked;
+const retry=b.retry_preview;
+$('json-retry-preview').hidden=!retry;
+if((retry?.id||'')!==jsonRetryPreviewId){
+    jsonRetryPreviewId=retry?.id||'';
+    $('json-retry-confirm').checked=false;
+    if(retry)renderJsonRetryEstimate(retry.item);
+}
+$('json-retry-send').disabled=locked||!b.key_ready||!retry||!$('json-retry-confirm').checked;
 let jobsSig=JSON.stringify([b.jobs||[],locked]);if(jobsSig!==jsonJobsSignature){jsonJobsSignature=jobsSig;$('json-jobs').replaceChildren();for(let job of b.jobs||[]){let box=document.createElement('details');line(box,'PMID '+job.pmid+' ／ '+(jsonNames[job.status]||job.status),'summary');line(box,job.message,'p');for(let a of job.attempts){line(box,'送信：'+({unknown:'応答不明・再送せず照合待ち',submitting:'送信結果の照合待ち',submitted:'送信済み',completed:'回収済み',rejected:'Batch作成前に停止',review_required:'要確認'}[a.status]||a.status)+' ／ '+(a.batch_id||'Batch ID照合待ち'),'p');line(box,'予約 $'+a.reserve.toFixed(3)+' ／ '+(a.actual===null?'費用未確定・予約保持':'usage換算 $'+a.actual.toFixed(4)),'p')}if(job.result)line(box,'OneDrive内の保管先：'+job.result,'p');if(job.retry?.reason)line(box,'確認した原因：'+job.retry.reason,'p');if(job.retry?.allowed){let retryButton=document.createElement('button');retryButton.textContent='再試行の見積もりを確認';retryButton.setAttribute('data-json-retry','');retryButton.onclick=()=>prepareJsonRetry(job.id);box.append(retryButton)}else if(job.retry?.used>=job.retry?.limit)line(box,'再試行回数の上限に達しています。','p');$('json-jobs').append(box)}}for(let el of document.querySelectorAll('[data-json-retry]'))el.disabled=locked;}
 
 const notionSelection=new Map(),notionReviewed=new Set();let notionOptionsSignature='',notionPreviewId='',notionJobsSignature='';let notionImageUrls=[];

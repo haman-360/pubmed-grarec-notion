@@ -77,9 +77,14 @@ test('retry screen shows preserved cost, limits, explicit consent and owner/busy
     assert.deepEqual(run('recorded'),[{action:'json-retry-prepare',data:{revision_id:'revision-1'}}]);
     set(`state.json_batch.retry_preview={id:'preview-1',item:{pmid:'1',title:'Test paper',reason:'HTTP 503',number:1,limit:1,previous:.325397,reserve:.325397,total:.650794,cap:1}};renderJsonPanel()`);
     assert.equal(run("$('json-retry-preview').hidden"),false);
-    assert.match(run("$('json-retry-estimate').textContent"),/過去の使用・予約 \$0.325397.*今回の追加見積 \$0.325397.*累計 \$0.650794/);
-    assert.match(run("$('json-retry-estimate').textContent"),/再試行 1\/1回/);
-    assert.match(run("$('json-retry-estimate').textContent"),/上限 \$1.00/);
+    assert.equal(run("$('json-retry-pmid').textContent"),'PMID 1');
+    assert.equal(run("$('json-retry-title').textContent"),'Test paper');
+    assert.equal(run("$('json-retry-reason').textContent"),'HTTP 503');
+    assert.equal(run("$('json-retry-count').textContent"),'1 / 1回（初回を含め計2回まで）');
+    assert.equal(run("$('json-retry-previous').textContent"),'$0.325397');
+    assert.equal(run("$('json-retry-reserve').textContent"),'$0.325397');
+    assert.equal(run("$('json-retry-total').textContent"),'$0.650794');
+    assert.equal(run("$('json-retry-cap').textContent"),'$1.00');
     assert.equal(run("$('json-retry-send').disabled"),true);
     set("$('json-retry-confirm').checked=true;renderJsonPanel()");
     assert.equal(run("$('json-retry-send').disabled"),false);
