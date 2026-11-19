@@ -49,6 +49,17 @@ class IntakeTests(unittest.TestCase):
     def stage(self):
         return self.ws.snapshot()['papers'][0]['category']
 
+    def test_numeric_pdf_names_map_to_separate_papers(self):
+        pmids = ['41276263', '41276264']
+        for pmid in pmids:
+            self.write(pmid + '.pdf', self.pdf)
+        result = organize(self.ws)
+        self.assertEqual(result['errors'], [])
+        self.assertEqual(result['imported'], 2)
+        for pmid in pmids:
+            files = self.ws.current(pmid)['data']['files']
+            self.assertEqual([f['name'] for f in files if f['kind'] == 'pdf'], [pmid + '.pdf'])
+
     def test_archive_cleanup_requires_retention_and_verified_copy(self):
         from paper_pipeline.intake import cleanup_archive
         self.bundle(); organize(self.ws)
