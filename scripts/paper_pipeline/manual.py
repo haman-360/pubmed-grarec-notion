@@ -173,7 +173,7 @@ class Workspace:
         pmid_value(pmid)
         if self.heads(pmid):
             return
-        self.record(pmid, {'title': title, 'files': [], 'note': '', 'done': False}, [])
+        return self.record(pmid, {'title': title, 'files': [], 'note': '', 'done': False}, [])
 
     def asset(self, pmid, kind, name, raw, topic='', basis=''):
         original_name = Path(name).name
