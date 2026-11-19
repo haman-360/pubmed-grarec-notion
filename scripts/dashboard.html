@@ -28,7 +28,8 @@ button,input,textarea,select{font:inherit}button{border:1px solid transparent;bo
 <p id="json-owner" class="hint"></p><details id="json-budget-details"><summary>APIキー・担当Mac・予算の設定</summary>
 <p class="hint">担当Macのリポジトリ直下の .env に OPENAI_API_KEY を設定してください。キーと費用台帳はこのMac内に保存します。初回は1台だけで設定し、OneDrive同期後に他のMacを開いてください。</p>
 <p><a href="https://platform.openai.com/settings/organization/billing/overview" target="_blank" rel="noopener noreferrer">OpenAIのAPI残高を確認（ブラウザで開く）</a></p>
-<div class="row"><label>確認した購入済み残高（USD） <input id="json-balance" type="number" min="0" step="0.01"></label><label>他の処理の使用・予約額（USD） <input id="json-other" type="number" min="0" step="0.01" value="0"></label><label>予算期間の終了日／残高有効期限の早い方（UTC） <input id="json-end" type="date"></label></div>
+<div class="row"><label>確認した購入済み残高（USD） <input id="json-balance" type="number" min="0" step="0.01"></label><label>他の処理の使用・予約額（USD） <input id="json-other" type="number" min="0" step="0.01" value="0"></label><label>予算期間の終了日／残高有効期限の早い方（UTC・必須） <input id="json-end" type="date" required></label></div>
+<small>保存済みの終了日を表示します。予算期間や残高の有効期限が変わった場合は更新してください。</small>
 <label class="confirm"><input id="json-budget-confirm" type="checkbox"> 購入済み残高と自動チャージ無効を確認し、旧Batchを含む他の未精算額を入力しました。このMacをAPI担当にします。</label>
 <button id="json-budget-save" onclick="saveJsonBudget()">担当Mac・予算を保存</button><p class="hint">期間$20・1処理版$4まで。残高の確認は24時間有効です。見積もりは請求上限の保証ではありません。</p></details>
 <div id="json-options" class="json-options"></div><p id="json-selected" class="hint"></p>
@@ -99,7 +100,12 @@ const jsonSelection=new Map();let jsonOptionsSignature='',jsonJobsSignature='',j
 const jsonNames={analysis_ready:'準備済み',budget_wait:'予算・入力の確認待ち',analysis_submitted:'API処理中・回収待ち',json_received:'回収済み・保存待ち',saved:'JSON保存済み',structure_review_required:'生成済み・構造確認待ち',candidate:'候補保管・手動結果を優先',review_required:'API結果の確認が必要'};
 function jsonRows(){let submitted=new Set((state?.json_batch?.jobs||[]).filter(j=>j.attempts.length>=2||j.attempts.some(a=>a.status!=='rejected')).map(j=>j.pmid+':'+j.source_hash));return(state?.papers||[]).filter(p=>p.category==='json_pending'&&p.heads.length===1&&!submitted.has(p.pmid+':'+p.files.find(f=>f.kind==='pdf')?.sha))}
 function openJsonPanel(pmid){openPanel('json_pending','json-panel');if(pmid){jsonSelection.clear();let p=jsonRows().find(p=>p.pmid===pmid);if(p)jsonSelection.set(pmid,p.heads)}renderJsonPanel();$('json-panel').scrollIntoView({behavior:'smooth'})}
-async function saveJsonBudget(){await act('json-budget',{remaining:$('json-balance').value,other_usage:$('json-other').value,end:$('json-end').value,confirmed:$('json-budget-confirm').checked});$('json-budget-confirm').checked=false}
+async function saveJsonBudget(){
+    const budgetEnd=$('json-end');
+    if(!budgetEnd.reportValidity())return;
+    await act('json-budget',{remaining:$('json-balance').value,other_usage:$('json-other').value,end:budgetEnd.value,confirmed:$('json-budget-confirm').checked});
+    $('json-budget-confirm').checked=false;
+}
 async function prepareJson(){await act('json-prepare',{items:[...jsonSelection].map(([pmid,heads])=>({pmid,heads}))});$('json-send-confirm').checked=false}
 async function sendJson(){await act('json-send',{preview_id:state.json_batch?.preview?.id,confirmed:$('json-send-confirm').checked});$('json-send-confirm').checked=false;jsonSelection.clear();renderJsonPanel()}
 async function prepareJsonRetry(revisionId){if(await act('json-retry-prepare',{revision_id:revisionId}))$('json-retry-preview').scrollIntoView({behavior:'smooth'})}
@@ -123,6 +129,8 @@ function jsonRetryEstimate(item){return 'PMID '+item.pmid+' ／ '+item.title+'\n
 function renderJsonPanel(){let b=state.json_batch||{},rows=jsonRows(),locked=state.busy||!b.is_owner;
 $('json-owner').textContent='API担当：'+(b.owner||'未設定')+' ／ このMacのAPIキー：'+(b.key_ready?'設定あり':'未設定')+' ／ モデル：gpt-6.1-sol（Batch）';
 $('json-checked').textContent='API記録の更新：'+(date(b.at)||'未記録')+' ／ 残高確認：'+(date(b.budget_checked_at)||'未確認');
+const savedBudgetEnd=b.budget_end?.slice(0,10)||'';
+if($('json-end').defaultValue!==savedBudgetEnd)$('json-end').defaultValue=savedBudgetEnd;
 for(let id of jsonSelection.keys())if(!rows.some(p=>p.pmid===id))jsonSelection.delete(id);
 let sig=JSON.stringify([rows.map(p=>[p.pmid,p.title,p.heads]),[...jsonSelection],locked]);if(sig!==jsonOptionsSignature){jsonOptionsSignature=sig;$('json-options').replaceChildren();for(let p of rows){let lab=document.createElement('label'),check=document.createElement('input');check.type='checkbox';check.checked=jsonSelection.has(p.pmid);check.disabled=locked;check.onchange=()=>{if(check.checked)jsonSelection.set(p.pmid,p.heads);else jsonSelection.delete(p.pmid);renderJsonPanel()};lab.append(check,document.createTextNode('PMID '+p.pmid+' ／ '+(p.title||'論文名未登録')));$('json-options').append(lab)}if(!rows.length)line($('json-options'),'未送信のJSON作成待ちはありません。送信済み分は下の回収ボタンで確認してください。','p')}
 $('json-selected').textContent=jsonSelection.size+'本を選択（最大5本）。見積もりの準備はAPI送信を行いません。';

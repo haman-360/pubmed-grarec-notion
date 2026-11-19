@@ -114,7 +114,10 @@ def set_budget(repo, workspace, data):
     remaining, other = float(data.get('remaining', -1)), float(data.get('other_usage', -1))
     if not all(math.isfinite(x) and x >= 0 for x in (remaining, other)) or other > remaining:
         raise ValueError('残高と他の処理の使用・予約額を確認してください')
-    end = datetime.fromisoformat(data.get('end', '')).replace(tzinfo=timezone.utc)
+    try:
+        end = datetime.fromisoformat(data.get('end', '')).replace(tzinfo=timezone.utc)
+    except (TypeError, ValueError):
+        raise ValueError('予算期間の終了日と残高有効期限の早い方を入力してください（UTC）') from None
     if end <= datetime.now(timezone.utc) + timedelta(hours=50):
         raise ValueError('期限まで50時間以上必要です')
     with workspace_lock(workspace), ledger(repo, workspace, claim=True) as store:

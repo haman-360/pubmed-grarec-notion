@@ -114,6 +114,13 @@ class JsonBatchTests(unittest.TestCase):
         for change in (dict(confirmed=False), dict(remaining=float('nan')), dict(other_usage=20), dict(end='2020-01-01')):
             with self.assertRaises(ValueError): self.budget(**change)
 
+    def test_invalid_budget_end_reports_the_field_and_keeps_the_saved_settings(self):
+        before = jb.status(self.repo, self.ws)
+        for end in ('', '2026-02-30', None):
+            with self.subTest(end=end), self.assertRaisesRegex(ValueError, '予算期間の終了日'):
+                self.budget(remaining=15, end=end)
+        self.assertEqual(jb.status(self.repo, self.ws), before)
+
     def test_unknown_submission_reconciles_after_restart_without_resending(self):
         self.api.timeout_after_create = True; self.send()
         self.assertEqual(self.rows('attempts')[0]['status'], 'unknown')
