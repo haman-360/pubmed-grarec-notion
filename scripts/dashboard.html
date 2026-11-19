@@ -107,7 +107,7 @@ button,input,textarea,select{font:inherit}button{border:1px solid transparent;bo
 <section id="management-panel" hidden>
 <h2 id="management-title" tabindex="-1"></h2><p id="management-paper"></p><p id="management-help" class="hint"></p>
 <form onsubmit="event.preventDefault();saveManagement()">
-<div id="archive-fields"><label>理由（任意） <select id="archive-reason"><option value="">指定しない</option><option>古い</option><option>内容が対象外</option><option>重複する内容</option><option>その他</option></select></label></div>
+<div id="archive-fields"><label>理由（任意） <select id="archive-reason"><option value="">指定しない</option><option>長文のため</option><option>関心がなくなった</option><option>PDFを入手できなかった</option><option>古い</option><option>内容が対象外</option><option>重複する内容</option><option>その他</option></select></label></div>
 <div id="check-fields" class="row"><label>確認日 <input id="check-on" type="date"></label><label>確認結果 <select id="check-result"><option>有料のみ</option><option>PDFが見つからない</option><option>アクセスできない</option><option>その他</option></select></label></div>
 <p id="next-check-field"><label>次回確認日 <input id="next-check-on" type="date"></label></p>
 <p id="management-note-field"><label>補足メモ（任意）<textarea id="management-note" maxlength="2000"></textarea></label></p>
@@ -198,7 +198,47 @@ if((retry?.id||'')!==jsonRetryPreviewId){
     if(retry)renderJsonRetryEstimate(retry.item);
 }
 $('json-retry-send').disabled=locked||!b.key_ready||!retry||!$('json-retry-confirm').checked;
-let jobsSig=JSON.stringify([b.jobs||[],locked]);if(jobsSig!==jsonJobsSignature){jsonJobsSignature=jobsSig;$('json-jobs').replaceChildren();for(let job of b.jobs||[]){let box=document.createElement('details');line(box,'PMID '+job.pmid+' ／ '+(jsonNames[job.status]||job.status),'summary');line(box,job.message,'p');for(let a of job.attempts){line(box,'送信：'+({unknown:'応答不明・再送せず照合待ち',submitting:'送信結果の照合待ち',submitted:'送信済み',completed:'回収済み',rejected:'Batch作成前に停止',review_required:'要確認'}[a.status]||a.status)+' ／ '+(a.batch_id||'Batch ID照合待ち'),'p');line(box,'予約 $'+a.reserve.toFixed(3)+' ／ '+(a.actual===null?'費用未確定・予約保持':'usage換算 $'+a.actual.toFixed(4)),'p')}if(job.result)line(box,'OneDrive内の保管先：'+job.result,'p');if(job.retry?.reason)line(box,'確認した原因：'+job.retry.reason,'p');if(job.retry?.allowed){let retryButton=document.createElement('button');retryButton.textContent='再試行の見積もりを確認';retryButton.setAttribute('data-json-retry','');retryButton.onclick=()=>prepareJsonRetry(job.id);box.append(retryButton)}else if(job.retry?.used>=job.retry?.limit)line(box,'再試行回数の上限に達しています。','p');$('json-jobs').append(box)}}for(let el of document.querySelectorAll('[data-json-retry]'))el.disabled=locked;}
+renderJsonJobs(b.jobs||[],locked);}
+function renderJsonJobs(jobs,locked){
+    const papers=new Map(state.papers.map(p=>[p.pmid,p]));
+    const entries=jobs.map(job=>{
+        const paper=papers.get(job.pmid);
+        const archive=paper?.archive;
+        const canArchive=job.status==='budget_wait'&&paper?.category==='json_pending'&&paper.heads.length===1&&
+            paper.files.some(f=>f.kind==='pdf'&&f.sha===job.source_hash);
+        return {job,archive,target:canArchive?{pmid:paper.pmid,title:paper.title,heads:paper.heads}:null};
+    });
+    const jobsSig=JSON.stringify([entries,locked,Boolean(state.busy)]);
+    if(jobsSig===jsonJobsSignature)return;
+    jsonJobsSignature=jobsSig;
+    $('json-jobs').replaceChildren();
+    for(const {job,archive,target} of entries){
+        const box=document.createElement('details');
+        const status=jsonNames[job.status]||job.status;
+        line(box,'PMID '+job.pmid+' ／ '+(archive?'アーカイブ済み':status),'summary');
+        if(archive)line(box,'理由：'+(archive.reason||'未指定')+' ／ API履歴：'+status,'p');
+        line(box,job.message,'p');
+        for(const a of job.attempts){
+            line(box,'送信：'+({unknown:'応答不明・再送せず照合待ち',submitting:'送信結果の照合待ち',submitted:'送信済み',completed:'回収済み',rejected:'Batch作成前に停止',review_required:'要確認'}[a.status]||a.status)+' ／ '+(a.batch_id||'Batch ID照合待ち'),'p');
+            line(box,'予約 $'+a.reserve.toFixed(3)+' ／ '+(a.actual===null?'費用未確定・予約保持':'usage換算 $'+a.actual.toFixed(4)),'p');
+        }
+        if(job.result)line(box,'OneDrive内の保管先：'+job.result,'p');
+        if(job.retry?.reason)line(box,'確認した原因：'+job.retry.reason,'p');
+        if(job.retry?.allowed&&!archive){
+            const retryButton=document.createElement('button');
+            retryButton.textContent='再試行の見積もりを確認';
+            retryButton.setAttribute('data-json-retry','');
+            retryButton.disabled=locked;
+            retryButton.onclick=()=>prepareJsonRetry(job.id);
+            box.append(retryButton);
+        }else if(job.retry?.used>=job.retry?.limit)line(box,'再試行回数の上限に達しています。','p');
+        if(target){
+            const archiveButton=navButton(box,'対象から外す',()=>openManagement(target,'archive'));
+            archiveButton.disabled=Boolean(state.busy);
+        }
+        $('json-jobs').append(box);
+    }
+}
 
 const notionSelection=new Map(),notionReviewed=new Set();let notionOptionsSignature='',notionPreviewId='',notionJobsSignature='';let notionImageUrls=[];
 const notionNames={prepared:'PNG確認待ち',sending:'登録・照合中',completed:'登録完了',registered_stale:'Notion登録済み・工程未反映',needs_review:'未完了・要確認'};

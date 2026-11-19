@@ -78,8 +78,9 @@ class PaperManagementTests(unittest.TestCase):
     def test_archive_restore_keeps_files_completion_and_note(self):
         self.ws.import_file(PMID, 'pdf', 'source.pdf', self.pdf)
         original = self.ws.current(PMID)
-        archived = self.manage('archive', reason='古い', note='対象外と判断')
+        archived = self.manage('archive', reason='長文のため', note='入力上限を超過')
         self.assertEqual(self.row()['category'], 'archived')
+        self.assertEqual(self.row()['archive']['reason'], '長文のため')
         self.assertEqual(archived['data']['files'], original['data']['files'])
         for file in original['data']['files']: self.assertTrue(self.ws.read_asset(file))
         self.ws.add(PMID)

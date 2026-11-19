@@ -122,6 +122,34 @@ test('waiting list sorts by next check date independently of search history filt
     assert.deepEqual(run('paperRows().map(p=>p.pmid)'),['2','1']);
 });
 
+test('a waiting Batch can archive its current paper without API ownership',async()=>{
+    const {run,set}=dashboard();
+    set(`
+        document.createElement=tag=>({tag,dataset:{},children:[],append(child){this.children.push(child)}});
+        const jobsNode=$('json-jobs');
+        jobsNode.append=child=>jobsNode.children.push(child);
+        jobsNode.replaceChildren=()=>{jobsNode.children=[]};
+        $('management-panel').scrollIntoView=()=>{};$('management-title').focus=()=>{};
+        var recorded=[];act=async(action,data)=>{recorded.push({action,data});return true};
+        const paper=state.papers[0];
+        Object.assign(paper,{category:'json_pending',files:[{kind:'pdf',sha:'current'}]});
+        const jobs=[{pmid:paper.pmid,source_hash:'current',status:'budget_wait',attempts:[],message:'長文料金域'},
+                    {pmid:paper.pmid,source_hash:'old',status:'budget_wait',attempts:[],message:'過去の処理'}];
+        const archiveButton=()=>jobsNode.children[0].children.find(child=>child.tag==='button');
+        renderJsonJobs(jobs,true);
+    `);
+    assert.equal(run('archiveButton().disabled'),false);
+    assert.equal(run("jobsNode.children[1].children.some(child=>child.tag==='button')"),false);
+    set("archiveButton().onclick();$('archive-reason').value='長文のため'");
+    await set('saveManagement()');
+    assert.deepEqual(run('recorded'),[{action:'manage-paper',data:{pmid:'1',heads:['a'],operation:'archive',reason:'長文のため',note:''}}]);
+    set("paper.category='archived';paper.archive={reason:'長文のため'};renderJsonJobs(jobs,true)");
+    assert.equal(run('jobsNode.children[0].children[0].textContent'),'PMID 1 ／ アーカイブ済み');
+    assert.match(run('jobsNode.children[0].children[1].textContent'),/長文のため/);
+    assert.equal(run('Boolean(archiveButton())'),false);
+    assert.deepEqual(run('jsonRows().map(p=>p.pmid)'),[]);
+});
+
 test('management form defaults to calendar month, sends edited date, and reschedules without replacing the check',async()=>{
     const {run,set}=dashboard();
     set(`state.today='2026-11-16';state.default_recheck_on='2026-12-16';

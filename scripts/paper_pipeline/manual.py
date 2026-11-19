@@ -28,6 +28,8 @@ STAGES = {'missing_pdf': 'PDF取得待ち', 'json_pending': 'JSON作成待ち',
           'deferred': '再確認待ち', 'archived': 'アーカイブ'}
 KINDS = {'pdf': '.pdf', 'json': '.json', 'png': '.png'}
 CHECK_RESULTS = ('有料のみ', 'PDFが見つからない', 'アクセスできない', 'その他')
+ARCHIVE_REASONS = ('', '長文のため', '関心がなくなった', 'PDFを入手できなかった',
+                   '古い', '内容が対象外', '重複する内容', 'その他')
 
 
 def today():
@@ -346,7 +348,7 @@ class Workspace:
         data = copy.deepcopy(event['data'])
         if action == 'archive':
             reason = values.get('reason', '')
-            if reason not in ('', '古い', '内容が対象外', '重複する内容', 'その他'):
+            if reason not in ARCHIVE_REASONS:
                 raise ValueError('対象から外す理由を選んでください')
             note = values.get('note', '')
             if not isinstance(note, str) or len(note) > 2000:
