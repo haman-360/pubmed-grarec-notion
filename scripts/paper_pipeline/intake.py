@@ -91,7 +91,7 @@ def _path_ids(path, root):
     return ids
 
 
-def _identify(path, root, raw):
+def identify_pmid(path, root, raw):
     ids = _path_ids(path, root)
     if path.suffix.lower() == '.json':
         value = json.loads(raw.decode('utf-8-sig'))
@@ -134,7 +134,7 @@ def organize(workspace, minimum_age=2):
             if path.suffix.lower() not in ('.pdf', '.json', '.png', '.txt'):
                 raise ValueError('PDF・JSON・PNG・TXTのみ対応しています')
             raw = _read(path, root, minimum_age)
-            pmid = _identify(path, root, raw)
+            pmid = identify_pmid(path, root, raw)
             kind = path.suffix.lower()[1:]
             if kind == 'txt':
                 text = raw.decode('utf-8-sig')

@@ -185,6 +185,21 @@ class JsonBatchTests(unittest.TestCase):
         self.assertEqual(self.ws.current(PMID), before)
         self.assertEqual(jb.status(self.repo, self.ws)['jobs'][0]['status'], 'candidate')
 
+    def test_collect_rechecks_candidate_with_unrelated_pdf_in_inbox(self):
+        self.send()
+        inbox = self.ws.path('00_取り込み待ち')
+        inbox.mkdir(exist_ok=True)
+        pending = inbox / (PMID + '.pdf')
+        pending.write_bytes(self.raw + b' replacement')
+        self.complete()
+        jb.collect(self.repo, self.ws, self.api)
+        self.assertEqual(jb.status(self.repo, self.ws)['jobs'][0]['status'], 'candidate')
+        pending.rename(inbox / '99999999.pdf')
+        jb.collect(self.repo, self.ws, self.api)
+        self.assertEqual(jb.status(self.repo, self.ws)['jobs'][0]['status'], 'saved')
+        self.assertEqual(self.ws.snapshot()['counts']['web_pending'], 1)
+        self.assertEqual(self.api.posts, 1)
+
     def test_changed_pdf_and_unorganized_inputs_prevent_adoption(self):
         for mode in ('pdf', 'pending'):
             with self.subTest(mode=mode):

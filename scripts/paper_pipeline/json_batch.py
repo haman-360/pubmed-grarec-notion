@@ -11,7 +11,7 @@ import requests
 from jsonschema import ValidationError, validate
 
 from .batches import API, Batches, config, schema
-from .intake import PENDING, workspace_lock
+from .intake import PENDING, identify_pmid, workspace_lock
 from .pdf_download import validate_selection
 from .store import Store, atomic_write, digest, encode, now, uid
 
@@ -135,11 +135,22 @@ def set_budget(repo, workspace, data):
 def pending_manual(workspace, pmid):
     seen = {f['sha'] for event in workspace.events(pmid).values() for f in event['data']['files']
             if f['kind'] in ('json', 'draft', 'pdf')}
-    for folder in (workspace.path(PENDING), workspace.incoming(pmid)):
+    inbox = workspace.path(PENDING)
+    for folder in (inbox, workspace.incoming(pmid)):
         for path in folder.rglob('*'):
-            # Conservatively stop on any new common-inbox PDF/JSON; organize first.
-            if path.is_file() and path.suffix.lower() in ('.json', '.pdf') and digest(path.read_bytes()) not in seen:
-                return True
+            if not path.is_file() or path.suffix.lower() not in ('.json', '.pdf'):
+                continue
+            raw = path.read_bytes()
+            if digest(raw) in seen:
+                continue
+            if folder == inbox:
+                try:
+                    owner = identify_pmid(path, inbox, raw)
+                except ValueError:
+                    return True
+                if owner and owner != pmid:
+                    continue
+            return True
     return False
 
 
@@ -392,12 +403,16 @@ def submit(repo, workspace, data, api=None):
 
 
 def adopt(workspace, store):
-    for revision in store.rows("SELECT * FROM revisions WHERE status='json_received'"):
+    for revision in store.rows("SELECT * FROM revisions WHERE status IN ('json_received','candidate')"):
         binding = store.setting('binding:' + revision['id']); pmid = binding['pmid']
         raw = (store.root / revision['summary']).read_bytes()
         with workspace_lock(workspace):
             candidate = SHARED + '/results/' + revision['id'] + '/PMID_' + pmid + '_master.json'
-            atomic_write(workspace.path(candidate), raw)
+            if revision['status'] == 'candidate':
+                if not workspace.path(candidate).is_file() or workspace.path(candidate).read_bytes() != raw:
+                    continue
+            else:
+                atomic_write(workspace.path(candidate), raw)
             store.set_setting('result:' + revision['id'], candidate)
             # Crash recovery: already imported into any historical event, never re-adopt.
             seen = [e for e in workspace.events(pmid).values() if any(
