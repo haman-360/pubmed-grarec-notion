@@ -48,6 +48,7 @@ class DashboardTests(unittest.TestCase):
             client.assert_not_called()
     def test_bulk_import_approval_sync_and_already_synced_skip(self):
         item=self.candidate(); data={'items':[item],'confirmed':True,'reviewer':'Tester','note':'Synthetic check'}
+        item.update(observed_pmid=item['pmid'], observed_value='Yes')
         def sync(r):
             g=self.store.rows('SELECT * FROM graphics WHERE revision_id=? AND active=1',(r['id'],))[0]
             self.assertEqual(g['status'],'IMAGE_APPROVED')

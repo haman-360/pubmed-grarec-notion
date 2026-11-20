@@ -76,7 +76,8 @@ class HybridTests(unittest.TestCase):
 
     def approve(self, revision, topic='main', color='white'):
         import_image(self.store,revision,topic,self.image(color))
-        review_image(self.store,revision,topic,True,'Synthetic clinician','Synthetic paper/JSON/numbers checked')
+        review_image(self.store,revision,topic,True,'Synthetic clinician','Synthetic paper/JSON/numbers checked',
+                     self.store.one('papers',revision['paper_id'])['pmid'],'Yes')
 
     def test_each_topic_prompt_contains_only_its_own_graphic_json(self):
         revision,data=self.paper(kind='narrative_review',topics=2)

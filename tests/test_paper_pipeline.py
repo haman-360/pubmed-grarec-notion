@@ -315,7 +315,7 @@ class PipelineTests(unittest.TestCase):
         r = self.revision(paper)
         prepare_web(self.store,r)
         import_image(self.store,r,'main',self.store.root/image)
-        review_image(self.store,r,'main',True,'Synthetic reviewer','Synthetic facts checked')
+        review_image(self.store,r,'main',True,'Synthetic reviewer','Synthetic facts checked',paper['pmid'],'Yes')
         return self.revision(paper)
 
     def graphic(self, revision):
@@ -429,7 +429,7 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(self.revision(p)['status'],'IMAGE_REVIEW_REQUIRED')
         self.assertAlmostEqual(sum(a['actual'] for a in self.store.rows('SELECT * FROM attempts')),0.2725)
         from paper_pipeline.graphics import review_image
-        review_image(self.store,self.revision(p),'main',True,'Synthetic reviewer','Checked')
+        review_image(self.store,self.revision(p),'main',True,'Synthetic reviewer','Checked',p['pmid'],'Yes')
         n = FakeNotion(); Notion(self.store,n,'db').sync(self.revision(p))
         self.assertEqual(self.revision(p)['status'],'completed')
         self.assertEqual(len(n.pages),1)

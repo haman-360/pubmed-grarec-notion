@@ -10,6 +10,7 @@ from paper_pipeline.manual import Workspace, STAGES, local_settings, save_settin
 from paper_pipeline.manual_status import StatusReporter
 from paper_pipeline.intake import (PENDING, ARCHIVE, ensure_folders, inventory, organize,
                                    parse_pmids, result_message, workspace_lock)
+from paper_pipeline.image_review import CHECKS
 from paper_pipeline import ledger_inbox
 from paper_pipeline.store import now
 
@@ -257,6 +258,10 @@ class Application:
                 return f'保存ファイル名をコピーしました：{text}。完成PNGをこの名前で00_取り込み待ちへ保存してください。'
             help_text = f'対象論文のPDFも添付してください。完成JSONは PMID_{pmid}.json で保存します。' if action == 'copy-json' else f'画像用データも含みます。通常PDF添付は不要です。完成PNGは PMID_{pmid}_{data["topic"]}.png で保存します。'
             return f'コピーしました：PMID {pmid}。ChatGPT Webに貼り付けてください。' + help_text
+        if action == 'review-png':
+            return workspace.review_png(pmid, data['heads'], data['topic'], data['sha'],
+                                        data.get('observed_pmid'), data.get('value'), data.get('checks'),
+                                        data.get('reject') is True)
         if action == 'record':
             workspace.update(pmid, data['heads'], data.get('note', ''), data.get('done') is True, data.get('chosen'))
             return '進捗を記録しました。実ファイルのクラウド同期はOneDriveアプリで確認してください。'
@@ -304,13 +309,17 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(403, '{}')
         if self.path == '/?token=' + app.token:
             return self.reply(200, (REPO / 'scripts/dashboard.html').read_text().replace('__TOKEN__', app.token), 'text/html')
-        if urlsplit(self.path).path == '/api/png' and self.allowed():
+        if urlsplit(self.path).path in ('/api/png', '/api/image-review') and self.allowed():
             try:
                 query = parse_qs(urlsplit(self.path).query)
                 workspace = app.workspace()
                 with workspace_lock(workspace):
+                    if urlsplit(self.path).path == '/api/image-review':
+                        _, _, _, facts = workspace.review_target(query['pmid'][0], [query['head'][0]],
+                                                                 query['topic'][0], query['sha'][0])
+                        return self.reply(200, json.dumps(dict(facts=facts, checks=CHECKS), ensure_ascii=False))
                     event = workspace.current(query['pmid'][0], [query['head'][0]])
-                    file = next(f for f in event['data']['files'] if f['kind']=='png' and f['sha']==query['sha'][0])
+                    file = next(f for f in event['data']['files'] if f['kind'] in ('png', 'png_candidate') and f['sha']==query['sha'][0])
                     raw = workspace.read_asset(file)
                 return self.reply(200, raw, 'image/png')
             except (ValueError, KeyError, StopIteration, OSError):

@@ -11,7 +11,7 @@ from pathlib import Path
 import requests
 from PIL import Image
 
-from .graphics import active_graphics, graphic_data, persist_file, review_image, validate_master
+from .graphics import active_graphics, image_topics, graphic_data, persist_file, review_image, validate_master
 from .intake import PENDING, workspace_lock
 from .notion import Notion, NotionAPI, content_blocks, plain
 from .pdf_download import validate_selection
@@ -178,7 +178,9 @@ def pending_input(workspace, pmid):
 def bundle(workspace, pmid, heads):
     event = workspace.current(pmid, heads)
     if workspace.category(event['data']) != 'review_pending':
-        raise ValueError('全テーマのPNGが揃った、未登録の論文を選んでください')
+        raise ValueError('全テーマのPNGを承認した未登録の論文を選んでください')
+    if not workspace.medically_approved(event['data']):
+        raise ValueError('全テーマのPNGの医学的照合と承認が必要です')
     pending_input(workspace, pmid)
     files = [f for f in event['data']['files'] if f['kind'] in ('pdf', 'json', 'graphic', 'png')]
     raw = {f['path']: workspace.read_asset(f) for f in files}
@@ -188,14 +190,8 @@ def bundle(workspace, pmid, heads):
     master = json.loads(raw[masters[0]['path']]); validate_master(master)
     if master['pmid'] != pmid or master.get('source_hash') not in (None, '', pdfs[0]['sha']):
         raise ValueError('Master JSONとPMID・原本PDFが一致しません')
-    topics = copy.deepcopy(master['topics'])
-    if master['visualization_strategy']['include_overview']:
-        topics.insert(0, dict(topic_id='overview', topic_title='Overview', central_message=master['overview']['central_message'],
-            clinical_question='論文全体の俯瞰', source_sections=[s['section_id'] for s in master['document_structure']],
-            result_indices=list(range(len(master['main_results']))), recommendation_indices=list(range(len(master['recommendations']))),
-            practice_change=master['practice_change'], practice_change_reason=master['practice_change_reason']))
     pairs = []
-    for topic in topics:
+    for topic in image_topics(master):
         graphics = [f for f in files if f['kind'] == 'graphic' and f['topic'] == topic['topic_id']]
         images = [f for f in files if f['kind'] == 'png' and f['topic'] == topic['topic_id']]
         if len(graphics) != 1 or len(images) != 1:
@@ -328,7 +324,9 @@ def submit(repo, workspace, data, api=None):
                     with workspace_lock(workspace):
                         bundle(workspace,item['pmid'],item['heads'])
                     for image in item['images']:
-                        review_image(store, rev, image['topic'], True, reviewer, note)
+                        receipt = image['file']['review']
+                        review_image(store, rev, image['topic'], True, reviewer, note,
+                                     receipt['observed_pmid'], receipt['observed_value'])
                     store.set_setting(outcome_key,dict(status='sending',message='登録・照合中'))
                     client.sync(store.one('revisions',rev['id']))
                     page_id = verify_remote(client, store, rev)

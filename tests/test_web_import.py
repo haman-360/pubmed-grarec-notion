@@ -71,6 +71,8 @@ class WebImportTests(unittest.TestCase):
         items = self.dash.candidates(self.store)
         self.assertEqual(len(items), 2)
         self.assertTrue(all(not c['error'] for c in items))
+        for item in items:
+            item.update(observed_pmid=item['pmid'], observed_value='Yes')
         fake = FakeNotion()
         with patch.dict('os.environ', {'NOTION_DATABASE_ID': 'db'}, clear=True), patch('paper_pipeline.dashboard.NotionAPI', return_value=fake):
             message = self.dash.run('upload', {'items': items, 'confirmed': True, 'reviewer': 'Tester', 'note': 'Synthetic check'}, self.store)

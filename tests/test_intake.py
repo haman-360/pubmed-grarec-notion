@@ -104,7 +104,10 @@ class IntakeTests(unittest.TestCase):
         self.bundle(f'PMID_{PMID}/')
         self.assertFalse(organize(self.ws)['errors'])
         event = self.ws.current(PMID)
-        self.ws.update(PMID, [event['id']], '確認し登録した', done=True)
+        from paper_pipeline.image_review import CHECKS
+        image = next(f for f in event['data']['files'] if f['kind'] == 'png_candidate')
+        self.ws.review_png(PMID, [event['id']], 'main', image['sha'], PMID, 'Yes', list(CHECKS))
+        self.ws.update(PMID, [self.ws.current(PMID)['id']], '確認し登録した', done=True)
         before = self.ws.current(PMID)['id']
         self.bundle(f'PMID_{PMID}/')
         result = organize(self.ws)

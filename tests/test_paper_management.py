@@ -183,7 +183,10 @@ class PaperManagementTests(unittest.TestCase):
         self.ws.import_file(PMID, 'pdf', 'source.pdf', self.pdf)
         master = adapt_legacy(sample_summary(dict(pmid=PMID, title='Synthetic paper', doi='')))
         self.ws.import_file(PMID, 'json', 'master.json', json.dumps(master).encode())
-        self.ws.import_file(PMID, 'png', 'main.png', png())
+        from paper_pipeline.image_review import CHECKS
+        event = self.ws.import_file(PMID, 'png', 'main.png', png())
+        image = next(f for f in event['data']['files'] if f['kind'] == 'png_candidate')
+        self.ws.review_png(PMID, self.heads(), 'main', image['sha'], PMID, 'Yes', list(CHECKS))
         self.ws.update(PMID, self.heads(), '確認・登録済み', done=True)
         before = self.ws.current(PMID)['data']
         self.manage('archive'); self.manage('restore')

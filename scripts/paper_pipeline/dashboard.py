@@ -268,7 +268,8 @@ class Dashboard:
                     r=store.one('revisions',item['revision'])
                     imported=import_image(store,r,item['topic'],self.image_path(store,item['name']))
                     if imported['image_hash']!=item['sha']: raise ValueError('PNGが取り込み中に変わりました。再確認してください')
-                    review_image(store,r,item['topic'],True,data['reviewer'],data['note'])
+                    review_image(store,r,item['topic'],True,data['reviewer'],data['note'],
+                                 item.get('observed_pmid'),item.get('observed_value'))
                     client.sync(store.one('revisions',r['id'])); completed+=1
                 except Exception as e: failures.append(item['name']+': '+type(e).__name__+' '+str(e)[:180])
             return f'{completed}件のPNGを登録しました。'+ ('\n要確認:\n'+'\n'.join(failures) if failures else '')

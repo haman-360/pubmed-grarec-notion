@@ -137,7 +137,7 @@ class LibraryTests(unittest.TestCase):
     def test_image_approval_and_replacement_update_view_and_preserve_history(self):
         first = self.png('first.png', 'white')
         import_image(self.store, self.revision, 'main', first)
-        review_image(self.store, self.revision, 'main', True, 'Synthetic reviewer', 'Synthetic check')
+        review_image(self.store, self.revision, 'main', True, 'Synthetic reviewer', 'Synthetic check', self.paper['pmid'], 'Yes')
         sync_library(self.store)
         previous_manifest = (self.folder / 'manifest.json').resolve()
         manifest = json.loads(previous_manifest.read_text())

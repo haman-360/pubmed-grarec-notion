@@ -19,6 +19,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 from PIL import Image
+from .image_review import CHECKS, fixed_facts, human_review, inspect_png
 from .store import atomic_write, digest, encode, now
 
 SCHEMA = 'manual-onedrive-v1'
@@ -200,7 +201,7 @@ class Workspace:
         return raw
 
     def import_file(self, pmid, kind, name, raw, expected=None):
-        from .graphics import validate_master, graphic_data
+        from .graphics import validate_master, graphic_data, image_topics
         if kind not in KINDS or Path(name).suffix.lower() != KINDS[kind]:
             raise ValueError('PDF・JSON・PNGを対応するフォルダに保存してください')
         event = self.current(pmid, expected)
@@ -208,7 +209,9 @@ class Workspace:
         if data.get('archive'):
             raise ValueError('アーカイブ中です。作業対象に戻してから取り込んでください')
         files = data['files']
-        if any(f['sha'] == digest(raw) and f['kind'] == kind and f['name'] == name for f in files):
+        kinds = ('png', 'png_candidate') if kind == 'png' else (kind,)
+        sha = digest(raw)
+        if any(f['sha'] == sha and f['kind'] in kinds and f['name'] == name for f in files):
             return event
         if kind == 'pdf':
             from pypdf import PdfReader
@@ -242,15 +245,7 @@ class Workspace:
             files = pdfs + [self.asset(pmid, kind, name, raw, basis=pdfs[0]['sha'])]
             data.pop('structure_wait', None)
             data['title'] = master.get('title') or data.get('title', '')
-            topics = copy.deepcopy(master['topics'])
-            if master['visualization_strategy']['include_overview']:
-                topics.insert(0, dict(topic_id='overview', topic_title='Overview',
-                    central_message=master['overview']['central_message'], clinical_question='論文全体の俯瞰',
-                    source_sections=[s['section_id'] for s in master['document_structure']],
-                    result_indices=list(range(len(master['main_results']))),
-                    recommendation_indices=list(range(len(master['recommendations']))),
-                    practice_change=master['practice_change'], practice_change_reason=master['practice_change_reason']))
-            for topic in topics:
+            for topic in image_topics(master):
                 content = graphic_data(master, topic, digest(raw))
                 files.append(self.asset(pmid, 'graphic', topic['topic_id'] + '.json',
                                         encode(content).encode(), topic['topic_id'], digest(raw)))
@@ -266,12 +261,67 @@ class Workspace:
                 if image.format != 'PNG':
                     raise ValueError('PNG形式ではありません')
                 image.verify()
-            files = [f for f in files if not (f['kind'] == 'png' and f['topic'] == topic)]
-            files.append(self.asset(pmid, kind, name, raw, topic, graphics[0]['sha']))
+            candidate = self.asset(pmid, 'png_candidate', name, raw, topic, graphics[0]['sha'])
+            facts = fixed_facts(json.loads(self.read_asset(graphics[0])))
+            candidate['review'] = inspect_png(self.path(candidate['path']), facts)
+            files = [f for f in files if not (f['kind'] == 'png_candidate' and f['topic'] == topic)]
+            files.append(candidate)
         data.update(files=files, done=False, done_note='')
         if kind in ('pdf', 'json'):
             self.prepare_prompts(pmid, data)
         return self.record(pmid, data, [event['id']])
+
+    def review_target(self, pmid, expected, topic, sha):
+        event = self.current(pmid, expected)
+        data = copy.deepcopy(event['data'])
+        if data.get('archive') or data.get('structure_wait') or data.get('done'):
+            raise ValueError('作業中の論文を選んでください')
+        files = data['files']
+        graphic = next((f for f in files if f['kind'] == 'graphic' and f['topic'] == topic), None)
+        # A new candidate takes precedence; the previous formal PNG stays on disk.
+        image = next((f for kind in ('png_candidate', 'png') for f in files
+                      if f['kind'] == kind and f['topic'] == topic), None)
+        if not graphic or not image or image['sha'] != sha or image['basis'] != graphic['sha']:
+            raise ValueError('画像またはテーマの版が変わりました。一覧を更新してください')
+        self.read_asset(image)
+        facts = fixed_facts(json.loads(self.read_asset(graphic)))
+        if str(facts['pmid']) != pmid or facts['topic_id'] != topic:
+            raise ValueError('画像用JSONのPMID・テーマが一致しません')
+        return event, data, image, facts
+
+    def review_png(self, pmid, expected, topic, sha, observed_pmid, value, checks, reject=False):
+        event, data, image, facts = self.review_target(pmid, expected, topic, sha)
+        review = image.get('review') or inspect_png(self.path(image['path']), facts)
+        if review['status'] == 'approved':
+            raise ValueError('この画像は承認済みです')
+        if review['status'] != 'rejected':
+            review = human_review(facts, observed_pmid, value, checks, reject)
+        if review['status'] == 'approved':
+            # Explicit approval selects these exact bytes, including a replacement.
+            data['files'] = [f for f in data['files'] if f is image or
+                             not (f['kind'] == 'png' and f['topic'] == topic)]
+            image['kind'] = 'png'
+        else:
+            image['kind'] = 'png_candidate'
+        image['review'] = dict(review, image_hash=sha, json_hash=image['basis'])
+        self.record(pmid, data, [event['id']])
+        return review['reason']
+
+    @staticmethod
+    def medically_approved(data):
+        files = data['files']
+        if any(f['kind'] == 'png_candidate' for f in files):
+            return False
+        graphics = {f['topic']: f['sha'] for f in files if f['kind'] == 'graphic'}
+        approved = {}
+        for image in (f for f in files if f['kind'] == 'png'):
+            receipt = image.get('review', {})
+            if (receipt.get('status') != 'approved' or receipt.get('checks') != list(CHECKS)
+                    or receipt.get('image_hash') != image['sha']
+                    or receipt.get('json_hash') != image['basis']):
+                return False
+            approved[image['topic']] = image['basis']
+        return bool(graphics) and approved == graphics
 
     def prepare_prompts(self, pmid, data):
         from .graphics import web_prompt_text
@@ -298,11 +348,12 @@ class Workspace:
                 if self.current(pmid)['data'].get('archive'):
                     continue
                 # Old inbox versions stay in place. Never re-adopt them on the next scan.
-                seen = {(f['kind'], f.get('topic', '') if f['kind'] == 'png' else '', f['sha']) for e in self.events(pmid).values()
-                        for f in e['data']['files']}
-                seen.update(tuple(item) for e in self.events(pmid).values() for item in e['data'].get('seen_inputs', []))
-                seen.update(('json', '', f['sha']) for e in self.events(pmid).values()
-                            for f in e['data']['files'] if f['kind'] == 'draft')
+                events = self.events(pmid).values()
+                seen = {tuple(item) for event in events for item in event['data'].get('seen_inputs', [])}
+                for event in events:
+                    for file in event['data']['files']:
+                        kind = {'png_candidate': 'png', 'draft': 'json'}.get(file['kind'], file['kind'])
+                        seen.add((kind, file.get('topic', '') if kind == 'png' else '', file['sha']))
                 for kind, suffix in KINDS.items():
                     paths = sorted((self.incoming(pmid) / kind.upper()).glob('*' + suffix))
                     fresh = []
@@ -327,7 +378,7 @@ class Workspace:
             return 'attention'
         files = data['files']
         graphics = {f['topic']: f for f in files if f['kind'] == 'graphic'}
-        pngs = {f['topic']: f for f in files if f['kind'] == 'png'}
+        pngs = {f['topic']: f for kind in ('png', 'png_candidate') for f in files if f['kind'] == kind}
         if not any(f['kind'] == 'pdf' for f in files):
             check = data.get('pdf_recheck', {})
             if check.get('active') and calendar_date(check['next_on']) > today():
@@ -339,7 +390,11 @@ class Workspace:
             return 'attention'
         if any(t not in pngs or pngs[t].get('basis') != g['sha'] for t, g in graphics.items()):
             return 'web_pending'
-        return 'completed' if data.get('done') else 'review_pending'
+        if any(f.get('review', {}).get('status') == 'rejected' for f in pngs.values()):
+            return 'web_pending'
+        if data.get('done') and all(f['kind'] == 'png' for f in pngs.values()):
+            return 'completed'
+        return 'review_pending'
 
     def manage(self, pmid, expected, action, **values):
         if not isinstance(expected, list) or len(expected) != 1:
@@ -397,7 +452,9 @@ class Workspace:
         data = copy.deepcopy(event['data'])
         if done:
             if self.category(data) not in ('review_pending', 'completed'):
-                raise ValueError('全テーマのPNGを保存してから完了を記録してください')
+                raise ValueError('全テーマのPNGを保存・承認してから完了を記録してください')
+            if self.category(data) != 'completed' and not self.medically_approved(data):
+                raise ValueError('全テーマのPNGを医学的に照合・承認してから完了を記録してください')
             for file in data['files']:
                 self.read_asset(file)
         data.update(done=done, note=note.strip())
@@ -417,7 +474,7 @@ class Workspace:
                 missing = [f['name'] for f in data['files'] if not self.path(f['path']).is_file()]
                 if missing and category != 'archived':
                     category = 'attention'
-                rows.append(dict(pmid=pmid, **data, category=category, at=event['at'], device=event['device'],
+                rows.append(dict(pmid=pmid, **data, medically_approved=self.medically_approved(data), category=category, at=event['at'], device=event['device'],
                     recheck_due=(category == 'missing_pdf' and bool(data.get('pdf_recheck', {}).get('active'))),
                     management_history=[dict(at=e['at'], device=e['device'], **e['management'])
                         for e in sorted(self.events(pmid).values(), key=lambda e: (e['at'], e['id'])) if e.get('management')],

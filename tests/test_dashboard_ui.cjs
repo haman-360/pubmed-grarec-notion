@@ -168,3 +168,9 @@ test('management form defaults to calendar month, sends edited date, and resched
     await set('saveManagement()');
     assert.deepEqual(run('recorded[2].data'),{pmid:'1',heads:['a'],operation:'archive',reason:'古い',note:''});
 });
+
+test('Notion lists only papers with all medical reviews approved',()=>{
+    const {run,set}=dashboard();
+    set("state.papers[0].category='review_pending';state.papers[1].category='review_pending';state.papers[1].medically_approved=true");
+    assert.deepEqual(run('notionRows().map(p=>p.pmid)'),['2']);
+});

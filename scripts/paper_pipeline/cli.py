@@ -208,6 +208,8 @@ def parser():
             choice = p.add_mutually_exclusive_group(required=True)
             choice.add_argument('--approve',action='store_true')
             choice.add_argument('--reject',action='store_true')
+            p.add_argument('--observed-pmid',help='画像から読み取ったPMID（承認時）')
+            p.add_argument('--observed-value',choices=('Yes','No','Unclear','未評価'),help='画像から読み取ったPractice Change（承認時）')
             p.add_argument('--reviewer',required=True)
             p.add_argument('--note',required=True,help='原文・JSON・画像の確認内容、または却下理由')
     return result
@@ -376,7 +378,7 @@ def dispatch(store,args):
             row = import_image(store,revision,args.topic,Path(args.source).expanduser())
             print(row['status']+': '+row['image_path'])
         elif cmd == 'review-image':
-            review_image(store,revision,args.topic,args.approve,args.reviewer,args.note)
+            review_image(store,revision,args.topic,args.approve,args.reviewer,args.note,args.observed_pmid,args.observed_value)
             print('画像承認を記録しました' if args.approve else '画像を却下しました。Notionへは送信しません')
         else:
             if paper['disposition'] != 'active' or paper['blocker'] or revision['status'] == 'superseded':
@@ -628,6 +630,8 @@ def menu(store):
             if decision in ('approve','reject'):
                 command = ['review-image','--paper',paper,'--topic',topic,'--'+decision,
                            '--reviewer',ask('確認者'),'--note',ask('確認内容／却下理由')]
+                if decision == 'approve':
+                    command += ['--observed-pmid',ask('画像内のPMID'),'--observed-value',ask('画像内のPractice Change')]
         elif choice == '15':
             command = ['sync-notion','--paper',ask('Notionへ実送信する論文のPMID/内部ID')]
         elif choice == '16':

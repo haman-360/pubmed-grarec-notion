@@ -10,6 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
 from pypdf import PdfWriter
+from paper_pipeline.image_review import CHECKS
 from paper_pipeline.manual import Workspace, local_settings
 from paper_pipeline.manual_migration import migrate
 from paper_pipeline.graphics import adapt_legacy
@@ -35,12 +36,18 @@ class ManualTests(unittest.TestCase):
         self.ws.import_file(PMID, 'pdf', 'source.pdf', self.pdf)
         self.ws.import_file(PMID, 'json', 'master.json', encode(self.master).encode())
 
+    def approve_main(self):
+        event = self.ws.current(PMID)
+        image = next(f for f in event['data']['files'] if f['kind'] == 'png_candidate')
+        self.ws.review_png(PMID, [event['id']], 'main', image['sha'], PMID, 'Yes', list(CHECKS))
+
     def category(self):
         return self.ws.snapshot()['papers'][0]['category']
 
     def test_named_requests_are_self_contained_and_preserve_completion(self):
         self.imported()
         self.ws.import_file(PMID, 'png', 'main.png', png())
+        self.approve_main()
         event = self.ws.current(PMID)
         self.ws.update(PMID, [event['id']], 'confirmed', done=True)
         original = self.ws.current(PMID)['data']
@@ -115,6 +122,7 @@ class ManualTests(unittest.TestCase):
             self.assertIn('90000001', self.ws.image_prompt(PMID, 'main', 'synthetic design'))
             self.ws.import_file(PMID, 'png', 'main.png', png())
             self.assertEqual(self.category(), 'review_pending')
+            self.approve_main()
             event = self.ws.current(PMID)
             self.ws.update(PMID, [event['id']], '原文と照合し手動登録済み', done=True)
             self.assertEqual(self.category(), 'completed')
@@ -139,6 +147,7 @@ class ManualTests(unittest.TestCase):
     def test_new_json_and_pdf_invalidate_png_and_completion_without_deleting_history(self):
         self.imported()
         self.ws.import_file(PMID, 'png', 'main.png', png())
+        self.approve_main()
         event = self.ws.current(PMID)
         done = self.ws.update(PMID, [event['id']], 'checked', done=True)
         old_files = done['data']['files']

@@ -7,7 +7,7 @@ from pathlib import Path
 from jsonschema import ValidationError, validate
 
 from .batches import config, review_prompt
-from .graphics import master_schema, prepare_web, validate_master
+from .graphics import image_input_schema, master_schema, prepare_web, validate_master
 from .library import paper_folder
 from .store import atomic_write, digest, encode
 
@@ -61,7 +61,7 @@ def read_master(store, paper, raw):
         raise ValueError('JSONは8MB以下で保存してください')
     try:
         master = json.loads(raw.decode('utf-8-sig'))
-        validate(master, output_schema(source))
+        validate(master, image_input_schema(output_schema(source)))
         validate_master(master)
     except (ValueError, UnicodeError, ValidationError) as error:
         message = error.message if isinstance(error, ValidationError) else str(error)

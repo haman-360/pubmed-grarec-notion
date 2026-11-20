@@ -242,7 +242,7 @@ function renderJsonJobs(jobs,locked){
 
 const notionSelection=new Map(),notionReviewed=new Set();let notionOptionsSignature='',notionPreviewId='',notionJobsSignature='';let notionImageUrls=[];
 const notionNames={prepared:'PNG確認待ち',sending:'登録・照合中',completed:'登録完了',registered_stale:'Notion登録済み・工程未反映',needs_review:'未完了・要確認'};
-function notionRows(){return(state?.papers||[]).filter(p=>p.category==='review_pending'&&p.heads.length===1)}
+function notionRows(){return(state?.papers||[]).filter(p=>p.category==='review_pending'&&p.medically_approved&&p.heads.length===1)}
 function openNotionPanel(pmid){openPanel('review_pending','notion-panel');if(pmid){notionSelection.clear();let p=notionRows().find(p=>p.pmid===pmid);if(p)notionSelection.set(pmid,p.heads)}renderNotionPanel();$('notion-panel').scrollIntoView({behavior:'smooth'})}
 async function prepareNotion(){await act('notion-prepare',{items:[...notionSelection].map(([pmid,heads])=>({pmid,heads}))})}
 async function sendNotion(){await act('notion-send',{preview_id:state.notion_sync?.preview?.id,reviewed:[...notionReviewed],reviewer:$('notion-reviewer').value,note:$('notion-note').value,confirmed:$('notion-confirm').checked});$('notion-confirm').checked=false;notionSelection.clear();updateNotionSend()}
@@ -253,7 +253,7 @@ function notionPageLink(parent,id){if(!/^[0-9a-f-]{32,36}$/i.test(id||''))return
 function renderNotionPanel(){let n=state.notion_sync||{},rows=notionRows(),locked=state.busy||!n.can_operate;
 $('notion-owner').textContent='Notion担当：'+(n.owner||'初回の確認時にこのMacを設定')+' ／ キー：'+(n.key_ready?'設定あり':'未設定')+' ／ データベース：'+(n.database_id||'未設定');
 $('notion-observed').textContent='登録結果の最終記録：'+(date(n.at)||'未記録');for(let id of notionSelection.keys())if(!rows.some(p=>p.pmid===id))notionSelection.delete(id);
-let sig=JSON.stringify([rows.map(p=>[p.pmid,p.title,p.heads]),[...notionSelection],locked]);if(sig!==notionOptionsSignature){notionOptionsSignature=sig;$('notion-options').replaceChildren();for(let p of rows){let lab=document.createElement('label'),check=document.createElement('input');check.type='checkbox';check.checked=notionSelection.has(p.pmid);check.disabled=locked;check.onchange=()=>{if(check.checked)notionSelection.set(p.pmid,p.heads);else notionSelection.delete(p.pmid);renderNotionPanel()};lab.append(check,document.createTextNode('PMID '+p.pmid+' ／ '+p.title+' ／ PNG '+p.files.filter(f=>f.kind==='png').length+'枚'));$('notion-options').append(lab)}if(!rows.length)line($('notion-options'),'登録待ちの論文はありません。全テーマのPNGを取り込んでください。','p')}
+let sig=JSON.stringify([rows.map(p=>[p.pmid,p.title,p.heads]),[...notionSelection],locked]);if(sig!==notionOptionsSignature){notionOptionsSignature=sig;$('notion-options').replaceChildren();for(let p of rows){let lab=document.createElement('label'),check=document.createElement('input');check.type='checkbox';check.checked=notionSelection.has(p.pmid);check.disabled=locked;check.onchange=()=>{if(check.checked)notionSelection.set(p.pmid,p.heads);else notionSelection.delete(p.pmid);renderNotionPanel()};lab.append(check,document.createTextNode('PMID '+p.pmid+' ／ '+p.title+' ／ PNG '+p.files.filter(f=>f.kind==='png').length+'枚'));$('notion-options').append(lab)}if(!rows.length)line($('notion-options'),'登録待ちの論文はありません。論文一覧で全テーマのPNGを医学的に照合してください。','p')}
 $('notion-selected').textContent=notionSelection.size+'本を選択（最大5本）';$('notion-prepare').disabled=locked||!n.key_ready||!n.database_id||!notionSelection.size||notionSelection.size>5;
 let preview=n.preview;$('notion-preview').hidden=!preview;if((preview?.id||'')!==notionPreviewId){notionPreviewId=preview?.id||'';notionReviewed.clear();$('notion-confirm').checked=false;for(let url of notionImageUrls)URL.revokeObjectURL(url);notionImageUrls=[];$('notion-images').replaceChildren();if(preview){$('notion-target').textContent='登録先：'+(preview.target_name||preview.target.database_id)+' ／ データソース：'+preview.target.data_source_id;
 for(let item of preview.items){let box=document.createElement('div');line(box,'PMID '+item.pmid+' ／ '+item.title+' ／ '+(item.page_id?'既存ページへ登録・照合':'新規ページを作成予定'),'h3');notionPageLink(box,item.page_id);for(let image of item.images){let fig=document.createElement('div');fig.style.margin='18px 0';line(fig,image.topic+' ／ '+image.title,'p');let img=document.createElement('img');img.alt='PMID '+item.pmid+' '+image.topic+' の確認用PNG';img.style.cssText='display:block;width:100%;max-height:420px;object-fit:contain;background:white';fig.append(img);button(fig,'PNGを原寸で開く','open-file',{pmid:item.pmid,heads:item.heads,path:image.file.path});let lab=document.createElement('label'),check=document.createElement('input');check.type='checkbox';check.disabled=true;check.onchange=()=>{if(check.checked)notionReviewed.add(image.review_id);else notionReviewed.delete(image.review_id);updateNotionSend()};lab.append(check,document.createTextNode(' PMID '+item.pmid+' ／ '+image.topic+' のPNGを確認しました'));fig.append(lab);let info=line(fig,'画像を読み込み中…','p');box.append(fig);$('notion-images').append(box);notionPreviewImage(item,image,img,check,info)}}}}
@@ -283,7 +283,7 @@ const stageHelp={
     missing_pdf:'今探す論文です。再確認日を迎えた論文を先頭に表示します。難易度は手動入手の目安で、取得成功率や有料限定を意味しません。',
     json_pending:'APIで作成するか、Web ChatGPTへ依頼するかを選びます。送信済みの結果もここで回収できます。',
     web_pending:'依頼文入りJSONをコピーしてWeb ChatGPTへ貼り付けます。完成PNGは指定の名前で取り込み待ちへ保存してください。',
-    review_pending:'JSONと必要なPNGが揃った論文です。画像を確認してNotionへ登録できます。',
+    review_pending:'テーマごとにPNGと固定情報を照合してください。全画像を承認するとNotion登録に進めます。',
     completed:'登録を完了した論文と、保存ファイル・登録記録を確認できます。',
     attention:'理由を確認し、修正したファイルの取り込みや記録の選択を行ってください。',
     history:'取得済みを含む検索履歴です。無料・有料の最新結果を論文ごとにまとめています。',
@@ -323,7 +323,7 @@ function renderView(){
     }
     if(view==='history'){navButton(actions,'PDF取得待ちへ',()=>navigate('missing_pdf'));button(actions,'無料・有料のCSVを保存して開く','export-pdf-csv')}
     if(view==='json_pending'){navButton(actions,'APIでJSON作成・回収',()=>openJsonPanel());navButton(actions,'Web ChatGPTへ依頼',showManualJson)}
-    if(view==='review_pending')navButton(actions,'PNGを確認してNotionに登録',()=>openNotionPanel());
+    if(view==='review_pending'&&notionRows().length)navButton(actions,'PNGを確認してNotionに登録',()=>openNotionPanel());
     if(['missing_pdf','json_pending','web_pending','review_pending','attention'].includes(view))navButton(actions,'取り込み待ちを開く・処理',()=>navigate('intake'));
 }
 function renderCards(){
@@ -384,7 +384,7 @@ function searchDetails(parent,p){
 function paperDetails(parent,p){
     let details=document.createElement('details');details.className='paper-details';line(details,'保存ファイル・記録','summary');
     line(details,'更新：'+date(p.at)+' ／ '+(p.device||''),'p');if(p.note)line(details,p.note,'p');
-    for(let f of p.files){let box=document.createElement('details');line(box,({pdf:'論文PDF',json:'完成JSON',graphic:'画像用データ',prompt:'Web作成依頼',png:'完成PNG',draft:'JSON構造確認待ち'}[f.kind]||f.kind)+' ／ '+f.name,'summary');line(box,f.path,'small');if(p.heads.length===1)button(box,'開く','open-file',{pmid:p.pmid,heads:p.heads,path:f.path});details.append(box)}
+    for(let f of p.files){let box=document.createElement('details');line(box,({pdf:'論文PDF',json:'完成JSON',graphic:'画像用データ',prompt:'Web作成依頼',png:p.done||f.review?.status==='approved'?'承認・登録済みPNG':'確認待ちPNG',png_candidate:'確認用PNG',draft:'JSON構造確認待ち'}[f.kind]||f.kind)+' ／ '+f.name,'summary');line(box,f.path,'small');if(p.heads.length===1)button(box,'開く','open-file',{pmid:p.pmid,heads:p.heads,path:f.path});details.append(box)}
     if(p.heads.length===1)button(details,'論文の受け渡しフォルダ','folder',{pmid:p.pmid});
     if(p.management_history?.length){let history=document.createElement('details');line(history,'手動確認・対象変更の履歴','summary');for(let h of [...p.management_history].reverse()){line(history,date(h.at)+' ／ '+h.device,'small');line(history,managementText(h),'p')}details.append(history)}
     recordControls(details,p);parent.append(details);
@@ -395,12 +395,82 @@ function jsonManualActions(parent,p){
     if(pdf)button(parent,'添付するPDFを開く','open-file',{...payload,path:pdf.path});
     let more=document.createElement('details');line(more,'依頼TXT・保存名','summary');button(more,'依頼TXTの場所を開く','export-json-request',payload);line(more,'完成JSON：PMID_'+p.pmid+'.json','p');parent.append(more);
 }
+async function medicalReview(p,g,image){
+    const payload={pmid:p.pmid,heads:p.heads,topic:g.topic,sha:image.sha};
+    const query=new URLSearchParams({pmid:p.pmid,head:p.heads[0],topic:g.topic,sha:image.sha});
+    const dialog=document.createElement('dialog');
+    dialog.style.cssText='width:min(1000px,94vw);max-height:90vh;overflow:auto';
+    document.body.append(dialog);
+    let imageUrl;
+    dialog.onclose=()=>{if(imageUrl)URL.revokeObjectURL(imageUrl);dialog.remove()};
+    line(dialog,'PNGの医学的照合 · '+p.pmid+' / '+g.topic,'h2');
+    navButton(dialog,'閉じて保留',()=>dialog.close());
+    const info=line(dialog,'画像と固定情報を読み込み中…','p');
+    dialog.showModal();
+    try{
+        const {facts,checks}=await api('/api/image-review?'+query);
+        const response=await fetch('/api/png?'+query,{headers:{'X-App-Token':token}});
+        if(!response.ok)throw Error('画像の版が変わりました。開き直してください。');
+        const blob=await response.blob();
+        if(!dialog.open)return;
+        const img=document.createElement('img');
+        imageUrl=URL.createObjectURL(blob);img.src=imageUrl;img.alt='照合対象のPNG';
+        img.style.width='100%';dialog.append(img);await img.decode();
+        if(!dialog.open)return;
+        info.textContent=image.review?.reason||'旧版の画像です。固定情報と照合してください。';
+        button(dialog,'PNGを原寸で開く','open-file',{...payload,path:image.path});
+        line(dialog,facts.one_line_summary||facts.topic_title,'h3');
+        if(p.files.some(f=>f.kind==='png'&&f.topic===g.topic&&f.sha!==image.sha))
+            line(dialog,'承認すると、この候補をテーマの正式版にします。前の画像は履歴に残ります。','p');
+        const details=document.createElement('details');line(details,'対象・研究方法・結果・推奨・限界などの固定情報','summary');
+        line(details,facts.practice_change_display,'p');
+        for(const [key,title] of Object.entries({title:'書誌',study_design:'研究・更新の範囲と方法',population_setting:'対象集団',
+                pico:'PICO',main_results:'結果・数値と単位',recommendations:'推奨と合意',limitations:'限界',safety:'安全性',
+                applicability_to_japanese_pediatric_clinic:'日本の小児科外来への適用',practice_change_reason:'評価の理由',tomorrow_action:'臨床応用',warnings:'入力の注意'})){
+            let value=facts[key];
+            if(key==='title')value=[facts.title,facts.journal,facts.year].filter(Boolean).join(' · ');
+            if(!value||(Array.isArray(value)&&!value.length))continue;
+            line(details,title,'strong');
+            for(const entry of Array.isArray(value)?value:[value]){
+                line(details,typeof entry==='string'?entry:Object.entries(entry).map(([key,v])=>key+'：'+v).join(' ／ '),'p');
+            }
+        }
+        dialog.append(details);
+        const observed=document.createElement('input');observed.inputMode='numeric';
+        line(dialog,'画像内に表示されたPMID','label').append(observed);
+        const value=document.createElement('select');
+        for(const v of ['','Yes','No','Unclear','未評価']){
+            const option=document.createElement('option');option.value=v;option.textContent=v||'画像から読み取った値を選択';value.append(option);
+        }
+        line(dialog,'画像内に表示されたPractice Change','label').append(value);
+        const inputs=new Map();
+        for(const [key,description] of Object.entries(checks)){
+            const label=document.createElement('label'),check=document.createElement('input');check.type='checkbox';
+            label.style.display='block';label.append(check,document.createTextNode(description));dialog.append(label);inputs.set(key,check);
+        }
+        const record=async reject=>{
+            const checked=[...inputs].filter(([,input])=>input.checked).map(([key])=>key);
+            if(!reject&&(!observed.value.trim()||!value.value)){info.textContent='画像から読めた2項目を入力してください。';return}
+            if(!reject&&observed.value.trim()===String(facts.pmid)&&value.value===(facts.practice_change||'未評価')&&checked.length!==inputs.size){
+                info.textContent='固定情報と照合した項目すべてにチェックしてください。';return
+            }
+            dialog.close();
+            await act('review-png',{...payload,observed_pmid:observed.value.trim(),value:value.value,checks:checked,reject});
+        };
+        navButton(dialog,'照合結果を記録（一致時に承認）',()=>record(false));
+        navButton(dialog,'不一致・欠落のため却下',()=>record(true));
+    }catch(error){info.textContent='照合を保留しました。'+error.message}
+}
 function pngActions(parent,p){
-    let graphics=p.files.filter(f=>f.kind==='graphic'),saved=new Map(p.files.filter(f=>f.kind==='png').map(f=>[f.topic,f]));
+    let graphics=p.files.filter(f=>f.kind==='graphic'),saved=new Map();
+    for(const kind of ['png','png_candidate'])for(const f of p.files.filter(f=>f.kind===kind))saved.set(f.topic,f);
     line(parent,'PNG '+graphics.filter(g=>saved.get(g.topic)?.basis===g.sha).length+' / '+graphics.length+'テーマ保存済み','p');
     let topics=document.createElement('div');topics.style.cssText='max-height:330px;overflow:auto';
     for(let g of graphics){let box=document.createElement('div');box.className='topic-item';let done=saved.get(g.topic)?.basis===g.sha;
-        line(box,g.topic+' ／ '+(done?'保存済み':'作成待ち'),'strong');let payload={pmid:p.pmid,heads:p.heads,topic:g.topic};
+        let image=saved.get(g.topic),status=image?.review?.status;
+        line(box,g.topic+' ／ '+(done?({approved:'承認済み',rejected:'不合格・再作成',review_required:'医学的確認待ち'}[status]||'医学的確認待ち'):'作成待ち'),'strong');let payload={pmid:p.pmid,heads:p.heads,topic:g.topic};
+        if(done&&status!=='approved'&&status!=='rejected')navButton(box,'画像と固定情報を照合',()=>medicalReview(p,g,image));
+        if(status==='rejected')line(box,image.review.reason,'p');
         if(done)button(box,'PNGを開く','open-file',{pmid:p.pmid,heads:p.heads,path:saved.get(g.topic).path});
         else button(box,'PNG作成依頼をコピー','copy-image',payload);
         let more=document.createElement('details');line(more,done?'再作成・保存名':'保存名・依頼ファイル','summary');
@@ -436,8 +506,8 @@ function renderPapers(){
             managementControls(actions,p);
             if(view==='missing_pdf'){navButton(controls,'無料で検索',()=>openPdfPanel(p.pmid));if(!state.pdf_cooldowns?.[p.pmid]?.blocked)navButton(controls,'有料で検索',()=>openPdfPanel(p.pmid,true));else line(controls,'有料検索は再検索制限中','small');}
             if(view==='json_pending'){navButton(controls,'APIで作成・回収',()=>openJsonPanel(p.pmid));jsonManualActions(controls,p)}
-            if(view==='web_pending'&&!p.structure_wait)pngActions(actions,p);
-            if(view==='review_pending'){navButton(controls,'PNG確認・Notion登録',()=>openNotionPanel(p.pmid));line(actions,'手動で登録した場合は「保存ファイル・記録」で完了を記録できます。','small')}
+            if(view==='web_pending'||(view==='review_pending'&&!p.medically_approved))pngActions(actions,p);
+            if(view==='review_pending'&&p.medically_approved){navButton(controls,'PNG確認・Notion登録',()=>openNotionPanel(p.pmid));line(actions,'手動で登録した場合は「保存ファイル・記録」で完了を記録できます。','small')}
             if(view==='attention'&&!p.archive&&p.files.some(f=>f.kind==='pdf')){let repair=document.createElement('details');line(repair,'JSONを作り直す','summary');jsonManualActions(repair,p);actions.append(repair)}
         }
         let notion=(state.notion_sync?.jobs||[]).find(j=>j.pmid===p.pmid);if(notion&&['completed','review_pending','attention','total'].includes(view)){line(progress,notionNames[notion.status]||notion.status,'p');notionPageLink(progress,notion.page_id)}
@@ -502,12 +572,13 @@ async function saveManagement(){
 
 function recordControls(parent,p){let record=document.createElement('details');line(record,p.conflicts.length?'競合した記録を確認・選択':'確認・登録の記録','summary');let choice;
 if(p.conflicts.length){line(record,'同時更新された版を保持しています。各版の内容とファイルを確認して採用する版を選んでください。他の版は履歴に残ります。','p');choice=document.createElement('select');for(let e of p.conflicts){let opt=document.createElement('option');opt.value=e.id;opt.textContent=date(e.at)+' / '+e.device+' / '+e.id.slice(0,8);choice.append(opt);let details=document.createElement('details');line(details,opt.textContent,'summary');line(details,e.data.note,'p');managementStatus(details,e.data);for(let f of e.data.files)line(details,f.kind+' '+f.path,'p');record.append(details)}record.append(choice)}
-let note=document.createElement('textarea');note.className='record-note';note.placeholder='確認内容、作業メモ、登録したNotionページのURLなど';record.append(note);let done=document.createElement('input');done.type='checkbox';let dl=document.createElement('label');dl.append(done,document.createTextNode(' 原文・JSON・PNGを確認し、手動で登録を終えました'));record.append(dl);let save=button(record,'この内容で記録','record');save.onclick=()=>act('record',{pmid:p.pmid,heads:p.heads,note:note.value,done:done.checked,chosen:choice?.value});if(p.heads.length)parent.append(record);}
+let note=document.createElement('textarea');note.className='record-note';note.placeholder='確認内容、作業メモ、登録したNotionページのURLなど';record.append(note);let done=document.createElement('input');done.type='checkbox';done.disabled=!p.conflicts.length&&!p.done&&!p.medically_approved;let dl=document.createElement('label');dl.append(done,document.createTextNode(' 原文・JSON・PNGを確認し、手動で登録を終えました'));record.append(dl);let save=button(record,'この内容で記録','record');save.onclick=()=>act('record',{pmid:p.pmid,heads:p.heads,note:note.value,done:done.checked,chosen:choice?.value});if(p.heads.length)parent.append(record);}
 async function refresh(){try{state=await api('/api/state');state.busy=state.busy||actionPending;$('message').textContent=state.busy?(state.pdf_progress?'PDF取得 '+state.pdf_progress.index+'/'+state.pdf_progress.total+' ／ PMID '+state.pdf_progress.pmid+'：'+state.pdf_progress.message:'記録・確認中…'):state.message;$('errors').textContent=state.errors.join('\n');$('sharing').textContent=state.sharing?.message||'';
 $('observed').textContent='このMacでの最終集計：'+(date(state.observed_at)||'未集計')+' ／ OneDriveへの同期完了時刻ではありません';
 $('intake-count').textContent='最終確認時：'+(state.intake?.pending_files??0)+'ファイル';
 $('pending-list').textContent=state.intake?.files?.join('\n')||'取り込み待ちはありません';
-let result=state.intake_result;$('intake-result').hidden=!result;if(result){$('intake-result-label').textContent='前回：取り込み '+result.imported+'ファイル ／ 要確認 '+result.errors.length+'件';$('intake-summary').textContent='前回の整理：'+date(result.at)+'\n新規PMID '+result.registered+'件 ／ 取り込み '+result.imported+'ファイル ／ 取り込み済みへ移動 '+result.archived+'ファイル（既存 '+result.skipped+'）';$('intake-errors').textContent=result.errors.length?'前回残した入力（修正後に再度「取り込み待ちを処理」を実行）：\n'+result.errors.join('\n'):'';}
+let result=state.intake_result;$('intake-result').hidden=!result;if(result){$('intake-result-label').textContent='前回：取り込み '+result.imported+'ファイル ／ 要確認 '+result.errors.length+'件';$('intake-summary').textContent='前回の整理：'+date(result.at)+'\n新規PMID '+result.registered+'件 ／ 取り込み '+result.imported+'ファイル ／ 取り込み済みへ移動 '+result.archived+'ファイル（既存 '+result.skipped+'）';if(result.png_reviews?.length){let rejected=result.png_reviews.filter(r=>r.status==='rejected');$('intake-summary').textContent+='\nPNGは医学的確認待ち '+(result.png_reviews.length-rejected.length)+'枚、不合格 '+rejected.length+'枚。';for(let r of rejected)$('intake-summary').textContent+='\nPMID '+r.pmid+' / '+r.topic+'：'+r.reason}
+$('intake-errors').textContent=result.errors.length?'前回残した入力（修正後に再度「取り込み待ちを処理」を実行）：\n'+result.errors.join('\n'):'';}
 $('location').textContent='このMac：'+state.device+' ／ 共通フォルダ：'+(state.root||'未設定');if(!initialized){$('root').value=state.root||state.suggestion;$('device').value=state.device;$('setup').open=!state.configured;initialized=true;if(!state.configured)view='settings'}renderCards();renderView();renderPapers();renderPdfResult();renderActionButtons();renderProgress()}catch(e){$('message').textContent='接続待ち：'+e.message}}
 $('txt').onchange=async e=>{if(e.target.files[0])$('pmids').value=(await e.target.files[0].text()).replace(/^\uFEFF/,'')};
 async function showStartupResult(){

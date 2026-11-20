@@ -107,9 +107,11 @@ def identify_pmid(path, root, raw):
 
 def _already_seen(workspace, pmid, kind, name, raw):
     topic = Path(name).stem if kind == 'png' else ''
+    kinds = {'json': ('json', 'draft'), 'png': ('png', 'png_candidate')}.get(kind, (kind,))
+    sha = digest(raw)
     for event in workspace.events(pmid).values():
         for file in event['data']['files']:
-            if (file['kind'] == kind or kind == 'json' and file['kind'] == 'draft') and file['sha'] == digest(raw):
+            if file['kind'] in kinds and file['sha'] == sha:
                 if kind != 'png' or file.get('topic') == topic:
                     workspace.read_asset(file)
                     return True
@@ -120,7 +122,7 @@ def organize(workspace, minimum_age=2):
     """Caller holds workspace_lock. Successful files only are archived, never deleted."""
     ensure_folders(workspace)
     root = workspace.path(PENDING)
-    result = dict(imported=0, archived=0, skipped=0, registered=0, errors=[], at=now())
+    result = dict(imported=0, archived=0, skipped=0, registered=0, errors=[], png_reviews=[], at=now())
     entries, lists = [], []
     blocked_ids, blocked_parents = set(), set()
     batch = uuid.uuid4().hex
@@ -241,7 +243,10 @@ def organize(workspace, minimum_age=2):
                     workspace.record(pmid, data, [event['id']])
                     result['imported'] += 1
                 else:
-                    workspace.import_file(pmid, kind, name, raw, [event['id']])
+                    saved = workspace.import_file(pmid, kind, name, raw, [event['id']])
+                    if kind == 'png':
+                        image = next(f for f in saved['data']['files'] if f['kind'] == 'png_candidate' and f['name'] == name)
+                        result['png_reviews'].append(dict(pmid=pmid, topic=image['topic'], **image['review']))
                     result['imported'] += 1
                 archive(path, raw)
             except Exception as exc:
@@ -283,7 +288,7 @@ def cleanup_archive(workspace, timestamp=None):
                 workspace.current(folder.name[5:])  # Conflicts/incomplete sync: retain.
                 for event in workspace.events(folder.name[5:]).values():
                     for file in event['data']['files']:
-                        if file['kind'] in ('pdf', 'json', 'draft', 'png', 'note'):
+                        if file['kind'] in ('pdf', 'json', 'draft', 'png', 'png_candidate', 'note'):
                             copies[file['sha']].append(file)
             except (ValueError, OSError, KeyError):
                 continue
@@ -327,7 +332,11 @@ def cleanup_archive(workspace, timestamp=None):
 
 
 def result_message(result):
+    reviews = result.get('png_reviews', [])
+    rejected = [f"PMID {r['pmid']} / {r['topic']}：{r['reason']}" for r in reviews if r['status'] == 'rejected']
+    png_summary = (f" PNGは確認待ち{len(reviews)-len(rejected)}枚、不合格{len(rejected)}枚。" if reviews else '')
     return (f"整理完了：新規PMID {result['registered']}件、取り込み {result['imported']}ファイル、"
             f"取り込み済みへ移動 {result['archived']}ファイル（既存 {result['skipped']}）。"
             f"未整理 {result['pending_files']}ファイル。"
-            f"保存確認済みの古い保管ファイルを {result.get('archive_cleaned', 0)}件整理しました。")
+            f"保存確認済みの古い保管ファイルを {result.get('archive_cleaned', 0)}件整理しました。" + png_summary
+            + ''.join('\n' + reason for reason in rejected))
