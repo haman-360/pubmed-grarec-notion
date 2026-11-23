@@ -9,16 +9,20 @@ from pathlib import Path
 
 import requests
 from jsonschema import ValidationError, validate
+from pypdf.errors import PyPdfError
 
-from .batches import API, Batches, config, schema
+from .batches import API, Batches, LONG_INPUT_TOKENS, config, schema
 from .intake import PENDING, identify_pmid, workspace_lock
 from .pdf_download import validate_selection
+from .reading_guide import metadata, publication_label
+from .sources import inspect_pdf
 from .store import Store, atomic_write, digest, encode, now, uid
 
 SHARED = 'API_JSON'
 MAX_SELECTION = 5
 MAX_RETRIES = 1
 MAX_RETRY_RESERVE = 1.0
+READING_POLICY = 1
 
 
 def api_key(repo):
@@ -166,18 +170,22 @@ def eligible(workspace, pmid, heads):
 
 
 class JsonBatches(Batches):
-    def estimate(self, revision, stage):
+    @staticmethod
+    def estimate_input(info, prompt):
+        return (info['text_bytes'] + info['pages'] * 16384 + len(prompt.encode())
+                + len(encode(schema('fulltext-v4')).encode()) + 512)
+
+    def estimate(self, revision, stage, pdf_info=None):
         if stage != 'analysis':
             raise ValueError('この画面はJSON作成専用です')
-        from .sources import inspect_pdf
         cfg = json.loads(revision['config'])
-        source = self.store.one('sources', revision['source_id'])
-        info = inspect_pdf(self.store.root / source['path'])
         # Include the full shared prompt, its embedded schema and response schema.
         if type(cfg.get('counted_input_tokens')) is not int:
-            cfg['counted_input_tokens'] = (info['text_bytes'] + info['pages'] * 16384 +
-                len(cfg['shared_prompt'].encode()) + len(encode(schema('fulltext-v4')).encode()) + 512)
-        return super().estimate(dict(revision, config=encode(cfg)), stage)
+            if pdf_info is None:
+                source = self.store.one('sources', revision['source_id'])
+                pdf_info = inspect_pdf(self.store.root / source['path'])
+            cfg['counted_input_tokens'] = self.estimate_input(pdf_info, cfg['shared_prompt'])
+        return super().estimate(dict(revision, config=encode(cfg)), stage, pdf_info)
 
     def manual_handoff(self, revision):
         return bool(revision['summary'])  # Never start image jobs or the legacy handoff.
@@ -229,17 +237,39 @@ class JsonBatches(Batches):
                               error='API結果の完了状態・JSON形式・PMID・原本・論文名を確認してください。元の応答は担当Macの台帳に保管しています。')
 
 
-def prepare(repo, workspace, items):
+def prepare(repo, workspace, items, *, include_long=False):
     selected = validate_selection(workspace, items)
     if len(selected) > MAX_SELECTION:
         raise ValueError('JSON作成は1回最大5本です')
+    if include_long and len(selected) != 1:
+        raise ValueError('長いPDFの全文見積もりは1回1本です')
     with ledger(repo, workspace) as store, workspace_lock(workspace):
         store.set_setting('preview', None)
-        prepared = []
+        prepared, held = [], []
         for item in selected:
             pmid = item['pmid']; event, pdf = eligible(workspace, pmid, item['heads'])
+            article = metadata(workspace, pmid)
+            item['title'] = event['data'].get('title') or article.get('title', '')
+            item['publication_type'] = publication_label(article.get('publication_types', []))
+            pdf_path = workspace.path(pdf['path'])
+            try:
+                info = inspect_pdf(pdf_path)
+            except ValueError as error:
+                held.append(dict(item, reason=str(error), can_estimate_full=False))
+                continue
+            except PyPdfError:
+                held.append(dict(item, reason='PDFをローカルで確認できませんでした。原本を開いて確認してください。',
+                                 can_estimate_full=False))
+                continue
+            prompt = workspace.json_prompt(pmid, event['data'])
+            input_estimate = JsonBatches.estimate_input(info, prompt)
+            if input_estimate > LONG_INPUT_TOKENS and not include_long:
+                held.append(dict(item, can_estimate_full=True,
+                                 reason=f"PDF {info['pages']}ページ・抽出本文 {info['text_bytes']:,}バイト。"
+                                        'ローカル見積もりが長文料金域に達したため全文送信を保留しました。'))
+                continue
             paper = store.paper(pmid=pmid, title=event['data'].get('title', ''))
-            source = store.source(workspace.path(pdf['path']), paper['id'])
+            source = store.source(pdf_path, paper['id'])
             existing = store.rows('SELECT * FROM revisions WHERE source_id=? ORDER BY created_at', (source['id'],))
             if existing:
                 revision = existing[0]
@@ -248,26 +278,31 @@ def prepare(repo, workspace, items):
                     raise ValueError('PMID ' + pmid + ' は送信履歴があります。再送せず「状況確認・JSON回収」を使ってください')
                 if not previous:
                     cfg = config(paper, store.root / source['path'])
-                    cfg.update(shared_prompt=workspace.json_prompt(pmid), shared_source_hash=pdf['sha'])
+                    cfg.update(shared_prompt=prompt, shared_source_hash=pdf['sha'])
                     store.update('revisions', revision['id'], config=encode(cfg))
                     revision = store.one('revisions', revision['id'])
             else:
                 cfg = config(paper, store.root / source['path'])
-                cfg.update(shared_prompt=workspace.json_prompt(pmid), shared_source_hash=pdf['sha'])
+                cfg.update(shared_prompt=prompt, shared_source_hash=pdf['sha'])
                 revision = store.revision(paper, source, cfg)
             store.set_setting('binding:' + revision['id'], dict(pmid=pmid, heads=item['heads'], source_hash=pdf['sha']))
             needs_count = False
             try:
-                estimate = JsonBatches(store, None).estimate(revision, 'analysis')
+                estimate = JsonBatches(store, None).estimate(revision, 'analysis', info)
             except ValueError as error:
                 if '長文料金域' not in str(error):
                     raise
+                if not include_long:
+                    raise ValueError('長いPDFの全文見積もりは1本ずつ明示的に準備してください') from None
                 # The explicit send confirmation also authorizes PDF upload for
                 # token counting. No generation if the actual estimate exceeds caps.
                 estimate, needs_count = 4.0, True
-            prepared.append(dict(id=revision['id'], pmid=pmid, title=paper['title'],
+            prepared.append(dict(id=revision['id'], pmid=pmid, title=item['title'], publication_type=item['publication_type'],
                                  reserve=estimate, needs_count=needs_count))
-        store.set_setting('preview', dict(id=uid(), items=prepared, total=round(sum(x['reserve'] for x in prepared), 6)))
+        store.set_setting('preview', dict(id=uid(), policy=READING_POLICY, items=prepared, held=held,
+                                         total=round(sum(x['reserve'] for x in prepared), 6)))
+    if held:
+        return f'見積もり対象{len(prepared)}本・全文送信を保留{len(held)}本。PDFはまだ外部へ送っていません。'
     return '見積もりを準備しました。PDFの外部送信はまだ行っていません。対象と金額を確認してください。'
 
 
@@ -381,7 +416,8 @@ def submit(repo, workspace, data, api=None):
         raise ValueError('PDFのOpenAIへの送信と見積費用を確認してください')
     with ledger(repo, workspace) as store:
         preview = store.setting('preview')
-        if not preview or preview['id'] != data.get('preview_id'):
+        if (not preview or preview['id'] != data.get('preview_id')
+                or preview.get('policy') != READING_POLICY or not preview['items']):
             raise ValueError('対象と見積もりを準備し直してください')
         api = api or JsonAPI(api_key(repo))
         engine = JsonBatches(store, api)
@@ -398,7 +434,9 @@ def submit(repo, workspace, data, api=None):
                     check_binding(workspace, store, store.one('revisions', item['id']))
                 sent += engine.submit(limit=1, revision_ids=[item['id']])
         finally:
-            store.set_setting('preview', None)
+            held = preview.get('held', [])
+            # Keep the reading alternatives visible after consuming the send estimate.
+            store.set_setting('preview', dict(id=uid(), policy=READING_POLICY, items=[], held=held, total=0) if held else None)
     return f'{sent}本のBatch送信処理を記録しました。各論文の結果を確認してください。完了後は「状況確認・JSON回収」を押してください。'
 
 

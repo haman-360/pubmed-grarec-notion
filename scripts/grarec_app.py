@@ -11,7 +11,7 @@ from paper_pipeline.manual_status import StatusReporter
 from paper_pipeline.intake import (PENDING, ARCHIVE, ensure_folders, inventory, organize,
                                    parse_pmids, result_message, workspace_lock)
 from paper_pipeline.image_review import CHECKS
-from paper_pipeline import ledger_inbox
+from paper_pipeline import ledger_inbox, reading_guide
 from paper_pipeline.store import now
 
 REPO = Path(__file__).resolve().parents[1]
@@ -78,6 +78,9 @@ class Application:
             state['notion_sync'] = notion_status(self.repo, workspace)
             state['errors'] += self.scan_errors
             for row in state['papers']:
+                article = reading_guide.metadata(workspace, row['pmid'])
+                row['publication_type'] = reading_guide.publication_label(article.get('publication_types', []))
+                row['title'] = row['title'] or article.get('title', '')
                 errors = [e for e in self.scan_errors if e.startswith('PMID ' + row['pmid'] + ':')]
                 if errors and row['category'] not in ('attention', 'archived'):
                     state['counts'][row['category']] -= 1
@@ -93,7 +96,7 @@ class Application:
             self.state = dict(base, papers=[], counts=dict(total=0, **{k: 0 for k in STAGES}), errors=[str(error)])
 
     def run(self, action, data):
-        if action not in ('configure', 'fetch-pdfs', 'fetch-pdfs-paid', 'json-budget', 'json-prepare', 'json-send', 'json-collect', 'json-retry-prepare', 'json-retry-send', 'notion-prepare', 'notion-send') and self.settings['shared_root']:
+        if action not in ('configure', 'add', 'reading-metadata', 'fetch-pdfs', 'fetch-pdfs-paid', 'json-budget', 'json-prepare', 'json-send', 'json-collect', 'json-retry-prepare', 'json-retry-send', 'notion-prepare', 'notion-send') and self.settings['shared_root']:
             with workspace_lock(self.workspace()):
                 return self._run(action, data)
         return self._run(action, data)
@@ -127,7 +130,7 @@ class Application:
             if action == 'json-budget':
                 return json_batch.set_budget(self.repo, workspace, data)
             if action == 'json-prepare':
-                return json_batch.prepare(self.repo, workspace, data.get('items'))
+                return json_batch.prepare(self.repo, workspace, data.get('items'), include_long=data.get('include_long') is True)
             if action == 'json-retry-prepare':
                 return json_batch.prepare_retry(self.repo, workspace, data.get('revision_id'))
             if action == 'json-retry-send':
@@ -202,12 +205,18 @@ class Application:
                 raise ValueError('PMIDを入力してください')
             for pmid in ids:
                 pmid_value(pmid)
-            archived = []
-            for pmid in ids:
-                workspace.add(pmid)
-                if any(e['data'].get('archive') for e in workspace.heads(pmid)):
-                    archived.append(pmid)
+            archived, lookup = [], []
+            with workspace_lock(workspace):
+                for pmid in ids:
+                    workspace.add(pmid)
+                    if any(e['data'].get('archive') for e in workspace.heads(pmid)):
+                        archived.append(pmid)
+                    elif not reading_guide.metadata(workspace, pmid):
+                        lookup.append(pmid)
+            found = reading_guide.fetch_metadata(workspace, lookup)
             message = f'{len(ids)}件のPMIDを確認・登録しました。既存の記録は保持します。'
+            if lookup:
+                message += f' PubMed書誌を{found}/{len(lookup)}件取得しました。残りは読書ガイドから取得できます。' if found < len(lookup) else f' PubMed書誌を{found}件取得しました。'
             if archived:
                 message += '\nアーカイブ中：PMID ' + '、'.join(archived) + '。「アーカイブ」で理由を確認し、必要なら作業対象に戻してください。'
             return message
@@ -217,6 +226,21 @@ class Application:
             result = migrate(workspace, select_state_dir(self.repo))
             return f"旧台帳から{result['copied']}件をコピー（既存{result['skipped']}件は保持）。" + '\n'.join(result['warnings'])
         pmid = data.get('pmid')
+        if action == 'reading-metadata':
+            with workspace_lock(workspace):
+                workspace.current(pmid, data['heads'])
+            if not reading_guide.fetch_metadata(workspace, [pmid]):
+                return 'PubMed書誌を取得できませんでした。PubMedの論文ページを確認してください。'
+            return 'PubMedの論文種別と抄録を取得しました。'
+        if action == 'copy-reading-guide':
+            context = reading_guide.guide(workspace, pmid, data['heads'])
+            subprocess.run(['/usr/bin/pbcopy'], input=reading_guide.guide_prompt(context).encode(), check=True)
+            return '読書ガイド作成依頼をコピーしました。ChatGPT Webに貼り付けてください。抄録・PDFのしおりを参照します。'
+        if action == 'export-reading-excerpt':
+            folder = reading_guide.export_excerpt(self.repo, workspace, pmid, data['heads'],
+                                                  data.get('pages'), data.get('topic'), data.get('format', 'graphic'))
+            subprocess.run(['open', str(folder)], check=True)
+            return '抜粋PDFと依頼TXTの保存先を開きました。2ファイルをChatGPT Webに添付してください。'
         if action == 'manage-paper':
             operation = data.get('operation')
             workspace.manage(pmid, data.get('heads'), operation,
@@ -309,6 +333,15 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(403, '{}')
         if self.path == '/?token=' + app.token:
             return self.reply(200, (REPO / 'scripts/dashboard.html').read_text().replace('__TOKEN__', app.token), 'text/html')
+        if urlsplit(self.path).path == '/api/reading-guide' and self.allowed():
+            try:
+                query = parse_qs(urlsplit(self.path).query)
+                workspace = app.workspace()
+                with workspace_lock(workspace):
+                    context = reading_guide.guide(workspace, query['pmid'][0], [query['head'][0]])
+                return self.reply(200, json.dumps(context, ensure_ascii=False))
+            except (ValueError, KeyError, OSError):
+                return self.reply(409, '{"error":"論文が更新されたか未同期です。一覧を確認してください"}')
         if urlsplit(self.path).path in ('/api/png', '/api/image-review') and self.allowed():
             try:
                 query = parse_qs(urlsplit(self.path).query)

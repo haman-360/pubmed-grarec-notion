@@ -10,6 +10,7 @@ from .intake import workspace_lock, PENDING
 from .manual import pmid_value
 from .pdf_finder import PdfFinder
 from .pubmed import PubMedClient, polite_pause
+from .reading_guide import save_metadata
 from .sources import inspect_pdf, matches_pdf
 from .store import atomic_write, encode, now
 
@@ -99,6 +100,11 @@ def download_selected(workspace, items, progress=None, client=None, finder=None)
                     raise ValueError('PubMedの書誌情報が取得できませんでした')
                 article = records[0]
                 entry['title'] = article.title
+                with workspace_lock(workspace):
+                    try:
+                        save_metadata(workspace, article)
+                    except OSError:
+                        pass  # An optional cache must not interrupt PDF retrieval.
                 entry['manual_candidates'] = [asdict(c) for c in finder.manual_check_candidates_for_article(article)]
                 entry['manual_urls'] = list(dict.fromkeys(url for url in
                     [public_url(c.url) for c in finder.manual_check_candidates_for_article(article)] +

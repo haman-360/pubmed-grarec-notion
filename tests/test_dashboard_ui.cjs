@@ -48,6 +48,32 @@ test('submitted JSON cannot be selected again for the same PDF but a new source 
     const {run,set}=dashboard();set(`state.papers=[{pmid:'1',category:'json_pending',heads:['a'],files:[{kind:'pdf',sha:'old'}]},{pmid:'2',category:'json_pending',heads:['b'],files:[{kind:'pdf',sha:'new'}]}];state.json_batch={jobs:[{pmid:'1',source_hash:'old',attempts:[{status:'submitted'}]},{pmid:'2',source_hash:'old',attempts:[{status:'submitted'}]}]}`);
     assert.deepEqual(run('jsonRows().map(p=>p.pmid)'),['2']);
 });
+test('a held PDF offers a reading guide and a separate one-paper estimate without enabling send',async()=>{
+    const {run,set}=dashboard();
+    set(`
+        class TestNode {
+            constructor(){this.children=[];this.dataset={};this.checked=false;this.value=''}
+            append(...children){this.children.push(...children)}
+            replaceChildren(...children){this.children=children}
+        }
+        var uiNodes=new Map();
+        document.getElementById=id=>{if(!uiNodes.has(id))uiNodes.set(id,new TestNode());return uiNodes.get(id)};
+        document.createElement=()=>new TestNode();document.createTextNode=text=>({textContent:text});
+        var calls=[];
+        openReadingGuide=p=>calls.push(p.pmid);
+        act=(action,payload)=>calls.push({action,payload});
+        state={busy:false,papers:[{pmid:'1',heads:['a'],title:'Review',publication_type:'レビュー',category:'json_pending',files:[]}],
+            json_batch:{is_owner:true,key_ready:true,jobs:[],preview:{id:'hold',policy:1,items:[],total:0,
+                held:[{pmid:'1',heads:['a'],title:'Review',publication_type:'レビュー',reason:'長文',can_estimate_full:true}]}}};
+        renderJsonPanel();
+        var actions=()=> $('json-held').children[1].children[2].children;
+    `);
+    assert.equal(run("$('json-send').disabled"),true);
+    assert.equal(run("$('json-preview').hidden"),true);
+    assert.equal(run("$('json-held').hidden"),false);
+    set('actions()[0].onclick();actions()[1].onclick()');
+    assert.deepEqual(run('calls'),['1',{action:'json-prepare',payload:{items:[{pmid:'1',heads:['a']}],include_long:true}}]);
+});
 test('manual links keep full destinations but use short labels and reject executable URLs',()=>{
     const {run,set}=dashboard();set("var links=[];var parent={append:a=>links.push(a)};manualLink(parent,'https://doi.org/10.1000/test');manualLink(parent,'https://example.org/'+ 'long-title-'.repeat(50));manualLink(parent,'javascript:alert(1)');manualLink(parent,'not a URL')");
     const links=run('links');assert.equal(links.length,2);assert.equal(links[0].textContent,'出版社（DOI）');assert.equal(links[0].href,'https://doi.org/10.1000/test');assert.equal(links[1].textContent,'example.org');assert.ok(links[1].href.length>500);assert.equal(links[1].rel,'noopener noreferrer');

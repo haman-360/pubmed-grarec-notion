@@ -175,13 +175,20 @@ class DashboardTests(unittest.TestCase):
         server=ThreadingHTTPServer(('127.0.0.1',0),Handler);server.app=app
         thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
         self.addCleanup(server.server_close);self.addCleanup(server.shutdown)
-        def get(headers):
+        def get(headers, path='/api/state'):
             c=http.client.HTTPConnection('127.0.0.1',server.server_port)
-            c.request('GET','/api/state',headers=headers);r=c.getresponse();body=r.read();c.close();return r.status,body
+            c.request('GET',path,headers=headers);r=c.getresponse();body=r.read();c.close();return r.status,body
         self.assertEqual(get({})[0],403)
         self.assertEqual(get({'X-App-Token':app.token,'Host':'attacker.example'})[0],403)
         status,body=get({'X-App-Token':app.token})
         self.assertEqual(status,200);self.assertEqual(json.loads(body)['counts']['total'],1)
+        paper = app.state['papers'][0]
+        path = f"/api/reading-guide?pmid={paper['pmid']}&head={paper['heads'][0]}"
+        self.assertEqual(get({}, path)[0], 403)
+        status, body = get({'X-App-Token':app.token}, path)
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body)['pmid'], paper['pmid'])
+        self.assertEqual(get({'X-App-Token':app.token}, path + '-stale')[0], 409)
 
 
 class ManualActionTests(unittest.TestCase):

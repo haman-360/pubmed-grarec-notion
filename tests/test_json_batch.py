@@ -14,6 +14,8 @@ from pypdf import PdfWriter
 from paper_pipeline import json_batch as jb
 from paper_pipeline.graphics import adapt_legacy
 from paper_pipeline.manual import Workspace
+from paper_pipeline.pubmed import ArticleMetadata
+from paper_pipeline.reading_guide import save_metadata
 from paper_pipeline.store import Store, encode, digest
 from grarec_app import Application
 from test_paper_pipeline import FakeOpenAI, sample_summary
@@ -55,8 +57,8 @@ class JsonBatchTests(unittest.TestCase):
         finally:
             store.close()
 
-    def prepare(self):
-        jb.prepare(self.repo, self.ws, [dict(pmid=PMID, heads=[self.ws.current(PMID)['id']])])
+    def prepare(self, *, include_long=False):
+        jb.prepare(self.repo, self.ws, [dict(pmid=PMID, heads=[self.ws.current(PMID)['id']])], include_long=include_long)
         return jb.status(self.repo, self.ws)['preview']
 
     def send(self):
@@ -255,7 +257,13 @@ class JsonBatchTests(unittest.TestCase):
         for _ in range(20): writer.add_blank_page(width=300, height=300)
         buf = io.BytesIO(); writer.write(buf)
         self.ws.import_file(PMID, 'pdf', 'long.pdf', buf.getvalue())
-        preview = self.prepare()
+        held = self.prepare()
+        self.assertEqual(held['items'], [])
+        self.assertIn('20ページ', held['held'][0]['reason'])
+        self.assertEqual(self.rows('revisions'), [])
+        with self.assertRaises(ValueError):
+            jb.submit(self.repo, self.ws, dict(confirmed=True, preview_id=held['id']), self.api)
+        preview = self.prepare(include_long=True)
         self.assertTrue(preview['items'][0]['needs_count'])
         self.assertEqual(preview['total'], 4)
         self.assertFalse(self.api.files)
@@ -270,10 +278,40 @@ class JsonBatchTests(unittest.TestCase):
         for _ in range(20): writer.add_blank_page(width=300, height=300)
         buf = io.BytesIO(); writer.write(buf)
         self.ws.import_file(PMID, 'pdf', 'long.pdf', buf.getvalue())
-        with patch.object(self.api, 'count_input', return_value=300000, create=True):
-            self.send()
+        preview = self.prepare(include_long=True)
+        with patch.object(self.api, 'count_input', return_value=300000, create=True) as counter:
+            jb.submit(self.repo, self.ws, dict(confirmed=True, preview_id=preview['id']), self.api)
+            counter.assert_called_once()
         self.assertEqual(self.api.posts, 0)
         self.assertFalse(self.rows('attempts'))
+
+    def test_batch_keeps_short_review_and_holds_long_pdf_without_upload(self):
+        save_metadata(self.ws, ArticleMetadata(PMID, title='Short review', publication_types=('Review',)))
+        long_pmid = '90000002'
+        self.ws.add(long_pmid)
+        writer = PdfWriter()
+        for _ in range(20):
+            writer.add_blank_page(width=300, height=300)
+        buf = io.BytesIO(); writer.write(buf)
+        self.ws.import_file(long_pmid, 'pdf', 'long.pdf', buf.getvalue())
+        items = [dict(pmid=pmid, heads=[self.ws.current(pmid)['id']]) for pmid in (long_pmid, PMID)]
+        jb.prepare(self.repo, self.ws, items)
+        preview = jb.status(self.repo, self.ws)['preview']
+        self.assertEqual([(item['pmid'], item['publication_type']) for item in preview['items']], [(PMID, 'レビュー')])
+        self.assertEqual([item['pmid'] for item in preview['held']], [long_pmid])
+        jb.submit(self.repo, self.ws, dict(confirmed=True, preview_id=preview['id']), self.api)
+        self.assertEqual(self.api.posts, 1)
+        self.assertNotIn(buf.getvalue(), self.api.files.values())
+        self.assertEqual(jb.status(self.repo, self.ws)['preview']['held'], preview['held'])
+
+    def test_preview_prepared_before_reading_gate_requires_fresh_estimate(self):
+        preview = self.prepare()
+        with jb.ledger(self.repo, self.ws) as store:
+            preview.pop('policy')
+            store.set_setting('preview', preview)
+        with self.assertRaisesRegex(ValueError, '準備し直して'):
+            jb.submit(self.repo, self.ws, dict(confirmed=True, preview_id=preview['id']), self.api)
+        self.assertFalse(self.api.files)
 
     def test_duplicate_result_and_unknown_usage_keep_cost_reservation(self):
         self.send(); self.complete(usage=None)

@@ -26,6 +26,8 @@ class ArticleMetadata:
     publisher_url: str = ""
     volume: str = ""
     free_full_text_url: str = ""
+    publication_types: tuple[str, ...] = ()
+    abstract: str = ""
 
     def as_csv_row(self) -> dict[str, str]:
         return {
@@ -56,7 +58,7 @@ class PubMedClient:
         )
         self.session.mount("https://", HTTPAdapter(max_retries=retry))
 
-    def fetch_metadata(self, pmids: list[str]) -> list[ArticleMetadata]:
+    def fetch_metadata(self, pmids: list[str], *, include_links: bool = True) -> list[ArticleMetadata]:
         if not pmids:
             return []
 
@@ -86,9 +88,10 @@ class PubMedClient:
 
             root = ET.fromstring(response.content)
             batch_records = [self._parse_article(article) for article in root.findall(".//PubmedArticle")]
-            free_links = self._fetch_free_full_text_links(batch)
-            for record in batch_records:
-                record.free_full_text_url = free_links.get(record.pmid, "")
+            if include_links:
+                free_links = self._fetch_free_full_text_links(batch)
+                for record in batch_records:
+                    record.free_full_text_url = free_links.get(record.pmid, "")
             records.extend(batch_records)
             if start + EFETCH_BATCH_SIZE < len(pmids):
                 time.sleep(0.34)
@@ -145,6 +148,14 @@ class PubMedClient:
         pmcid = normalize_pmcid(extract_article_id(article, "pmc"))
         pii = extract_article_id(article, "pii")
         publisher_url = f"https://doi.org/{doi}" if doi else f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/"
+        publication_types = tuple(filter(None, (text(node) for node in article.findall(
+            './MedlineCitation/Article/PublicationTypeList/PublicationType'))))
+        abstract = []
+        for node in article.findall('./MedlineCitation/Article/Abstract/AbstractText'):
+            content = flatten_text(node)
+            if content:
+                label = node.get('Label')
+                abstract.append(f'{label}: {content}' if label else content)
 
         return ArticleMetadata(
             pmid=pmid,
@@ -156,6 +167,8 @@ class PubMedClient:
             pii=pii,
             publisher_url=publisher_url,
             volume=volume,
+            publication_types=publication_types,
+            abstract='\n\n'.join(abstract),
         )
 
 

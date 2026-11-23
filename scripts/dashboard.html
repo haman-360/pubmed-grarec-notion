@@ -28,6 +28,12 @@ button,input,textarea,select{font:inherit}button{border:1px solid transparent;bo
 .json-retry-costs tbody th{background:transparent;color:inherit;font-size:inherit}
 .json-retry-current{background:#e7f1ef;font-weight:700}
 #json-retry-preview .confirm{display:flex;align-items:baseline;gap:8px}
+#json-held .file-item{padding-block:12px}
+.reading-dialog{width:min(760px,94vw);max-height:90vh;overflow:auto;border:1px solid #dce6e2;border-radius:16px;padding:22px;color:inherit}
+.reading-dialog::backdrop{background:#19333055}
+.reading-dialog .abstract{white-space:pre-wrap;overflow-wrap:anywhere}
+.reading-dialog form{display:grid;gap:8px;margin-top:12px}
+.reading-dialog form input,.reading-dialog form select{display:block;width:100%}
 @media(max-width:850px){.home-top{grid-template-columns:1fr}main{padding:18px}.cards{grid-template-columns:repeat(2,minmax(0,1fr))}h1{font-size:28px}.table table{min-width:760px}}
 @media(max-width:520px){
 .json-estimate-table th,.json-estimate-table td,.json-retry-costs th,.json-retry-costs td{padding:8px 6px}
@@ -55,6 +61,7 @@ button,input,textarea,select{font:inherit}button{border:1px solid transparent;bo
 <button id="json-budget-save" onclick="saveJsonBudget()">担当Mac・予算を保存</button><p class="hint">期間$20・1処理版$4まで。残高の確認は24時間有効です。見積もりは請求上限の保証ではありません。</p></details>
 <div id="json-options" class="json-options"></div><p id="json-selected" class="hint"></p>
 <button id="json-prepare" onclick="prepareJson()">選択した論文の見積もりを準備</button>
+<div id="json-held" class="result-box" aria-label="全文送信を保留した論文" hidden></div>
 <div id="json-preview" class="result-box" hidden>
 <table class="json-estimate-table" aria-label="送信前の見積もり">
 <thead><tr><th scope="col">PMID</th><th scope="col">論文タイトル</th><th scope="col">見積・予算枠</th></tr></thead>
@@ -107,7 +114,7 @@ button,input,textarea,select{font:inherit}button{border:1px solid transparent;bo
 <section id="management-panel" hidden>
 <h2 id="management-title" tabindex="-1"></h2><p id="management-paper"></p><p id="management-help" class="hint"></p>
 <form onsubmit="event.preventDefault();saveManagement()">
-<div id="archive-fields"><label>理由（任意） <select id="archive-reason"><option value="">指定しない</option><option>長文のため</option><option>関心がなくなった</option><option>PDFを入手できなかった</option><option>古い</option><option>内容が対象外</option><option>重複する内容</option><option>その他</option></select></label></div>
+<div id="archive-fields"><label>理由（任意） <select id="archive-reason"><option value="">指定しない</option><option>長文のため</option><option>レビューのため</option><option>関心がなくなった</option><option>PDFを入手できなかった</option><option>古い</option><option>内容が対象外</option><option>重複する内容</option><option>その他</option></select></label></div>
 <div id="check-fields" class="row"><label>確認日 <input id="check-on" type="date"></label><label>確認結果 <select id="check-result"><option>有料のみ</option><option>PDFが見つからない</option><option>アクセスできない</option><option>その他</option></select></label></div>
 <p id="next-check-field"><label>次回確認日 <input id="next-check-on" type="date"></label></p>
 <p id="management-note-field"><label>補足メモ（任意）<textarea id="management-note" maxlength="2000"></textarea></label></p>
@@ -155,7 +162,8 @@ function renderJsonEstimate(preview){
     for(const item of preview.items){
         const row=document.createElement('tr');
         cell(row,item.pmid);
-        cell(row,item.title||'論文名未登録');
+        const title=cell(row,item.title||'論文名未登録');
+        if(item.publication_type)line(title,item.publication_type);
         const amount=cell(row,'');
         line(amount,'$'+item.reserve.toFixed(3),'strong');
         line(amount,item.needs_count?'予算枠':'予約見積');
@@ -163,6 +171,26 @@ function renderJsonEstimate(preview){
     }
     $('json-estimate-total').textContent='$'+preview.total.toFixed(3);
     $('json-estimate-count-note').hidden=!preview.items.some(item=>item.needs_count);
+}
+function renderJsonHeld(preview,locked){
+    const held=$('json-held'),items=preview?.held||[];
+    held.hidden=!items.length;held.replaceChildren();
+    if(!items.length)return;
+    line(held,'全文送信を保留 · '+items.length+'本','h3');
+    for(const item of items){
+        const box=document.createElement('div');box.className='file-item';held.append(box);
+        line(box,'PMID '+item.pmid+' ／ '+(item.title||'論文名未登録'),'strong');
+        line(box,item.publication_type+' ／ '+item.reason,'p');
+        const paper=state.papers.find(p=>p.pmid===item.pmid&&p.heads[0]===item.heads[0]&&p.heads.length===1);
+        if(!paper)continue;
+        const actions=document.createElement('div');actions.className='actions';box.append(actions);
+        navButton(actions,'読書ガイド・テーマ図解',()=>openReadingGuide(paper));
+        if(item.can_estimate_full){
+            const full=button(actions,'この1本の全文見積もりに切り替える','json-prepare',
+                {items:[{pmid:item.pmid,heads:item.heads}],include_long:true});
+            full.disabled=locked;
+        }
+    }
 }
 function renderJsonRetryEstimate(item){
     $('json-retry-pmid').textContent='PMID '+item.pmid;
@@ -180,16 +208,18 @@ $('json-checked').textContent='API記録の更新：'+(date(b.at)||'未記録')+
 const savedBudgetEnd=b.budget_end?.slice(0,10)||'';
 if($('json-end').defaultValue!==savedBudgetEnd)$('json-end').defaultValue=savedBudgetEnd;
 for(let id of jsonSelection.keys())if(!rows.some(p=>p.pmid===id))jsonSelection.delete(id);
-let sig=JSON.stringify([rows.map(p=>[p.pmid,p.title,p.heads]),[...jsonSelection],locked]);if(sig!==jsonOptionsSignature){jsonOptionsSignature=sig;$('json-options').replaceChildren();for(let p of rows){let lab=document.createElement('label'),check=document.createElement('input');check.type='checkbox';check.checked=jsonSelection.has(p.pmid);check.disabled=locked;check.onchange=()=>{if(check.checked)jsonSelection.set(p.pmid,p.heads);else jsonSelection.delete(p.pmid);renderJsonPanel()};lab.append(check,document.createTextNode('PMID '+p.pmid+' ／ '+(p.title||'論文名未登録')));$('json-options').append(lab)}if(!rows.length)line($('json-options'),'未送信のJSON作成待ちはありません。送信済み分は下の回収ボタンで確認してください。','p')}
+let sig=JSON.stringify([rows.map(p=>[p.pmid,p.title,p.publication_type,p.heads]),[...jsonSelection],locked]);if(sig!==jsonOptionsSignature){jsonOptionsSignature=sig;$('json-options').replaceChildren();for(let p of rows){let lab=document.createElement('label'),check=document.createElement('input');check.type='checkbox';check.checked=jsonSelection.has(p.pmid);check.disabled=locked;check.onchange=()=>{if(check.checked)jsonSelection.set(p.pmid,p.heads);else jsonSelection.delete(p.pmid);renderJsonPanel()};lab.append(check,document.createTextNode('PMID '+p.pmid+' ／ '+(p.title||'論文名未登録')+(p.publication_type?' ／ '+p.publication_type:'')));$('json-options').append(lab)}if(!rows.length)line($('json-options'),'未送信のJSON作成待ちはありません。送信済み分は下の回収ボタンで確認してください。','p')}
 $('json-selected').textContent=jsonSelection.size+'本を選択（最大5本）。見積もりの準備はAPI送信を行いません。';
 const preview=b.preview;
-$('json-preview').hidden=!preview;
+const hasEstimate=Boolean(preview?.policy&&preview.items.length);
+$('json-preview').hidden=!hasEstimate;
+renderJsonHeld(preview,locked);
 if((preview?.id||'')!==jsonPreviewId){
     jsonPreviewId=preview?.id||'';
     $('json-send-confirm').checked=false;
-    if(preview)renderJsonEstimate(preview);
+    if(hasEstimate)renderJsonEstimate(preview);
 }
-$('json-prepare').disabled=locked||!jsonSelection.size||jsonSelection.size>5;$('json-send').disabled=locked||!b.key_ready||!preview||!$('json-send-confirm').checked;$('json-collect').disabled=locked||!b.key_ready;$('json-budget-save').disabled=state.busy||(b.configured&&!b.is_owner);
+$('json-prepare').disabled=locked||!jsonSelection.size||jsonSelection.size>5;$('json-send').disabled=locked||!b.key_ready||!hasEstimate||!$('json-send-confirm').checked;$('json-collect').disabled=locked||!b.key_ready;$('json-budget-save').disabled=state.busy||(b.configured&&!b.is_owner);
 const retry=b.retry_preview;
 $('json-retry-preview').hidden=!retry;
 if((retry?.id||'')!==jsonRetryPreviewId){
@@ -395,6 +425,70 @@ function jsonManualActions(parent,p){
     if(pdf)button(parent,'添付するPDFを開く','open-file',{...payload,path:pdf.path});
     let more=document.createElement('details');line(more,'依頼TXT・保存名','summary');button(more,'依頼TXTの場所を開く','export-json-request',payload);line(more,'完成JSON：PMID_'+p.pmid+'.json','p');parent.append(more);
 }
+async function openReadingGuide(paper){
+    const payload={pmid:paper.pmid,heads:paper.heads};
+    const query=new URLSearchParams({pmid:paper.pmid,head:paper.heads[0]});
+    const dialog=document.createElement('dialog');dialog.className='reading-dialog';
+    dialog.setAttribute('aria-label','読書ガイド・テーマ図解');
+    dialog.onclose=()=>dialog.remove();document.body.append(dialog);
+    const bar=document.createElement('header');dialog.append(bar);
+    line(bar,'読書ガイド・テーマ図解','h2');navButton(bar,'閉じる',()=>dialog.close());
+    const status=line(dialog,'読み込み中…','p');status.setAttribute('role','status');
+    const body=document.createElement('div');dialog.append(body);
+    dialog.showModal();
+    async function run(action,data=payload){
+        await act(action,data);
+        if(dialog.open)status.textContent=$('message').textContent;
+    }
+    async function load(){
+        try{
+            const context=await api('/api/reading-guide?'+query);
+            if(!dialog.open)return;
+            body.replaceChildren();
+            line(body,context.title||'PMID '+context.pmid,'h3');
+            line(body,'PMID '+context.pmid+' ／ '+context.publication_type,'p');
+            const actions=document.createElement('div');actions.className='actions';body.append(actions);
+            manualLink(actions,'https://pubmed.ncbi.nlm.nih.gov/'+context.pmid+'/');
+            if(!context.abstract)navButton(actions,'PubMed書誌・抄録を取得',async()=>{await run('reading-metadata');if(dialog.open)await load()});
+            if(context.abstract||context.sections.length)navButton(actions,'短い読書ガイドの依頼をコピー',()=>run('copy-reading-guide'));
+            const pdf=paper.files.find(file=>file.kind==='pdf');
+            if(pdf)navButton(actions,'原本PDFを開く',()=>run('open-file',{...payload,path:pdf.path}));
+            if(context.summary){line(body,'全文JSONの短い要約','h3');line(body,context.summary,'p');}
+            if(context.abstract){
+                const abstract=document.createElement('details');abstract.open=true;body.append(abstract);
+                line(abstract,'PubMedの抄録（原文）','summary');line(abstract,context.abstract,'p').className='abstract';
+            }
+            if(context.pages){
+                line(body,'関連ページだけを読む・図解する','h3');
+                line(body,`原本PDFは${context.pages}ページです。関連する方法・結果・図表・限界から、合計${context.max_excerpt_pages}ページまで指定できます。抜粋PDFと依頼TXTをこのMacに保存します。`,'p');
+                const form=document.createElement('form');
+                const topicLabel=line(form,'確認したいテーマ','label'),topic=document.createElement('input');
+                topic.required=true;topic.maxLength=200;topicLabel.append(topic);
+                const pageLabel=line(form,'原本PDFのページ（例 3-7, 10）','label'),pages=document.createElement('input');
+                pages.required=true;pages.maxLength=100;pageLabel.append(pages);
+                const formatLabel=line(form,'出力形式 ','label'),format=document.createElement('select');
+                line(format,'読書ガイド（文章）','option').value='text';
+                line(format,'テーマ図解（1枚）','option').value='graphic';formatLabel.append(format);
+                if(context.sections.length){
+                    const outline=document.createElement('details');line(outline,'PDFのしおりから開始ページを選ぶ','summary');body.append(outline);
+                    for(const section of context.sections){
+                        const row=document.createElement('div');outline.append(row);
+                        navButton(row,'p. '+section.page+' '+section.title,()=>{pages.value=section.page;pages.focus()});
+                    }
+                }
+                const submit=line(form,'抜粋PDFと依頼文を保存','button');submit.type='submit';
+                form.onsubmit=async event=>{
+                    event.preventDefault();submit.disabled=true;
+                    try{await run('export-reading-excerpt',{...payload,topic:topic.value,pages:pages.value,format:format.value});}
+                    finally{submit.disabled=false;}
+                };
+                body.append(form);
+            }
+        }catch(error){status.textContent=error.message;}
+    }
+    await load();
+    if(status.textContent==='読み込み中…')status.textContent='';
+}
 async function medicalReview(p,g,image){
     const payload={pmid:p.pmid,heads:p.heads,topic:g.topic,sha:image.sha};
     const query=new URLSearchParams({pmid:p.pmid,head:p.heads[0],topic:g.topic,sha:image.sha});
@@ -491,6 +585,7 @@ function renderPapers(){
     let openIds=new Set([...$('papers').querySelectorAll('details[open][data-detail-key]')].map(d=>d.dataset.detailKey));$('papers').replaceChildren();
     for(let p of rows){
         let row=document.createElement('tr');row.dataset.pmid=p.pmid;let title=cell(row,'PMID '+p.pmid);let text=line(title,p.title||'論文名はPDF取得・JSON保存後に表示','p');text.className='paper-title';
+        if(p.publication_type)line(title,p.publication_type,'small');
         let progress=cell(row,'');let actions=cell(row,'');let controls=document.createElement('div');controls.className='row-actions';actions.append(controls);
         managementStatus(progress,p);
         if(['missing_pdf','deferred','history'].includes(view))searchDetails(progress,p);
@@ -504,6 +599,7 @@ function renderPapers(){
         if(view==='history'){let current=state.papers.find(x=>x.pmid===p.pmid);if(current)navButton(controls,'現在の工程で作業する',()=>navigate(current.category));}
         if(p.heads.length===1){
             managementControls(actions,p);
+            if(!p.archive&&view!=='history')navButton(controls,'読書ガイド・テーマ図解',()=>openReadingGuide(p));
             if(view==='missing_pdf'){navButton(controls,'無料で検索',()=>openPdfPanel(p.pmid));if(!state.pdf_cooldowns?.[p.pmid]?.blocked)navButton(controls,'有料で検索',()=>openPdfPanel(p.pmid,true));else line(controls,'有料検索は再検索制限中','small');}
             if(view==='json_pending'){navButton(controls,'APIで作成・回収',()=>openJsonPanel(p.pmid));jsonManualActions(controls,p)}
             if(view==='web_pending'||(view==='review_pending'&&!p.medically_approved))pngActions(actions,p);

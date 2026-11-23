@@ -29,7 +29,7 @@ STAGES = {'missing_pdf': 'PDF取得待ち', 'json_pending': 'JSON作成待ち',
           'deferred': '再確認待ち', 'archived': 'アーカイブ'}
 KINDS = {'pdf': '.pdf', 'json': '.json', 'png': '.png'}
 CHECK_RESULTS = ('有料のみ', 'PDFが見つからない', 'アクセスできない', 'その他')
-ARCHIVE_REASONS = ('', '長文のため', '関心がなくなった', 'PDFを入手できなかった',
+ARCHIVE_REASONS = ('', '長文のため', 'レビューのため', '関心がなくなった', 'PDFを入手できなかった',
                    '古い', '内容が対象外', '重複する内容', 'その他')
 
 
