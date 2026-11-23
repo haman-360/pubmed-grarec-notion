@@ -57,8 +57,8 @@ class JsonBatchTests(unittest.TestCase):
         finally:
             store.close()
 
-    def prepare(self, *, include_long=False):
-        jb.prepare(self.repo, self.ws, [dict(pmid=PMID, heads=[self.ws.current(PMID)['id']])], include_long=include_long)
+    def prepare(self):
+        jb.prepare(self.repo, self.ws, [dict(pmid=PMID, heads=[self.ws.current(PMID)['id']])])
         return jb.status(self.repo, self.ws)['preview']
 
     def send(self):
@@ -257,15 +257,12 @@ class JsonBatchTests(unittest.TestCase):
         for _ in range(20): writer.add_blank_page(width=300, height=300)
         buf = io.BytesIO(); writer.write(buf)
         self.ws.import_file(PMID, 'pdf', 'long.pdf', buf.getvalue())
-        held = self.prepare()
-        self.assertEqual(held['items'], [])
-        self.assertIn('20ページ', held['held'][0]['reason'])
-        self.assertEqual(self.rows('revisions'), [])
-        with self.assertRaises(ValueError):
-            jb.submit(self.repo, self.ws, dict(confirmed=True, preview_id=held['id']), self.api)
-        preview = self.prepare(include_long=True)
+        preview = self.prepare()
         self.assertTrue(preview['items'][0]['needs_count'])
-        self.assertEqual(preview['total'], 4)
+        self.assertAlmostEqual(preview['total'], jb.JsonBatches.analysis_reserve(
+            jb.LONG_INPUT_TOKENS, json.loads(self.rows('revisions')[0]['config'])))
+        with self.assertRaises(ValueError):
+            jb.submit(self.repo, self.ws, dict(confirmed=False, preview_id=preview['id']), self.api)
         self.assertFalse(self.api.files)
         with patch.object(self.api, 'count_input', return_value=40000, create=True) as counter:
             jb.submit(self.repo, self.ws, dict(confirmed=True, preview_id=preview['id']), self.api)
@@ -278,31 +275,46 @@ class JsonBatchTests(unittest.TestCase):
         for _ in range(20): writer.add_blank_page(width=300, height=300)
         buf = io.BytesIO(); writer.write(buf)
         self.ws.import_file(PMID, 'pdf', 'long.pdf', buf.getvalue())
-        preview = self.prepare(include_long=True)
+        preview = self.prepare()
         with patch.object(self.api, 'count_input', return_value=300000, create=True) as counter:
             jb.submit(self.repo, self.ws, dict(confirmed=True, preview_id=preview['id']), self.api)
             counter.assert_called_once()
         self.assertEqual(self.api.posts, 0)
         self.assertFalse(self.rows('attempts'))
 
-    def test_batch_keeps_short_review_and_holds_long_pdf_without_upload(self):
+    def test_group_measures_long_pdfs_and_continues_after_one_exceeds_limit(self):
         save_metadata(self.ws, ArticleMetadata(PMID, title='Short review', publication_types=('Review',)))
-        long_pmid = '90000002'
-        self.ws.add(long_pmid)
-        writer = PdfWriter()
-        for _ in range(20):
-            writer.add_blank_page(width=300, height=300)
-        buf = io.BytesIO(); writer.write(buf)
-        self.ws.import_file(long_pmid, 'pdf', 'long.pdf', buf.getvalue())
-        items = [dict(pmid=pmid, heads=[self.ws.current(pmid)['id']]) for pmid in (long_pmid, PMID)]
-        jb.prepare(self.repo, self.ws, items)
-        preview = jb.status(self.repo, self.ws)['preview']
-        self.assertEqual([(item['pmid'], item['publication_type']) for item in preview['items']], [(PMID, 'レビュー')])
-        self.assertEqual([item['pmid'] for item in preview['held']], [long_pmid])
-        jb.submit(self.repo, self.ws, dict(confirmed=True, preview_id=preview['id']), self.api)
-        self.assertEqual(self.api.posts, 1)
-        self.assertNotIn(buf.getvalue(), self.api.files.values())
-        self.assertEqual(jb.status(self.repo, self.ws)['preview']['held'], preview['held'])
+        long_pmids = ['90000002', '90000003', '90000004', '90000005']
+        for pmid, pages in zip(long_pmids, (15, 22, 16, 17)):
+            self.ws.add(pmid)
+            writer = PdfWriter()
+            for _ in range(pages):
+                writer.add_blank_page(width=300, height=300)
+            buf = io.BytesIO(); writer.write(buf)
+            self.ws.import_file(pmid, 'pdf', 'long.pdf', buf.getvalue())
+        items = [dict(pmid=pmid, heads=[self.ws.current(pmid)['id']]) for pmid in [*long_pmids, PMID]]
+        original_inspect = jb.inspect_pdf
+        def inspect(path):
+            info = original_inspect(path)
+            if info['pages'] > 1:
+                info['text_bytes'] = 55_000
+            return info
+        with patch.object(jb, 'inspect_pdf', side_effect=inspect):
+            jb.prepare(self.repo, self.ws, items)
+            preview = jb.status(self.repo, self.ws)['preview']
+            self.assertEqual([i['pmid'] for i in preview['items'] if i['needs_count']], long_pmids)
+            self.assertEqual(preview['items'][-1]['publication_type'], 'レビュー')
+            self.assertFalse(preview['held'])
+            self.assertFalse(self.api.files)
+            with patch.object(self.api, 'count_input', side_effect=[272001, 40000, 50000, 272000], create=True) as count:
+                message = jb.submit(self.repo, self.ws, dict(confirmed=True, preview_id=preview['id']), self.api)
+                self.assertEqual(count.call_count, 4)
+        self.assertEqual(self.api.posts, 4)
+        self.assertIn('PMID 90000002', message)
+        self.assertIn('272,001', message)
+        report = jb.status(self.repo, self.ws)
+        self.assertEqual([j['pmid'] for j in report['jobs'] if j['web_json']], long_pmids[:1])
+        self.assertIsNone(report['preview'])
 
     def test_preview_prepared_before_reading_gate_requires_fresh_estimate(self):
         preview = self.prepare()

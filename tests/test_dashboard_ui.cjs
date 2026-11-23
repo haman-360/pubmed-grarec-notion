@@ -80,7 +80,7 @@ test('Batch columns render type and source separately and retain the selected pa
     assert.equal(run('cells()[0].children[0].checked'),true);
     assert.equal(run('cells()[3].children[1].textContent'),'PubMed · Narrative Review');
 });
-test('a held PDF offers a reading guide and a separate one-paper estimate without enabling send',async()=>{
+test('an old held group can rebuild its estimate in one click before confirming send',async()=>{
     const {run,set}=dashboard();
     set(`
         class TestNode {
@@ -92,19 +92,25 @@ test('a held PDF offers a reading guide and a separate one-paper estimate withou
         document.getElementById=id=>{if(!uiNodes.has(id))uiNodes.set(id,new TestNode());return uiNodes.get(id)};
         document.createElement=()=>new TestNode();document.createTextNode=text=>({textContent:text});
         var calls=[];
-        openReadingGuide=p=>calls.push(p.pmid);
         act=(action,payload)=>calls.push({action,payload});
         state={busy:false,papers:[{pmid:'1',heads:['a'],title:'Review',publication_type:'レビュー',category:'json_pending',files:[]}],
             json_batch:{is_owner:true,key_ready:true,jobs:[],preview:{id:'hold',policy:1,items:[],total:0,
                 held:[{pmid:'1',heads:['a'],title:'Review',publication_type:'レビュー',reason:'長文',can_estimate_full:true}]}}};
+        state.papers.push({...state.papers[0],pmid:'2',heads:['b']});
+        state.json_batch.preview.held.push({pmid:'2',heads:['b']});
         renderJsonPanel();
-        var actions=()=> $('json-held').children[1].children[2].children;
     `);
     assert.equal(run("$('json-send').disabled"),true);
     assert.equal(run("$('json-preview').hidden"),true);
     assert.equal(run("$('json-held').hidden"),false);
-    set('actions()[0].onclick();actions()[1].onclick()');
-    assert.deepEqual(run('calls'),['1',{action:'json-prepare',payload:{items:[{pmid:'1',heads:['a']}],include_long:true}}]);
+    set("$('json-held').children[1].onclick()");
+    assert.deepEqual(run('calls'),[{action:'json-prepare',payload:{items:[{pmid:'1',heads:['a']},{pmid:'2',heads:['b']}]}}]);
+    set(`state.json_batch.preview={id:'fresh',policy:2,items:state.papers.map(p=>({...p,reserve:0.75,needs_count:true})),total:1.5};renderJsonPanel()`);
+    assert.equal(run("$('json-estimate-rows').children.length"),2);
+    assert.equal(run("$('json-estimate-count-note').hidden"),false);
+    assert.equal(run("$('json-send').disabled"),true);
+    set("$('json-send-confirm').checked=true;renderJsonPanel()");
+    assert.equal(run("$('json-send').disabled"),false);
 });
 test('manual links keep full destinations but use short labels and reject executable URLs',()=>{
     const {run,set}=dashboard();set("var links=[];var parent={append:a=>links.push(a)};manualLink(parent,'https://doi.org/10.1000/test');manualLink(parent,'https://example.org/'+ 'long-title-'.repeat(50));manualLink(parent,'javascript:alert(1)');manualLink(parent,'not a URL')");
@@ -196,6 +202,12 @@ test('a waiting Batch can archive its current paper without API ownership',async
         const archiveButton=()=>jobsNode.children[0].children.find(child=>child.tag==='button');
         renderJsonJobs(jobs,true);
     `);
+    set("jobs[0].web_json=true;state.json_batch={jobs};renderJsonJobs(jobs,true)");
+    assert.equal(run('jobsNode.children[0].open'),true);
+    assert.deepEqual(run('jsonRows().map(p=>p.pmid)'),[]);
+    set("jobsNode.children[0].children.find(n=>n.textContent==='依頼文をコピー（PDF添付）').onclick()");
+    assert.deepEqual(run('recorded.pop()'),{action:'copy-json',data:{pmid:'1',heads:['a']}});
+    set("jobs[0].web_json=false;renderJsonJobs(jobs,true)");
     assert.equal(run('archiveButton().disabled'),false);
     assert.equal(run("jobsNode.children[1].children.some(child=>child.tag==='button')"),false);
     set("archiveButton().onclick();$('archive-reason').value='長文のため'");

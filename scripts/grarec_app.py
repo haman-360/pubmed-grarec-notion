@@ -130,7 +130,7 @@ class Application:
             if action == 'json-budget':
                 return json_batch.set_budget(self.repo, workspace, data)
             if action == 'json-prepare':
-                return json_batch.prepare(self.repo, workspace, data.get('items'), include_long=data.get('include_long') is True)
+                return json_batch.prepare(self.repo, workspace, data.get('items'))
             if action == 'json-retry-prepare':
                 return json_batch.prepare_retry(self.repo, workspace, data.get('revision_id'))
             if action == 'json-retry-send':

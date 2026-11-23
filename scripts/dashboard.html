@@ -95,7 +95,7 @@ button,input,textarea,select{font:inherit}button{border:1px solid transparent;bo
 <tbody id="json-estimate-rows"></tbody>
 </table>
 <p><strong>見積・予算枠合計 <span id="json-estimate-total"></span></strong></p>
-<small id="json-estimate-count-note" hidden>「予算枠」の論文は、送信時にPDFをアップロードしてトークン数を確認します。</small>
+<small id="json-estimate-count-note" hidden>「実測待ち」の金額は通常料金域での予約見積の最大額です。送信を一度確認すると、該当するPDFの入力を順に実測し、予算内の論文をBatchに送ります。</small>
 <small>実際の請求額は使用量に応じて確定します。トークン数の確認後に予算を超える場合は生成を停止します。</small>
 <label class="confirm"><input id="json-send-confirm" type="checkbox" onchange="renderJsonPanel()"> 表示した論文PDFをOpenAIへ送り、見積費用でBatch JSON作成を依頼します。</label><button id="json-send" onclick="sendJson()">確認した対象をBatchへ送信</button></div>
 <div id="json-retry-preview" class="result-box" role="region" aria-labelledby="json-retry-heading" hidden>
@@ -172,7 +172,13 @@ function line(parent,text,tag='small'){let el=document.createElement(tag);el.tex
 const jsonSelection=new Map();let jsonOptionsSignature='',jsonJobsSignature='',jsonPreviewId='',jsonRetryPreviewId='';
 const jsonOptionChecks=new Map();
 const jsonNames={analysis_ready:'準備済み',budget_wait:'予算・入力の確認待ち',analysis_submitted:'API処理中・回収待ち',json_received:'回収済み・保存待ち',saved:'JSON保存済み',structure_review_required:'生成済み・構造確認待ち',candidate:'候補保管・手動結果を優先',review_required:'API結果の確認が必要'};
-function jsonRows(){let submitted=new Set((state?.json_batch?.jobs||[]).filter(j=>j.attempts.length>=2||j.attempts.some(a=>a.status!=='rejected')).map(j=>j.pmid+':'+j.source_hash));return(state?.papers||[]).filter(p=>p.category==='json_pending'&&p.heads.length===1&&!submitted.has(p.pmid+':'+p.files.find(f=>f.kind==='pdf')?.sha))}
+function jsonRows(){
+    const excluded=new Set((state?.json_batch?.jobs||[])
+        .filter(j=>j.web_json||j.attempts.length>=2||j.attempts.some(a=>a.status!=='rejected'))
+        .map(j=>j.pmid+':'+j.source_hash));
+    return (state?.papers||[]).filter(p=>p.category==='json_pending'&&p.heads.length===1&&
+        !excluded.has(p.pmid+':'+p.files.find(f=>f.kind==='pdf')?.sha));
+}
 function openJsonPanel(pmid){openPanel('json_pending','json-panel');if(pmid){jsonSelection.clear();let p=jsonRows().find(p=>p.pmid===pmid);if(p)jsonSelection.set(pmid,p.heads)}renderJsonPanel();$('json-panel').scrollIntoView({behavior:'smooth'})}
 async function saveJsonBudget(){
     const budgetEnd=$('json-end');
@@ -236,7 +242,7 @@ function renderJsonEstimate(preview){
         renderPublication(cell(row,''),state.papers.find(p=>p.pmid===item.pmid)||item);
         const amount=cell(row,'');
         line(amount,'$'+item.reserve.toFixed(3),'strong');
-        line(amount,item.needs_count?'予算枠':'予約見積');
+        line(amount,item.needs_count?'実測待ち':'予約見積');
         rows.append(row);
     }
     $('json-estimate-total').textContent='$'+preview.total.toFixed(3);
@@ -244,22 +250,26 @@ function renderJsonEstimate(preview){
 }
 function renderJsonHeld(preview,locked){
     const held=$('json-held'),items=preview?.held||[];
-    held.hidden=!items.length;held.replaceChildren();
+    held.replaceChildren();
+    if(preview && preview.policy!==2){
+        const previous=new Set([...preview.items,...items].map(item=>item.pmid));
+        const targets=jsonRows().filter(p=>previous.has(p.pmid)).map(p=>({pmid:p.pmid,heads:p.heads}));
+        held.hidden=!targets.length;
+        if(targets.length){
+            line(held,'前回選んだ論文は、まとめて全文JSONの見積もりを作り直せます。','p');
+            const rebuild=button(held,'前回の対象をまとめて再見積もり（'+targets.length+'本）','json-prepare',{items:targets});
+            rebuild.disabled=locked;
+        }
+        return;
+    }
+    held.hidden=!items.length;
     if(!items.length)return;
-    line(held,'全文送信を保留 · '+items.length+'本','h3');
+    line(held,'原本PDFの確認が必要 · '+items.length+'本','h3');
+    line(held,'本文を読めるPDFを取り込み直してから、もう一度見積もりを準備してください。','p');
     for(const item of items){
         const box=document.createElement('div');box.className='file-item';held.append(box);
         line(box,'PMID '+item.pmid+' ／ '+(item.title||'論文名未登録'),'strong');
-        const paper=state.papers.find(p=>p.pmid===item.pmid&&p.heads[0]===item.heads[0]&&p.heads.length===1);
-        line(box,publicationText(paper||item)+' ／ '+item.reason,'p');
-        if(!paper)continue;
-        const actions=document.createElement('div');actions.className='actions';box.append(actions);
-        navButton(actions,'読書ガイド・テーマ図解',()=>openReadingGuide(paper));
-        if(item.can_estimate_full){
-            const full=button(actions,'この1本の全文見積もりに切り替える','json-prepare',
-                {items:[{pmid:item.pmid,heads:item.heads}],include_long:true});
-            full.disabled=locked;
-        }
+        line(box,item.reason,'p');
     }
 }
 function renderJsonRetryEstimate(item){
@@ -281,7 +291,7 @@ for(let id of jsonSelection.keys())if(!rows.some(p=>p.pmid===id))jsonSelection.d
 renderJsonOptions(rows,locked);
 $('json-selected').textContent=jsonSelection.size+' / 5本を選択';
 const preview=b.preview;
-const hasEstimate=Boolean(preview?.policy&&preview.items.length);
+const hasEstimate=Boolean(preview?.policy===2&&preview.items.length);
 $('json-preview').hidden=!hasEstimate;
 renderJsonHeld(preview,locked);
 if((preview?.id||'')!==jsonPreviewId){
@@ -332,6 +342,11 @@ function renderJsonJobs(jobs,locked){
             retryButton.onclick=()=>prepareJsonRetry(job.id);
             box.append(retryButton);
         }else if(job.retry?.used>=job.retry?.limit)line(box,'再試行回数の上限に達しています。','p');
+        if(target&&job.web_json&&!archive){
+            box.open=true;
+            line(box,'依頼文をコピーし、ChatGPT Webで原本PDFと一緒に送ってください。完成JSONを取り込み待ちに保存し、「取り込み・整理」を実行します。','p');
+            jsonManualActions(box,papers.get(job.pmid));
+        }
         if(target){
             const archiveButton=navButton(box,'対象から外す',()=>openManagement(target,'archive'));
             archiveButton.disabled=Boolean(state.busy);

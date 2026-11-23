@@ -22,7 +22,7 @@ SHARED = 'API_JSON'
 MAX_SELECTION = 5
 MAX_RETRIES = 1
 MAX_RETRY_RESERVE = 1.0
-READING_POLICY = 1
+READING_POLICY = 2
 
 
 def api_key(repo):
@@ -100,7 +100,9 @@ def publish(workspace, store):
     for revision in store.rows('SELECT * FROM revisions ORDER BY created_at DESC'):
         binding = store.setting('binding:' + revision['id'], {})
         attempts = store.rows('SELECT * FROM attempts WHERE revision_id=? ORDER BY created_at', (revision['id'],))
-        jobs.append(dict(id=revision['id'], pmid=binding.get('pmid'), source_hash=binding.get('source_hash'), status=revision['status'],
+        counted = json.loads(revision['config']).get('counted_input_tokens')
+        web_json = revision['status'] == 'budget_wait' and type(counted) is int and counted > LONG_INPUT_TOKENS
+        jobs.append(dict(web_json=web_json, id=revision['id'], pmid=binding.get('pmid'), source_hash=binding.get('source_hash'), status=revision['status'],
                          message=revision['error'], at=revision['created_at'],
                          result=store.setting('result:' + revision['id'], ''),
                          retry=retry_info(store, revision, attempts),
@@ -185,6 +187,9 @@ class JsonBatches(Batches):
                 source = self.store.one('sources', revision['source_id'])
                 pdf_info = inspect_pdf(self.store.root / source['path'])
             cfg['counted_input_tokens'] = self.estimate_input(pdf_info, cfg['shared_prompt'])
+        elif cfg['counted_input_tokens'] > LONG_INPUT_TOKENS:
+            raise ValueError(f"実測 {cfg['counted_input_tokens']:,} トークンが全文Batchの上限 "
+                             f"{LONG_INPUT_TOKENS:,} を超えました。Webで全文JSONを作成してください。")
         return super().estimate(dict(revision, config=encode(cfg)), stage, pdf_info)
 
     def manual_handoff(self, revision):
@@ -237,12 +242,10 @@ class JsonBatches(Batches):
                               error='API結果の完了状態・JSON形式・PMID・原本・論文名を確認してください。元の応答は担当Macの台帳に保管しています。')
 
 
-def prepare(repo, workspace, items, *, include_long=False):
+def prepare(repo, workspace, items):
     selected = validate_selection(workspace, items)
     if len(selected) > MAX_SELECTION:
         raise ValueError('JSON作成は1回最大5本です')
-    if include_long and len(selected) != 1:
-        raise ValueError('長いPDFの全文見積もりは1回1本です')
     with ledger(repo, workspace) as store, workspace_lock(workspace):
         store.set_setting('preview', None)
         prepared, held = [], []
@@ -256,19 +259,12 @@ def prepare(repo, workspace, items, *, include_long=False):
             try:
                 info = inspect_pdf(pdf_path)
             except ValueError as error:
-                held.append(dict(item, reason=str(error), can_estimate_full=False))
+                held.append(dict(item, reason=str(error)))
                 continue
             except PyPdfError:
-                held.append(dict(item, reason='PDFをローカルで確認できませんでした。原本を開いて確認してください。',
-                                 can_estimate_full=False))
+                held.append(dict(item, reason='PDFをローカルで確認できませんでした。原本を開いて確認してください。'))
                 continue
             prompt = workspace.json_prompt(pmid, event['data'])
-            input_estimate = JsonBatches.estimate_input(info, prompt)
-            if input_estimate > LONG_INPUT_TOKENS and not include_long:
-                held.append(dict(item, can_estimate_full=True,
-                                 reason=f"PDF {info['pages']}ページ・抽出本文 {info['text_bytes']:,}バイト。"
-                                        'ローカル見積もりが長文料金域に達したため全文送信を保留しました。'))
-                continue
             paper = store.paper(pmid=pmid, title=event['data'].get('title', ''))
             source = store.source(pdf_path, paper['id'])
             existing = store.rows('SELECT * FROM revisions WHERE source_id=? ORDER BY created_at', (source['id'],))
@@ -293,11 +289,10 @@ def prepare(repo, workspace, items, *, include_long=False):
             except ValueError as error:
                 if '長文料金域' not in str(error):
                     raise
-                if not include_long:
-                    raise ValueError('長いPDFの全文見積もりは1本ずつ明示的に準備してください') from None
-                # The explicit send confirmation also authorizes PDF upload for
-                # token counting. No generation if the actual estimate exceeds caps.
-                estimate, needs_count = 4.0, True
+                # A confirmed group may proceed up to the normal-rate input limit.
+                # Reserve each paper's measured cost only when submitting its Batch.
+                estimate = JsonBatches.analysis_reserve(LONG_INPUT_TOKENS, json.loads(revision['config']))
+                needs_count = True
             prepared.append(dict(id=revision['id'], pmid=pmid, title=item['title'], reserve=estimate,
                                  needs_count=needs_count, **publication))
         store.set_setting('preview', dict(id=uid(), policy=READING_POLICY, items=prepared, held=held,
@@ -429,16 +424,27 @@ def submit(repo, workspace, data, api=None):
                 check_binding(workspace, store, store.one('revisions', item['id']))
         api.check_models(include_images=False)
         sent = 0
+        stopped = []
         try:
             for item in preview['items']:
                 with workspace_lock(workspace):
                     check_binding(workspace, store, store.one('revisions', item['id']))
-                sent += engine.submit(limit=1, revision_ids=[item['id']])
+                if engine.submit(limit=1, revision_ids=[item['id']]):
+                    sent += 1
+                else:
+                    result = store.one('revisions', item['id'])
+                    stopped.append(f"PMID {item['pmid']} ／ {result['error'] or '処理履歴を確認してください。'}")
         finally:
             held = preview.get('held', [])
-            # Keep the reading alternatives visible after consuming the send estimate.
+            # Keep unreadable PDFs visible after consuming the send estimate.
             store.set_setting('preview', dict(id=uid(), policy=READING_POLICY, items=[], held=held, total=0) if held else None)
-    return f'{sent}本のBatch送信処理を記録しました。各論文の結果を確認してください。完了後は「状況確認・JSON回収」を押してください。'
+    message = [f'{sent}本のBatch送信処理を記録しました。']
+    if stopped:
+        message.append(f'Batchを作成しなかった論文は{len(stopped)}本です。')
+        message.extend(stopped)
+    if sent:
+        message.append('完了後は「状況確認・JSON回収」を押してください。')
+    return '\n'.join(message)
 
 
 def adopt(workspace, store):
