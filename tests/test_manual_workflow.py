@@ -288,10 +288,14 @@ class ManualTests(unittest.TestCase):
 
     def test_topic_images_are_all_required_before_completion(self):
         second = copy.deepcopy(self.master['topics'][0])
-        second.update(topic_id='second', result_indices=[])
+        second.update(topic_id='second', topic_title='第二の対象集団', result_indices=[])
         self.master['topics'].append(second)
-        self.master['visualization_strategy']['mode'] = 'topics'
+        self.master['visualization_strategy'].update(mode='topics', reason='対象集団ごとに分ける')
         self.imported()
+        files = self.ws.snapshot()['papers'][0]['files']
+        self.assertEqual(next(f['plan_reason'] for f in files if f['kind'] == 'json'), '対象集団ごとに分ける')
+        self.assertEqual([f['topic_title'] for f in files if f['kind'] == 'graphic'],
+                         [self.master['topics'][0]['topic_title'], '第二の対象集団'])
         self.ws.import_file(PMID, 'png', 'main.png', png())
         self.assertEqual(self.category(), 'web_pending')
         event = self.ws.current(PMID)

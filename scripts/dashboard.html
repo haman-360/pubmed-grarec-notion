@@ -87,7 +87,7 @@ button,input,textarea,select{font:inherit}button{border:1px solid transparent;bo
 <tbody id="json-option-rows"></tbody></table></div>
 <p id="json-options-empty" class="hint" hidden>現在のBatch候補はありません。送信済みの分は下の回収ボタンで確認できます。</p>
 <p id="json-selected" class="hint" aria-live="polite"></p>
-<div class="actions json-estimate-actions"><button id="json-prepare" onclick="prepareJson()">選択した論文の見積もりを準備</button><small>見積もり時はPDFの送信・課金はありません。</small></div>
+<div class="actions json-estimate-actions"><button id="json-prepare" onclick="prepareJson()">選択した論文の見積もりを準備</button><small>見積もり時はPDFの送信・課金はありません。グラレコの枚数は全文JSONの作成時に内容に応じて決まり、PNG作成待ちに表示されます。</small></div>
 <div id="json-held" class="result-box" aria-label="全文送信を保留した論文" hidden></div>
 <div id="json-preview" class="result-box" hidden>
 <table class="json-estimate-table" aria-label="送信前の見積もり">
@@ -643,11 +643,17 @@ async function medicalReview(p,g,image){
 function pngActions(parent,p){
     let graphics=p.files.filter(f=>f.kind==='graphic'),saved=new Map();
     for(const kind of ['png','png_candidate'])for(const f of p.files.filter(f=>f.kind===kind))saved.set(f.topic,f);
-    line(parent,'PNG '+graphics.filter(g=>saved.get(g.topic)?.basis===g.sha).length+' / '+graphics.length+'テーマ保存済み','p');
+    const hasOverview=graphics.some(g=>g.topic==='overview');
+    const breakdown=hasOverview?'（全体図1枚＋テーマ別'+(graphics.length-1)+'枚）':'';
+    const savedCount=graphics.filter(g=>saved.get(g.topic)?.basis===g.sha).length;
+    line(parent,'グラレコ 全'+graphics.length+'枚'+breakdown+' ／ '+savedCount+'枚保存済み','p');
+    const reason=p.files.find(f=>f.kind==='json')?.plan_reason;
+    if(reason)line(parent,'この構成にした理由：'+reason,'p');
     let topics=document.createElement('div');topics.style.cssText='max-height:330px;overflow:auto';
     for(let g of graphics){let box=document.createElement('div');box.className='topic-item';let done=saved.get(g.topic)?.basis===g.sha;
         let image=saved.get(g.topic),status=image?.review?.status;
-        line(box,g.topic+' ／ '+(done?({approved:'承認済み',rejected:'不合格・再作成',review_required:'医学的確認待ち'}[status]||'医学的確認待ち'):'作成待ち'),'strong');let payload={pmid:p.pmid,heads:p.heads,topic:g.topic};
+        const title=g.topic==='overview'?'全体図':(g.topic_title||g.topic);
+        line(box,title+' ／ '+(done?({approved:'承認済み',rejected:'不合格・再作成',review_required:'医学的確認待ち'}[status]||'医学的確認待ち'):'作成待ち'),'strong');let payload={pmid:p.pmid,heads:p.heads,topic:g.topic};
         if(done&&status!=='approved'&&status!=='rejected')navButton(box,'画像と固定情報を照合',()=>medicalReview(p,g,image));
         if(status==='rejected')line(box,image.review.reason,'p');
         if(done)button(box,'PNGを開く','open-file',{pmid:p.pmid,heads:p.heads,path:saved.get(g.topic).path});

@@ -244,3 +244,23 @@ test('Notion lists only papers with all medical reviews approved',()=>{
     set("state.papers[0].category='review_pending';state.papers[1].category='review_pending';state.papers[1].medically_approved=true");
     assert.deepEqual(run('notionRows().map(p=>p.pmid)'),['2']);
 });
+
+test('PNG plan shows the overview, each topic title and the count for older files',()=>{
+    const {run,set}=dashboard();
+    set(`
+        document.createElement=()=>({children:[],style:{},append(child){this.children.push(child)}});
+        const parent=document.createElement();
+        const paper={pmid:'42',heads:['a'],files:[
+            {kind:'json',plan_reason:'対象集団ごとに分ける'},
+            {kind:'graphic',topic:'overview',sha:'o'},{kind:'graphic',topic:'a',topic_title:'診断',sha:'a'},
+            {kind:'graphic',topic:'b',topic_title:'治療',sha:'b'}]};
+        pngActions(parent,paper);
+    `);
+    assert.equal(run("parent.children[0].textContent"),'グラレコ 全3枚（全体図1枚＋テーマ別2枚） ／ 0枚保存済み');
+    assert.match(run('parent.children[1].textContent'),/対象集団ごとに分ける/);
+    assert.deepEqual(run('parent.children[2].children.map(box=>box.children[0].textContent)'),
+        ['全体図 ／ 作成待ち','診断 ／ 作成待ち','治療 ／ 作成待ち']);
+    set("paper.files=[{kind:'graphic',topic:'main',sha:'one'}];const old=document.createElement();pngActions(old,paper)");
+    assert.equal(run('old.children[0].textContent'),'グラレコ 全1枚 ／ 0枚保存済み');
+    assert.equal(run('old.children[1].children[0].children[0].textContent'),'main ／ 作成待ち');
+});

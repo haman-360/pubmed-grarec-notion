@@ -242,13 +242,17 @@ class Workspace:
                 data.update(files=files, done=False, structure_wait=str(error),
                             note='生成済み・構造確認待ち：' + str(error))
                 return self.record(pmid, data, [event['id']])
-            files = pdfs + [self.asset(pmid, kind, name, raw, basis=pdfs[0]['sha'])]
+            master_file = self.asset(pmid, kind, name, raw, basis=pdfs[0]['sha'])
+            master_file['plan_reason'] = master['visualization_strategy']['reason']
+            files = pdfs + [master_file]
             data.pop('structure_wait', None)
             data['title'] = master.get('title') or data.get('title', '')
             for topic in image_topics(master):
-                content = graphic_data(master, topic, digest(raw))
-                files.append(self.asset(pmid, 'graphic', topic['topic_id'] + '.json',
-                                        encode(content).encode(), topic['topic_id'], digest(raw)))
+                content = graphic_data(master, topic, master_file['sha'])
+                graphic = self.asset(pmid, 'graphic', topic['topic_id'] + '.json',
+                                     encode(content).encode(), topic['topic_id'], master_file['sha'])
+                graphic['topic_title'] = topic['topic_title']
+                files.append(graphic)
             data['note'] = 'JSONの形式確認済み。医学的な内容は原文との照合が必要です。'
         else:
             if data.get('structure_wait'):
