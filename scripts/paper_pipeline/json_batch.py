@@ -14,7 +14,7 @@ from pypdf.errors import PyPdfError
 from .batches import API, Batches, LONG_INPUT_TOKENS, config, schema
 from .intake import PENDING, identify_pmid, workspace_lock
 from .pdf_download import validate_selection
-from .reading_guide import metadata, publication_label
+from .reading_guide import metadata, publication_info
 from .sources import inspect_pdf
 from .store import Store, atomic_write, digest, encode, now, uid
 
@@ -250,7 +250,8 @@ def prepare(repo, workspace, items, *, include_long=False):
             pmid = item['pmid']; event, pdf = eligible(workspace, pmid, item['heads'])
             article = metadata(workspace, pmid)
             item['title'] = event['data'].get('title') or article.get('title', '')
-            item['publication_type'] = publication_label(article.get('publication_types', []))
+            publication = publication_info(article, item['title'])
+            item.update(publication)
             pdf_path = workspace.path(pdf['path'])
             try:
                 info = inspect_pdf(pdf_path)
@@ -297,8 +298,8 @@ def prepare(repo, workspace, items, *, include_long=False):
                 # The explicit send confirmation also authorizes PDF upload for
                 # token counting. No generation if the actual estimate exceeds caps.
                 estimate, needs_count = 4.0, True
-            prepared.append(dict(id=revision['id'], pmid=pmid, title=item['title'], publication_type=item['publication_type'],
-                                 reserve=estimate, needs_count=needs_count))
+            prepared.append(dict(id=revision['id'], pmid=pmid, title=item['title'], reserve=estimate,
+                                 needs_count=needs_count, **publication))
         store.set_setting('preview', dict(id=uid(), policy=READING_POLICY, items=prepared, held=held,
                                          total=round(sum(x['reserve'] for x in prepared), 6)))
     if held:

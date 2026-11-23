@@ -48,6 +48,38 @@ test('submitted JSON cannot be selected again for the same PDF but a new source 
     const {run,set}=dashboard();set(`state.papers=[{pmid:'1',category:'json_pending',heads:['a'],files:[{kind:'pdf',sha:'old'}]},{pmid:'2',category:'json_pending',heads:['b'],files:[{kind:'pdf',sha:'new'}]}];state.json_batch={jobs:[{pmid:'1',source_hash:'old',attempts:[{status:'submitted'}]},{pmid:'2',source_hash:'old',attempts:[{status:'submitted'}]}]}`);
     assert.deepEqual(run('jsonRows().map(p=>p.pmid)'),['2']);
 });
+test('Batch columns render type and source separately and retain the selected paper after metadata refresh',async()=>{
+    const {run,set}=dashboard();
+    set(`
+        class TestNode {
+            constructor(tag){this.tag=tag;this.children=[];this.dataset={}}
+            append(...children){this.children.push(...children)}
+            replaceChildren(...children){this.children=children}
+        }
+        var nodes=new Map();
+        document.getElementById=id=>{if(!nodes.has(id))nodes.set(id,new TestNode('div'));return nodes.get(id)};
+        document.createElement=tag=>new TestNode(tag);
+        var paper={pmid:'42',heads:['a'],title:'A lengthy title: A Narrative Review',category:'json_pending',files:[],
+            publication_type:'ナラティブレビュー',publication_type_inferred:true,publication_types:[]};
+        state={busy:false,papers:[paper],json_batch:{is_owner:true,jobs:[]}};
+        var calls=[];act=async(action,payload)=>{calls.push({action,payload})};
+        renderJsonPanel();
+        var cells=()=>$('json-option-rows').children[0].children;
+        var check=cells()[0].children[0];
+        check.checked=true;check.onchange();
+    `);
+    assert.equal(run('cells().length'),4);
+    assert.equal(run('cells()[1].textContent'),'42');
+    assert.equal(run('cells()[2].children[0].htmlFor'),run('check.id'));
+    assert.equal(run('cells()[3].children[0].textContent'),'ナラティブレビュー');
+    assert.equal(run('cells()[3].children[1].textContent'),'タイトルから推定');
+    assert.equal(run('check===cells()[0].children[0]'),true);
+    await set('updateJsonMetadata()');
+    assert.deepEqual(run('calls'),[{action:'json-metadata',payload:{pmids:['42']}}]);
+    set("paper.publication_type_inferred=false;paper.publication_types=['Narrative Review'];renderJsonPanel()");
+    assert.equal(run('cells()[0].children[0].checked'),true);
+    assert.equal(run('cells()[3].children[1].textContent'),'PubMed · Narrative Review');
+});
 test('a held PDF offers a reading guide and a separate one-paper estimate without enabling send',async()=>{
     const {run,set}=dashboard();
     set(`

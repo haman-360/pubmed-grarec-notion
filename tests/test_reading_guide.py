@@ -54,7 +54,7 @@ class ReadingGuideTests(unittest.TestCase):
             self.assertEqual(get.call_args.kwargs['params']['id'], PMID)
         app.refresh()
         paper = app.state['papers'][0]
-        self.assertEqual(paper['publication_type'], 'システマティックレビュー／メタ解析')
+        self.assertEqual(paper['publication_type'], 'システマティックレビュー')
         self.assertNotIn('abstract', paper)
         context = reading_guide.guide(self.workspace, PMID, paper['heads'])
         self.assertEqual(context['abstract'], 'RESULTS: An abstract result.')
@@ -62,6 +62,36 @@ class ReadingGuideTests(unittest.TestCase):
             app.run('copy-reading-guide', {'pmid': PMID, 'heads': paper['heads']})
         self.assertIn('1分程度', run.call_args.kwargs['input'].decode())
         self.assertEqual(reading_guide.publication_label(['Journal Article']), '種別未確認')
+
+    def test_explicit_review_title_is_marked_as_inferred_until_pubmed_has_the_type(self):
+        title = 'Treatment outcomes in children: A Systematic Review.'
+        value = reading_guide.publication_info({}, title)
+        self.assertEqual(value['publication_type'], 'システマティックレビュー')
+        self.assertTrue(value['publication_type_inferred'])
+        value = reading_guide.publication_info({'publication_types': ['Review']}, 'Kidney disease-A Narrative Review.')
+        self.assertEqual(value['publication_type'], 'ナラティブレビュー')
+        self.assertTrue(value['publication_type_inferred'])
+        value = reading_guide.publication_info({'publication_types': ['Systematic Review', 'Meta-Analysis']}, title)
+        self.assertEqual(value['publication_type'], 'システマティックレビュー／メタ解析')
+        self.assertFalse(value['publication_type_inferred'])
+        value = reading_guide.publication_info({}, 'Teaching how to read a systematic review in clinical training')
+        self.assertEqual(value['publication_type'], '種別未確認')
+
+    def test_batch_metadata_refresh_updates_existing_pdf_candidate_without_revising_it(self):
+        head = self.add_pdf()['id']
+        awaiting_pdf = '90000002'
+        self.workspace.add(awaiting_pdf)
+        app = Application(self.root / 'repo', self.workspace.root)
+        client = Mock()
+        client.fetch_metadata.return_value = [ArticleMetadata(PMID, title='Synthetic review', publication_types=('Review',))]
+        with patch('paper_pipeline.reading_guide.PubMedClient', return_value=client):
+            message = app.run('json-metadata', {'pmids': [PMID, awaiting_pdf, PMID]})
+        self.assertIn('1/1件', message)
+        client.fetch_metadata.assert_called_once_with([PMID], include_links=False)
+        app.refresh()
+        candidate = next(p for p in app.state['papers'] if p['pmid'] == PMID)
+        self.assertEqual(candidate['publication_types'], ['Review'])
+        self.assertEqual(candidate['heads'], [head])
 
     def test_unavailable_pubmed_preserves_registration(self):
         app = Application(self.root / 'repo', self.workspace.root)

@@ -79,8 +79,8 @@ class Application:
             state['errors'] += self.scan_errors
             for row in state['papers']:
                 article = reading_guide.metadata(workspace, row['pmid'])
-                row['publication_type'] = reading_guide.publication_label(article.get('publication_types', []))
                 row['title'] = row['title'] or article.get('title', '')
+                row.update(reading_guide.publication_info(article, row['title']))
                 errors = [e for e in self.scan_errors if e.startswith('PMID ' + row['pmid'] + ':')]
                 if errors and row['category'] not in ('attention', 'archived'):
                     state['counts'][row['category']] -= 1
@@ -96,7 +96,7 @@ class Application:
             self.state = dict(base, papers=[], counts=dict(total=0, **{k: 0 for k in STAGES}), errors=[str(error)])
 
     def run(self, action, data):
-        if action not in ('configure', 'add', 'reading-metadata', 'fetch-pdfs', 'fetch-pdfs-paid', 'json-budget', 'json-prepare', 'json-send', 'json-collect', 'json-retry-prepare', 'json-retry-send', 'notion-prepare', 'notion-send') and self.settings['shared_root']:
+        if action not in ('configure', 'add', 'reading-metadata', 'json-metadata', 'fetch-pdfs', 'fetch-pdfs-paid', 'json-budget', 'json-prepare', 'json-send', 'json-collect', 'json-retry-prepare', 'json-retry-send', 'notion-prepare', 'notion-send') and self.settings['shared_root']:
             with workspace_lock(self.workspace()):
                 return self._run(action, data)
         return self._run(action, data)
@@ -226,6 +226,20 @@ class Application:
             result = migrate(workspace, select_state_dir(self.repo))
             return f"旧台帳から{result['copied']}件をコピー（既存{result['skipped']}件は保持）。" + '\n'.join(result['warnings'])
         pmid = data.get('pmid')
+        if action == 'json-metadata':
+            requested = data.get('pmids')
+            if not isinstance(requested, list):
+                raise ValueError('Batch候補の一覧を更新してください')
+            pmids = []
+            with workspace_lock(workspace):
+                for identifier in dict.fromkeys(pmid_value(value) for value in requested):
+                    heads = workspace.heads(identifier)
+                    if len(heads) == 1 and workspace.category(heads[0]['data']) == 'json_pending':
+                        pmids.append(identifier)
+            if not pmids:
+                raise ValueError('PubMedの書誌を取得する候補がありません')
+            found = reading_guide.fetch_metadata(workspace, pmids)
+            return f'PubMedの書誌情報を{found}/{len(pmids)}件取得しました。'
         if action == 'reading-metadata':
             with workspace_lock(workspace):
                 workspace.current(pmid, data['heads'])

@@ -13,14 +13,26 @@ from .pubmed import PubMedClient
 from .store import atomic_write, digest, encode
 
 MAX_EXCERPT_PAGES = 12
+REVIEW_NAMES = {
+    'systematic review': 'システマティックレビュー',
+    'scoping review': 'スコーピングレビュー',
+    'narrative review': 'ナラティブレビュー',
+    'meta-analysis': 'メタ解析',
+    'systematic review and meta-analysis': 'システマティックレビュー／メタ解析',
+}
+REVIEW_TITLE = re.compile(
+    r'(?:^|[:\-–—]\s*)(?:an?\s+)?'
+    r'(systematic review(?: and meta[- ]analysis)?|scoping review|narrative review|meta[- ]analysis)'
+    r'(?=\s+(?:of|on|in)\b|\s*[:.?!]?\s*$)', re.IGNORECASE | re.ASCII)
 
 
 def publication_label(types):
     names = {name.casefold() for name in types}
-    if names & {'systematic review', 'meta-analysis'}:
-        return 'システマティックレビュー／メタ解析'
-    if 'scoping review' in names:
-        return 'スコーピングレビュー'
+    if {'systematic review', 'meta-analysis'} <= names:
+        return REVIEW_NAMES['systematic review and meta-analysis']
+    for name, label in REVIEW_NAMES.items():
+        if name in names:
+            return label
     if 'review' in names:
         return 'レビュー'
     if names & {'guideline', 'practice guideline', 'consensus statement'}:
@@ -31,6 +43,18 @@ def publication_label(types):
         return '原著（PubMedの研究種別）'
     other = [name for name in types if name.casefold() != 'journal article']
     return '／'.join(other) or '種別未確認'
+
+
+def publication_info(article, title):
+    types = article.get('publication_types', [])
+    label = publication_label(types)
+    inferred = False
+    if label in ('レビュー', '種別未確認'):
+        match = REVIEW_TITLE.search(title)
+        if match:
+            label = REVIEW_NAMES[match[1].casefold().replace('meta analysis', 'meta-analysis')]
+            inferred = True
+    return dict(publication_type=label, publication_types=types, publication_type_inferred=inferred)
 
 
 def metadata(workspace, pmid):
@@ -89,10 +113,9 @@ def bookmarks(reader):
 def guide(workspace, pmid, heads):
     data = workspace.current(pmid, heads)['data']
     article = metadata(workspace, pmid)
-    types = article.get('publication_types', [])
-    result = dict(pmid=pmid, title=data.get('title') or article.get('title', ''),
-                  publication_type=publication_label(types), abstract=article.get('abstract', ''),
-                  sections=[], pages=0, summary='', max_excerpt_pages=MAX_EXCERPT_PAGES)
+    title = data.get('title') or article.get('title', '')
+    result = dict(pmid=pmid, title=title, abstract=article.get('abstract', ''), sections=[], pages=0,
+                  summary='', max_excerpt_pages=MAX_EXCERPT_PAGES, **publication_info(article, title))
     pdf = next((file for file in data['files'] if file['kind'] == 'pdf'), None)
     if pdf:
         try:
