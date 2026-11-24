@@ -264,7 +264,7 @@ test('PNG plan shows the overview, each topic title and the count for older file
     assert.equal(run('old.children[0].textContent'),'グラレコ 全1枚 ／ 0枚保存済み');
     assert.equal(run('old.children[1].children[0].children[0].textContent'),'main ／ 作成待ち');
 });
-test('teaching HTML can be registered from the home view before any PNG exists',()=>{
+test('teaching HTML can be registered before any PNG exists',()=>{
     const {run,set}=dashboard();
     set("state={busy:false,materials:{version:'edition',requests:5},notion_sync:{key_ready:true,can_operate:true}};renderMaterials()");
     assert.equal(run("$('materials-register').hidden"),false);
@@ -273,4 +273,38 @@ test('teaching HTML can be registered from the home view before any PNG exists',
     assert.deepEqual(run('calls'),[{action:'materials-register',data:{version:'edition'}}]);
     set('state.materials={};renderMaterials()');
     assert.equal(run("$('materials-register').hidden"),true);
+});
+
+test('teaching stage selects registered papers across searches and drops stale selections',async()=>{
+    const {run,set}=dashboard();
+    set(`
+        const nodes=new Map();
+        class Element {
+            constructor(){this.children=[];this.dataset={};this.value=''}
+            append(el){this.children.push(el);el.parent=this;if(el.id)nodes.set(el.id,el)}
+            replaceChildren(){this.children=[]}
+            closest(){return this.parent.parent}
+        }
+        document.createElement=()=>new Element();
+        document.getElementById=id=>{if(!nodes.has(id))nodes.set(id,new Element());return nodes.get(id)};
+        state.teaching_jobs=[{pmid:'3'}];
+        state.papers[3].files=[{kind:'pdf',name:'paper.pdf'}];
+        state.papers.push({...state.papers[0],pmid:'5',category:'archived'});
+        state.papers.push({...state.papers[3],pmid:'6',missing:['paper.pdf']});
+        state.papers.push({...state.papers[3],pmid:'7',heads:['c','d']});
+        state.papers.push({...state.papers[3],pmid:'42526604'});
+        state.materials={version:'legacy'};
+        var calls=[];act=async(action,data)=>calls.push({action,data});
+        renderTeachingOptions();
+    `);
+    assert.deepEqual(run('teachingRows().map(p=>p.pmid)'),['1','2','4']);
+    assert.equal(run("$('teaching-submit').disabled"),true);
+    set("$('teaching-find').value='FIRST';selectTeachingRows();$('teaching-find').value='fourth';selectTeachingRows()");
+    assert.equal(run("$('teaching-count').textContent"),'2本選択中');
+    set("$('teaching-find').value='';state.papers[0].heads=['updated'];renderTeachingOptions()");
+    assert.equal(run("$('teach-1').checked"),false);
+    set("$('teach-2').checked=true;$('teach-2').onchange();$('teaching-batch-paid').checked=false;$('teaching-batch-notion').checked=true");
+    await set('startSelectedTeaching()');
+    assert.deepEqual(run('calls'),[{action:'teaching-request-selected',data:{
+        items:[{pmid:'4',heads:['d']},{pmid:'2',heads:['b']}],paid:false,notion:true}}]);
 });

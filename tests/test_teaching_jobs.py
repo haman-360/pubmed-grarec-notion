@@ -153,3 +153,29 @@ class TeachingFlow(unittest.TestCase):
         self.budget()
         self.app.run('teaching-request',self.intent)
         self.assertEqual(self.api.posts,2)
+
+    def test_selected_requests_preserve_existing_intent_and_skip_stale_rows(self):
+        self.attach()
+        other = '90000002'
+        stale = '90000003'
+        self.ws.add(other)
+        self.ws.add(stale)
+        batch = dict(items=[dict(pmid=stale, heads=['old']),
+                            dict(pmid=self.pmid, heads=[self.ws.current(self.pmid)['id']]),
+                            dict(pmid=other, heads=[self.ws.current(other)['id']])],
+                     paid=False, notion=True)
+        with patch.object(jobs.pdf_download, 'download_selected',
+                          return_value={'items':[{'reason':'手動PDF待ち'}]}) as fetch:
+            result = self.app.run('teaching-request-selected', batch)
+            self.assertIn('要確認 1本', result)
+            self.assertIn(stale, result)
+            fetch.assert_called_once()
+            original = jobs.read(jobs.directory(self.ws, self.pmid)/'request.json')
+            self.assertIs(original['notion'], True)
+            self.assertIs(original['paid'], False)
+            self.assertEqual(set(jobs.requests_list(self.ws)), {self.pmid, other})
+            result = self.app.run('teaching-request-selected', dict(batch, paid=True, notion=False))
+            self.assertIn('要確認 3本', result)
+            self.assertEqual(jobs.read(jobs.directory(self.ws, self.pmid)/'request.json'), original)
+            self.assertEqual(fetch.call_count, 1)
+            self.assertEqual(self.api.posts, 0)

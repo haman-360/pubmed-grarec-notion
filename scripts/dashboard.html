@@ -8,7 +8,7 @@ button,input,textarea,select{font:inherit}button{border:1px solid transparent;bo
 #message{position:sticky;top:8px;z-index:10;max-height:140px;overflow:auto;white-space:pre-wrap;border-radius:10px;background:#e9f2ef;padding:12px;margin:14px 0}#message:empty,#errors:empty{display:none}.errors{white-space:pre-wrap;color:#914c12}#progress-strip,#transition{background:#e7f1ef;border-radius:10px;padding:12px;margin:12px 0}#transition button{margin:4px}.view-heading{margin:20px 0 0}.view-heading h2{font-size:27px;margin:10px 0 0}.table{overflow-x:auto}table{border-collapse:collapse;width:100%;text-align:left;table-layout:fixed}th{background:#f3f7f5;color:#54736c;font-size:13px}th,td{padding:16px 12px;border-bottom:1px solid #e6eeeb;vertical-align:top;overflow-wrap:anywhere}th:first-child{width:37%}th:nth-child(2){width:29%}td p{margin:6px 0}.paper-title{font-weight:600;color:#213f39}.row-actions{display:flex;flex-wrap:wrap;gap:7px}.row-actions button{padding:8px 11px;font-size:13px}.badge{display:inline-block;background:#edf4f1;border-radius:6px;padding:3px 8px;margin:2px 4px 2px 0;font-size:13px}.search-reason{font-size:13px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.link-list{display:flex;gap:7px;flex-wrap:wrap;max-height:230px;overflow:auto;margin:10px 0}.link-list a{display:block;border:1px solid #d8e6e1;border-radius:6px;padding:4px 8px;font-size:13px;max-width:100%;overflow-wrap:anywhere}.paper-details{margin-top:12px}.file-item,.topic-item{border-top:1px solid #e6eeeb;padding:10px 0}.topic-item button{margin:4px 4px 4px 0}.filename{font-size:12px;overflow-wrap:anywhere}.pager{justify-content:flex-end;margin-top:16px}.filterbar{margin:14px 0}#find{min-width:250px;flex:1}.confirm{display:block;padding:12px;background:#f2f7f5;margin:10px 0}.wide{width:100%;max-width:850px}.result-box{background:#f3f7f5;padding:12px;border-radius:9px}.intake-result{white-space:pre-wrap}#intake-result{max-height:220px;overflow:auto}.pending-list{max-height:180px;overflow:auto;white-space:pre-wrap}.intake-count{font-size:19px}.record-note{width:100%}#observed{font-size:13px}#pdf-results,#json-jobs,#notion-results{max-height:420px;overflow:auto}.stage-help{padding:10px 0}.stage-tools{margin-top:16px}footer{margin-top:24px;font-size:12px;color:#698078}.setup-tools{margin-top:20px}
 .json-candidate-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:18px 0 10px}
 .json-candidate-toolbar h3{margin:0}
-#json-options{max-height:min(54vh,30rem);overflow:auto;border:1px solid #dce6e2;border-radius:10px}
+#json-options,#teaching-options{max-height:min(54vh,30rem);overflow:auto;border:1px solid #dce6e2;border-radius:10px}
 .json-candidate-table th{position:sticky;top:0;background:#edf4f1}
 .json-candidate-table tr>*,.json-estimate-table tr>*{padding:10px 12px;line-height:1.45}
 .json-candidate-table th:first-child{width:3.75rem;text-align:center}
@@ -74,8 +74,22 @@ button,input,textarea,select{font:inherit}button{border:1px solid transparent;bo
 <div id="home-view"><div id="home-top" class="home-top"><div id="total-card"></div><section id="intake-view"><header><h2>取り込み待ちをまとめて処理</h2><strong class="intake-count" id="intake-count">取り込み待ち：—</strong></header><p class="hint">PDF・完成JSON・PNGを、PMIDごとに振り分けます。</p>
 <div class="actions"><button onclick="act('organize')">取り込み待ちを処理</button><button class="secondary" onclick="act('intake-folder')">フォルダを開く</button></div>
 <details><summary>保存するファイル名・取り込み方法</summary><p>OneDriveの <b>00_取り込み待ち</b> 直下へ保存してください。</p><ul><li>PDF：PMIDの数字だけで保存できます（例：41276263.pdf）。PMID_41276263.pdf も使えます。</li><li>完成JSON：PMID_番号.json</li><li>PNG：PMID_番号_テーマID.png</li></ul><p class="hint">PDF・JSON・PNGは混在していても取り込めます。PNGのテーマIDは作成画面で確認・コピーできます。PMID不明・候補が複数・保存途中のファイルは残して理由を表示します。PNG作成依頼JSONはWebへ渡すもので、ここへ入れるのは完成したPNGです。</p><p class="hint">保存しただけでは工程の件数は変わりません。処理はこのボタンを押したときに行います。取り込みに成功した入力は01_取り込み済みに保管します。定期的な自動処理は行いません。</p><button class="secondary" onclick="act('archive-folder')">取り込み済みを開く</button></details>
-<details><summary>最終確認時の取り込み待ちファイル</summary><div id="pending-list" class="pending-list"></div></details><details id="intake-result" class="result-box" hidden><summary id="intake-result-label">前回の処理結果</summary><p class="intake-result" id="intake-summary"></p><p class="errors" id="intake-errors"></p></details></section></div><section id="materials-box"><h2>PMIDから教材を作る</h2>
-<label>論文のPMID <input id="teaching-pmid" list="teaching-papers" inputmode="numeric" value="42526604" oninput="renderMaterials()"></label>
+<details><summary>最終確認時の取り込み待ちファイル</summary><div id="pending-list" class="pending-list"></div></details><details id="intake-result" class="result-box" hidden><summary id="intake-result-label">前回の処理結果</summary><p class="intake-result" id="intake-summary"></p><p class="errors" id="intake-errors"></p></details></section></div><div class="cards" id="cards"></div><div class="actions setup-tools" id="parked-cards"></div><div class="actions setup-tools"><button data-nav onclick="navigate('add')">PMIDを追加</button><button class="secondary" data-nav onclick="navigate('settings')">このMacの設定</button></div></div>
+<div id="view-heading" class="view-heading" hidden><button class="secondary" data-nav onclick="navigate('home')">← 論文処理のいまへ</button><h2 id="view-title" tabindex="-1"></h2><p id="view-description" class="hint"></p><div id="stage-actions" class="actions stage-tools"></div></div>
+<section id="materials-box" hidden><h2>教材を作る論文を選択</h2>
+<label>論文を検索 <input id="teaching-find" placeholder="論文名・PMID" oninput="renderTeachingOptions()"></label>
+<div class="actions filterbar"><button class="secondary" id="teaching-select-all" onclick="selectTeachingRows()">表示中の論文をすべて選択</button><button class="secondary" id="teaching-clear" onclick="teachingSelection.clear();renderTeachingOptions()">選択を解除</button></div>
+<div id="teaching-options"><table class="json-candidate-table" aria-label="教材作成の候補">
+<thead><tr><th>選択</th><th>PMID</th><th>論文タイトル</th><th>原本PDF</th></tr></thead><tbody id="teaching-rows"></tbody></table></div>
+<p id="teaching-empty" class="hint" hidden>該当する未依頼の論文はありません。</p>
+<p><label><input id="teaching-batch-paid" type="checkbox"> 教材Masterがない選択論文はPDFをAPIへ送り、設定予算内で精読・統合（1論文版の予約上限 $4）</label><br>
+<label><input id="teaching-batch-notion" type="checkbox" checked> 完成後、Notion担当MacからHTMLと原本PDFを登録</label></p>
+<p class="hint">API利用をオフにすると、保存済みの教材Masterを再利用します。Masterがない論文は精読の依頼待ちになります。</p>
+<button id="teaching-submit" onclick="startSelectedTeaching()" disabled>選択した論文の教材を作る</button>
+<span id="teaching-count" role="status"></span></section>
+<section id="teaching-history" hidden><h2>依頼済み・作成済みの教材</h2><div id="teaching-jobs"></div>
+<details id="teaching-single"><summary>個別の教材を開く・PMIDを指定して依頼する</summary>
+<label>論文のPMID <input id="teaching-pmid" list="teaching-papers" inputmode="numeric" placeholder="PMID" oninput="renderMaterials()"></label>
 <datalist id="teaching-papers"></datalist><span id="teaching-title"></span>
 <p><label><input id="teaching-paid" type="checkbox"> 教材MasterがなければPDFをAPIへ送り、設定予算内で精読・統合（1論文版の予約上限 $4）</label><br>
 <label><input id="teaching-notion" type="checkbox" checked> 完成後、Notion担当MacからHTMLと原本PDFを登録</label></p>
@@ -83,13 +97,12 @@ button,input,textarea,select{font:inherit}button{border:1px solid transparent;bo
 <button class="secondary" id="materials-open" onclick="materialAction('open')">教材HTMLを開く</button>
 <button class="secondary" id="materials-folder" onclick="materialAction('folder')">PNG依頼JSONの場所を開く</button>
 <button id="materials-register" onclick="materialAction('register')">教材HTMLと原本PDFをNotionへ登録</button></div>
-<p class="hint" id="materials-status"></p><div id="teaching-jobs"></div>
+<p class="hint" id="materials-status"></p>
 <details id="material-images" hidden><summary>完成PNGを1枚ずつ確認・登録</summary>
 <p>依頼JSONで指定されたファイル名で完成PNGを保存し、「到着状況を更新」を押してください。</p>
 <div class="actions"><button class="secondary" onclick="materialAction('png-folder')">完成PNGの保存先を開く</button>
 <button class="secondary" onclick="materialAction('png-refresh')">到着状況を更新</button></div>
-<div id="material-images-list"></div></details></section><div class="cards" id="cards"></div><div class="actions setup-tools" id="parked-cards"></div><div class="actions setup-tools"><button data-nav onclick="navigate('add')">PMIDを追加</button><button class="secondary" data-nav onclick="navigate('settings')">このMacの設定</button></div></div>
-<div id="view-heading" class="view-heading" hidden><button class="secondary" data-nav onclick="navigate('home')">← 論文処理のいまへ</button><h2 id="view-title" tabindex="-1"></h2><p id="view-description" class="hint"></p><div id="stage-actions" class="actions stage-tools"></div></div>
+<div id="material-images-list"></div></details></details></section>
 <section id="json-panel" hidden><h2>PDFからJSONを作成する — Batch API</h2>
 <p class="hint">PDF取得済み・JSON未作成の論文から、見積もり対象を最大5本選びます。</p>
 <p id="json-owner" class="hint"></p><details id="json-budget-details"><summary>APIキー・担当Mac・予算の設定</summary>
@@ -178,7 +191,8 @@ button,input,textarea,select{font:inherit}button{border:1px solid transparent;bo
 <script>
 const token='__TOKEN__';const $=id=>document.getElementById(id);let state=null,filter='total',signature='',initialized=false;const pdfSelection=new Map();let pdfOptionsSignature='',pdfResultSignature='';
 const categories=[['total','登録している論文','すべての論文'],['missing_pdf','PDF取得待ち','公開PDFの自動取得・手動保存'],['json_pending','JSON作成待ち','Web・Batch APIでJSONを作成'],['web_pending','PNG作成待ち','JSONからテーマ別に作成'],['review_pending','PNG確認・登録待ち','原文照合後にNotion登録'],['completed','登録完了','確認と登録を記録済み'],['attention','要確認・競合','未同期・複数端末の更新など'],['deferred','再確認待ち','次回確認日まで待つ論文'],['archived','アーカイブ','対象から外した論文・復帰']];
-const label=k=>categories.find(x=>x[0]===k)?.[1]||k;const date=s=>s?new Date(s).toLocaleString('ja-JP'):'';
+const stageCards=[...categories,['teaching','教材作成','未依頼の論文を選択・教材の進捗を確認']];
+const label=k=>stageCards.find(x=>x[0]===k)?.[1]||k;const date=s=>s?new Date(s).toLocaleString('ja-JP'):'';
 async function api(path,data){let r=await fetch(path,{method:data?'POST':'GET',headers:{'X-App-Token':token,'Content-Type':'application/json'},body:data?JSON.stringify(data):undefined});let v=await r.json();if(!r.ok)throw Error(v.error||'接続を確認してください');return v}
 let actionPending=false;
 function teachingPmid(){return $('teaching-pmid').value.trim()||''}
@@ -195,16 +209,82 @@ function startTeaching(){
     if(!/^[1-9][0-9]{0,8}$/.test(pmid)){$('materials-status').textContent='PMIDを数字で入力してください。';return}
     return act('teaching-request',{pmid,paid:$('teaching-paid').checked,notion:$('teaching-notion').checked});
 }
+const teachingSelection=new Map();
+let teachingTableSignature='';
+function teachingRows(){
+    const requested=new Set((state?.teaching_jobs||[]).map(job=>job.pmid));
+    return (state?.papers||[]).filter(paper=>{
+        if(paper.category==='archived'||paper.heads.length!==1||requested.has(paper.pmid))return false;
+        if((paper.pmid==='42526604'?state.materials:state.teaching_kits?.[paper.pmid])?.version)return false;
+        const pdf=paper.files.find(file=>file.kind==='pdf');
+        return pdf?!paper.missing?.includes(pdf.name):paper.category==='missing_pdf';
+    });
+}
+function visibleTeachingRows(rows){
+    const query=$('teaching-find').value.trim().toLowerCase();
+    return rows.filter(p=>(p.pmid+' '+p.title).toLowerCase().includes(query));
+}
+function selectTeachingRows(){
+    for(const p of visibleTeachingRows(teachingRows()))teachingSelection.set(p.pmid,p.heads[0]);
+    renderTeachingOptions();
+}
+function renderTeachingOptions(){
+    const rows=teachingRows(),visible=visibleTeachingRows(rows);
+    const heads=new Map(rows.map(p=>[p.pmid,p.heads[0]]));
+    for(const [pmid,head] of teachingSelection){
+        if(heads.get(pmid)!==head)teachingSelection.delete(pmid);
+    }
+    const signature=JSON.stringify(visible.map(p=>[p.pmid,p.title,p.heads[0],p.files.some(f=>f.kind==='pdf')]));
+    if(signature!==teachingTableSignature){
+        teachingTableSignature=signature;
+        const body=$('teaching-rows');body.replaceChildren();
+        for(const paper of visible){
+            const row=document.createElement('tr');body.append(row);
+            const check=document.createElement('input');check.type='checkbox';check.id='teach-'+paper.pmid;
+            cell(row,'').append(check);cell(row,paper.pmid,'json-pmid');
+            const title=line(cell(row,''),paper.title||'論文名未登録','label');title.htmlFor=check.id;
+            cell(row,paper.files.some(f=>f.kind==='pdf')?'取得済み':'依頼時に無料検索');
+            check.onchange=()=>{
+                if(check.checked)teachingSelection.set(paper.pmid,paper.heads[0]);
+                else teachingSelection.delete(paper.pmid);
+                renderTeachingOptions();
+            };
+        }
+    }
+    for(const paper of visible){
+        const check=$('teach-'+paper.pmid);
+        check.checked=teachingSelection.has(paper.pmid);check.disabled=state.busy;
+        check.closest('tr').dataset.selected=String(check.checked);
+    }
+    $('teaching-options').hidden=!visible.length;$('teaching-empty').hidden=Boolean(visible.length);
+    const count=teachingSelection.size;
+    $('teaching-count').textContent=count+'本選択中';
+    $('teaching-select-all').disabled=state.busy||!visible.length;
+    $('teaching-clear').disabled=state.busy||!count;$('teaching-submit').disabled=state.busy||!count;
+    $('teaching-batch-paid').disabled=state.busy;$('teaching-batch-notion').disabled=state.busy;
+}
+async function startSelectedTeaching(){
+    if(!teachingSelection.size||state.busy)return;
+    const items=[...teachingSelection].map(([pmid,head])=>({pmid,heads:[head]}));
+    await act('teaching-request-selected',{items,paid:$('teaching-batch-paid').checked,notion:$('teaching-batch-notion').checked});
+    $('teaching-batch-paid').checked=false;
+}
 function renderTeachingJobs(){
     const options=$('teaching-papers'),jobs=$('teaching-jobs');
     options.textContent='';jobs.textContent='';
     for(const paper of state.papers||[]){
         const option=document.createElement('option');option.value=paper.pmid;option.label=paper.title;options.append(option);
     }
-    for(const job of state.teaching_jobs||[]){
+    const history=[...(state.teaching_jobs||[])];
+    if(state.materials?.version&&!history.some(j=>j.pmid==='42526604'))
+        history.push({pmid:'42526604',message:'教材作成済み',paid:false,notion:Boolean(state.materials.page_id)});
+    if(!history.length)line(jobs,'依頼済みの教材はありません。','p');
+    for(const job of history){
         const cost=job.cost?' ／ 使用概算 $'+job.cost.actual.toFixed(3)+'・未確定予約 $'+job.cost.reserved.toFixed(3):'';
-        navButton(jobs,'PMID '+job.pmid+' · '+job.message+cost,()=>{
-            $('teaching-pmid').value=job.pmid;$('teaching-paid').checked=job.paid;$('teaching-notion').checked=job.notion;renderMaterials();
+        const title=(state.papers||[]).find(p=>p.pmid===job.pmid)?.title;
+        navButton(jobs,(title?title+' ／ ':'')+'PMID '+job.pmid+' · '+job.message+cost,()=>{
+            $('teaching-single').open=true;
+            $('teaching-pmid').value=job.pmid;$('teaching-paid').checked=job.paid;$('teaching-notion').checked=job.notion;renderMaterials();$('teaching-single').scrollIntoView({block:'start'});
         });
     }
 }
@@ -241,7 +321,7 @@ function renderMaterials(){
     }
     if(kit.images?.length && !kit.page_id)line(list,'PNGはHTML登録後に同じページへ追加できます。','p');
 }
-function renderActionButtons(){for(let b of document.querySelectorAll('button:not([data-nav])'))b.disabled=Boolean(state.busy)&&!b.hasAttribute('data-manual-refresh');renderPdfOptions();renderJsonPanel();renderNotionPanel();renderMaterials()}
+function renderActionButtons(){for(let b of document.querySelectorAll('button:not([data-nav])'))b.disabled=Boolean(state.busy)&&!b.hasAttribute('data-manual-refresh');renderPdfOptions();renderJsonPanel();renderNotionPanel();renderMaterials();if(view==='teaching')renderTeachingOptions()}
 async function manualRefresh(){await refresh();if(state&&!state.busy&&!actionPending)await act('refresh')}
 async function act(action,data={}){if(actionPending)return false;actionPending=true;let before=new Map((state?.papers||[]).map(p=>[p.pmid,p.category]));let failure='';try{if(state){state.busy=true;renderActionButtons();renderProgress()}$('message').textContent='処理中です。完了すると結果を表示します。途中の状況は「保存状況を確認」で確認できます。';await api('/api/action',{action,...data})}catch(e){failure=e.message}finally{actionPending=false;await refresh()}if(failure){$('message').textContent=failure;return false}showTransitions(before);if(action==='organize'&&state.intake_result)$('intake-result').open=true;return true}
 function button(parent,text,action,data={}){let b=document.createElement('button');b.className='secondary';b.textContent=text;b.onclick=()=>act(action,data);parent.append(b);return b}
@@ -470,6 +550,7 @@ if(e.source)line(box,'取得元：'+e.source,'p');for(let url of e.manual_urls||
 let view='home', activePanel='', page=1, viewSignature='';
 const pageSize=10;
 const stageHelp={
+    teaching:'登録済みの論文をまとめて選べます。PDF未取得の論文は依頼時に無料検索します。',
     total:'すべての論文の現在地を確認できます。「この工程で作業する」から続けてください。',
     archived:'対象から外した理由と履歴を確認できます。ファイルは保持され、作業対象に戻せます。',
     deferred:'次回確認日の早い順です。起動・手動更新時に期日を迎えた論文が「今探す」に戻ります。自動検索は行いません。',
@@ -503,6 +584,7 @@ function renderView(){
     $('view-title').textContent=viewName(view)+(state?.counts[view]!==undefined?' · '+state.counts[view]+'本':'');
     $('view-description').textContent=stageHelp[view]||'';
     $('intake-view').hidden=!['home','intake'].includes(view);$('add-view').hidden=view!=='add';$('settings-view').hidden=view!=='settings';
+    $('materials-box').hidden=view!=='teaching';$('teaching-history').hidden=view!=='teaching';
     for(let id of ['json-panel','notion-panel','pdf-panel'])$(id).hidden=id!==activePanel;
     $('paper-list').hidden=!(categories.some(c=>c[0]===view)||view==='history')||Boolean(activePanel);
     $('pdf-filters').hidden=!['missing_pdf','history'].includes(view);
@@ -520,8 +602,13 @@ function renderView(){
     if(['missing_pdf','json_pending','web_pending','review_pending','attention'].includes(view))navButton(actions,'取り込み待ちを開く・処理',()=>navigate('intake'));
 }
 function renderCards(){
-    if(!$('cards').children.length)for(let [key,name,help] of categories){let b=navButton($(key==='total'?'total-card':['deferred','archived'].includes(key)?'parked-cards':'cards'),'',()=>navigate(key));b.className=['deferred','archived'].includes(key)?'secondary':'card';b.id='card-'+key;line(b,name,'span');line(b,'','strong');line(b,help)}
-    for(let [key] of categories){let b=$('card-'+key);b.querySelector('strong').textContent=(state?.counts[key]??0)+'本';b.setAttribute('aria-label',label(key)+' '+(state?.counts[key]??0)+'本')}
+    if(!$('cards').children.length)for(let [key,name,help] of stageCards){let b=navButton($(key==='total'?'total-card':['deferred','archived'].includes(key)?'parked-cards':'cards'),'',()=>navigate(key));b.className=['deferred','archived'].includes(key)?'secondary':'card';b.id='card-'+key;line(b,name,'span');line(b,'','strong');line(b,help)}
+    for(const [key] of stageCards){
+        const count=key==='teaching'?teachingRows().length:(state?.counts[key]??0);
+        const caption=(key==='teaching'?'未依頼 ':'')+count+'本';
+        const card=$('card-'+key);card.querySelector('strong').textContent=caption;
+        card.setAttribute('aria-label',label(key)+' '+caption);
+    }
 }
 function renderProgress(){
     let strip=$('progress-strip');strip.replaceChildren();
@@ -855,6 +942,6 @@ async function showStartupResult(){
 }
 showStartupResult();
 if(typeof window!=='undefined')window.setInterval(()=>{
-    if(view==='home' && !document.hidden && !document.querySelector('dialog[open]') && !actionPending && state?.teaching_jobs?.length)refresh();
+    if(['home','teaching'].includes(view) && !document.hidden && !document.querySelector('dialog[open]') && !actionPending && state?.teaching_jobs?.length)refresh();
 },30000);
 </script></html>

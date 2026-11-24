@@ -107,7 +107,7 @@ class Application:
             self.state = dict(base, papers=[], counts=dict(total=0, **{k: 0 for k in STAGES}), errors=[str(error)])
 
     def run(self, action, data):
-        if action not in ('configure', 'add', 'reading-metadata', 'json-metadata', 'fetch-pdfs', 'fetch-pdfs-paid', 'json-budget', 'json-prepare', 'json-send', 'json-collect', 'json-retry-prepare', 'json-retry-send', 'notion-prepare', 'notion-send', 'materials-register', 'materials-png-register', 'teaching-request', 'teaching-poll') and self.settings['shared_root']:
+        if action not in ('configure', 'add', 'reading-metadata', 'json-metadata', 'fetch-pdfs', 'fetch-pdfs-paid', 'json-budget', 'json-prepare', 'json-send', 'json-collect', 'json-retry-prepare', 'json-retry-send', 'notion-prepare', 'notion-send', 'materials-register', 'materials-png-register', 'teaching-request', 'teaching-request-selected', 'teaching-poll') and self.settings['shared_root']:
             with workspace_lock(self.workspace()):
                 return self._run(action, data)
         return self._run(action, data)
@@ -125,6 +125,8 @@ class Application:
             save_settings(self.repo, self.settings)
             return '共有フォルダを設定しました。OneDrive標準アプリで同期します。'
         workspace = self.workspace()
+        if action == 'teaching-request-selected':
+            return teaching_jobs.request_selected(self.repo, workspace, data)
         if action == 'teaching-request':
             result = teaching_jobs.request(self.repo, workspace, data)
             teaching_jobs.advance(self.repo, workspace, data['pmid'])

@@ -39,8 +39,8 @@ def requests_list(workspace):
             if p.parent.name.isascii() and p.parent.name.isdigit()]
 
 
-def source_for(workspace, pmid):
-    event = workspace.current(pmid)
+def source_for(workspace, pmid, expected=None):
+    event = workspace.current(pmid, expected)
     if workspace.category(event['data']) == 'archived':
         raise ValueError('この論文はアーカイブされています')
     files = [f for f in event['data']['files'] if f['kind']=='pdf']
@@ -49,18 +49,23 @@ def source_for(workspace, pmid):
     return event, files[0] if files else None
 
 
-def request(repo, workspace, data):
+def request(repo, workspace, data, *, selected_heads=None):
     pmid = pmid_value(data.get('pmid'))
     folder = directory(workspace, pmid)
     with workspace_lock(workspace):
-        workspace.add(pmid)
-        event, pdf = source_for(workspace, pmid)
+        if selected_heads is None:
+            workspace.add(pmid)
+        event, pdf = source_for(workspace, pmid, selected_heads)
         old = read(folder/'request.json')
+        if selected_heads is not None:
+            if old or materials.current(workspace, pmid):
+                raise ValueError('依頼済み・作成済みです。教材の進捗を確認してください')
+            if pdf and not workspace.path(pdf['path']).is_file():
+                raise ValueError('原本PDFの同期を待ってください')
+            if not pdf and workspace.category(event['data']) != 'missing_pdf':
+                raise ValueError('PDF取得待ちの状態を確認してください')
         if old.get('source') and pdf and pdf['sha'] != old['source']:
             raise ValueError('依頼時の原本PDFが差し替えられました。版を確認してください')
-        write(folder/'request.json', pmid=pmid, paid=data.get('paid') is True, request_id=uid(),
-              notion=data.get('notion') is True,
-              source=old.get('source') or (pdf['sha'] if pdf else ''))
         if pmid == materials.PMID and not materials.current(workspace, pmid):
             if (Path(repo)/materials.EDITION/'master.json').is_file() and (Path(repo)/materials.PILOT_PDF).is_file():
                 if pdf and digest((Path(repo)/materials.PILOT_PDF).read_bytes()) != pdf['sha']:
@@ -70,8 +75,13 @@ def request(repo, workspace, data):
             master = reusable(repo, pmid, pdf['sha'])
             if master:
                 materials.publish(workspace, pmid, master.read_bytes(), workspace.read_asset(pdf))
-        if materials.current(workspace, pmid):
+        ready = materials.current(workspace, pmid)
+        if ready:
             verify_current(workspace, pmid, pdf)
+        write(folder/'request.json', pmid=pmid, paid=data.get('paid') is True, request_id=uid(),
+              notion=data.get('notion') is True,
+              source=old.get('source') or (pdf['sha'] if pdf else ''))
+        if ready:
             return '保存済み教材を確認しました。精読APIの再送は不要です。'
     if not pdf:
         result = pdf_download.download_selected(workspace, [dict(pmid=pmid, heads=[event['id']])])
@@ -79,6 +89,32 @@ def request(repo, workspace, data):
         write(folder/'pdf.json',message=reason)
         return reason
     return '教材の作成依頼を保存しました。'
+
+
+def request_selected(repo, workspace, data):
+    items = data.get('items')
+    if not isinstance(items, list) or not items:
+        raise ValueError('教材を作る論文を選んでください')
+    selection = {}
+    for item in items:
+        if not isinstance(item, dict):
+            raise ValueError('論文一覧から選び直してください')
+        pmid = pmid_value(item.get('pmid'))
+        heads = item.get('heads')
+        if not isinstance(heads, list) or len(heads) != 1 or not isinstance(heads[0], str) or pmid in selection:
+            raise ValueError('論文一覧から選び直してください')
+        selection[pmid] = heads
+    errors = []
+    for pmid, heads in selection.items():
+        try:
+            request(repo, workspace, dict(pmid=pmid, paid=data.get('paid'), notion=data.get('notion')),
+                    selected_heads=heads)
+            advance(repo, workspace, pmid)
+        except ValidationError as error:
+            errors.append(f'PMID {pmid}：教材JSONを確認してください：{error.json_path}')
+        except (ValueError, RuntimeError, OSError, KeyError, PyPdfError) as error:
+            errors.append(f'PMID {pmid}：{error}')
+    return '\n'.join([f'教材作成の依頼を処理しました。対象 {len(selection)}本 ／ 要確認 {len(errors)}本', *errors])
 
 
 def verify_current(workspace, pmid, pdf):
