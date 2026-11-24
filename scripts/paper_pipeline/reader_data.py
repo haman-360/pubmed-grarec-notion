@@ -107,13 +107,22 @@ def learning_sections(master):
     def cited_blocks(blocks):
         result = []
         for block in blocks:
-            lookup(evidence, block['evidence_ids'])
+            facts = lookup(evidence, block['evidence_ids'])
+            pages = []
+            for fact in facts:
+                for source in lookup(sources, fact['source_refs']):
+                    if source['source'] == 'original_pdf':
+                        start = source['pdf_page_start']
+                        end = source.get('pdf_page_end', start)
+                        pages.append(f'p.{start}' if start == end else f'pp.{start}–{end}')
             origin = 'AIによる臨床的解釈' if block['origin'] == 'ai_interpretation' else '論文の記述'
             roles = {'finding': '知見', 'specialist_detail': '専門的解説', 'mechanism': '機序',
                      'result': '結果', 'author_view': '著者の見解', 'uncertainty': '未解決の点',
                      'clinical_meaning': '臨床的意義', 'japan_applicability': '日本の診療への適用'}
-            result.append((origin + ' ／ ' + roles[block['role']],
-                           {'本文': block['text_ja'], '根拠ID': block['evidence_ids']}))
+            detail = {'本文': block['text_ja'], '根拠ID': block['evidence_ids']}
+            if pages:
+                detail['原本PDF'] = '、'.join(dict.fromkeys(pages))
+            result.append((origin + ' ／ ' + roles[block['role']], detail))
         return result
 
     sections = []
@@ -126,6 +135,13 @@ def learning_sections(master):
             parents.add(parent)
             parent = lookup(chapters, [parent])[0]['parent_id']
         body = [('原文見出し', chapter['section_title_original']), ('概要', chapter['summary_ja'])]
+        chapter_sources = lookup(sources, chapter['source_refs'])
+        locator = next((s for s in chapter_sources if s['id'] == 'range-' + chapter['id']
+                        and s['source'] == 'original_pdf'), None)
+        if locator:
+            first = locator['pdf_page_start']
+            last = locator.get('pdf_page_end', first)
+            body.insert(1, ('原本PDFの範囲', f'p.{first}' if first == last else f'pp.{first}–{last}'))
         body.extend(cited_blocks(chapter['blocks']))
         for panel in lookup(panels, chapter['visualization_ids']):
             rows = []
@@ -139,7 +155,7 @@ def learning_sections(master):
                 body.append((panel['title_ja'] + '（原文の値）', rows))
             elif panel['type'] == 'comparison':
                 body.append((panel['title_ja'], panel['items']))
-        body.append(('出典', lookup(sources, chapter['source_refs'])))
+        body.append(('出典', chapter_sources))
         sections.append((chapter['title_ja'], body))
     if master['clinical_interpretation']:
         sections.append(('論文全体の臨床的解釈', cited_blocks(master['clinical_interpretation'])))

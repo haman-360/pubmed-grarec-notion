@@ -170,6 +170,42 @@ Macの論文一覧で、完成JSONのある論文の **「オフラインReader�
 
 旧形式は文字列・配列・図表の辞書をそのまま読める形に整えます。現行の `hybrid-v1` はテーマと対応する原文位置・根拠を表示します。Readerは `schemas/learning-v2.json` に適合したファイルもCLIから読み、章・抄録対訳・構造化された数値を表示します。原文抄録はJSON又はMacに保存済みのPubMed書誌を使い、訳は保存済みの場合だけ表示します。未取得の情報は「未取得」、未評価のPractice Changeは「未評価」と表示します。
 
+## 長文のレビューやガイドラインを章別に精読する
+
+ローカルCLIでPDFの章・節ごとに資料を準備し、戻ってきた精読結果を順次取り込めます。原本は読み取り専用です。作業先はこのMacの `output/chapter_reviews` で、OneDriveの進捗・Notion登録とは独立しています。
+
+**1. PDFを分割する。** リポジトリのルートで次を実行します。最後に表示される作業フォルダを控えてください。PDFに書誌タイトルがない場合は `--title` で指定します。`--journal`、`--year`、`--doi` も任意で指定できます。
+
+```sh
+.venv/bin/python scripts/review_chapters.py prepare \
+  'input/pdfs/42526604_Use electronic cigarettes asthma across lifespan.pdf' \
+  --pmid 42526604 --article-type narrative_review
+```
+
+`manifest.json` に分割方法、各章の見出し、階層、原本の開始・終了ページを記録します。しおりや本文の見出しを使い、長い節は既定で10ページ・抽出文字数32,000字を目安に分けます。1ページは分断しません。見出しを検出できないPDFはページ範囲に分割します。自動判定を直す場合は `--sections sections.json` を付けて再準備してください。分割計画が変わると別の作業フォルダになります。
+
+```json
+[{"title":"Introduction","page":1},{"title":"Recommendations","page":8},{"title":"Exceptions","page":9,"level":2}]
+```
+
+`page` は表紙を1とする原本PDFの物理ページです。同じページに複数の節を指定できます。境界がページの途中にある場合、両方の抜粋にそのページを残します。抽出テキストで見出しを特定できた箇所は節内に絞って引用を照合します。スキャンや不規則な組版では原ページの見出しを確認してください。
+
+**2. 章ごとに精読する。** 各 `ch0001` 等のフォルダには抜粋 `source.pdf`、精読依頼 `request.txt`、記入用 `response-template.json` が入ります。人が記入する場合は雛形をコピーして `response.json` として保存します。既存のWeb手動運用なら抜粋と依頼文から得たJSONを同じ名前で保存します。CLIからPDFや依頼文を外部に送る処理はありません。
+
+結果には章の日本語解説、所見の種類・適用条件・例外、出典ページと原文の短い引用を記入します。`source_numbers` はその章の `sources` 配列の1番目から数えます。測定値は `measurements` に原文表記を保存します。`highlight: true` の所見を論文全体の概要に採用します。表紙や文献一覧は章の位置を示す引用を添え、所見を空にできます。
+
+**3. 取り込み・再開する。** `prepare` が表示したフォルダを指定します。
+
+```sh
+.venv/bin/python scripts/review_chapters.py resume '作業フォルダのパス'
+```
+
+`pending` は未提出の章、`errors` は修正が必要な章と理由です。一部の章にエラーがあっても、他の正常な章を受理します。未完了分を保存して同じコマンドを実行すると、受理済みの `accepted.json` を再利用します。終了コードは完成が0、未提出が1、エラーが2です。
+
+図表やスキャンの引用を文字抽出で確認できない場合は、該当出典に `visual_only: true` を記録し、原ページと目視照合したうえで `resume … --confirm-visual ch0003` のように章を指定します。確認方法はMasterに残ります。受理済みの章を訂正する場合は、その章の `response.json` を直して `--revise ch0003` を指定します。
+
+全章が揃うと、Masterのスキーマと参照関係を検証し、`editions` の同じ版に `master.json` と `reader.html` を保存します。Readerでは所見の横に原本PDFのページが表示されます。原文引用・数値の機械照合後も `human_checked` は false です。論文全体の医学的妥当性は医師が原本で確認します。
+
 ## Batch APIでJSONを作成・回収する（段階4）
 
 1. アプリを再起動し、工程2の **「APIでJSON作成・回収」** を開きます。API操作は担当Mac 1台に限定します。手動取り込みやPDF取得は他のMacでも続けられます。
