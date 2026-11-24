@@ -1,0 +1,470 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; script-src 'sha256-@@SCRIPT_HASH@@'; style-src 'sha256-@@STYLE_HASH@@'; base-uri 'none'; form-action 'none'">
+<title>電子たばこと喘息 ｜ ライフステージで読む</title>
+<style>
+:root { --ink:#202e39; --paper:#faf8f1; --rule:#d9d9cd; --accent:#186e68; --wash:#e9f3e9; --deep:#255e58; color:var(--ink); background:var(--paper); font:16px/1.55 -apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic",sans-serif }
+* { box-sizing:border-box }
+body { margin:0 }
+button,input,select { font:inherit; color:inherit }
+button,a,summary { touch-action:manipulation }
+button { cursor:pointer }
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible { outline:3px solid #246dba; outline-offset:3px }
+button:disabled { opacity:.35; cursor:default }
+header { background:#213337; color:#fff }
+.bar,.page { max-width:1250px; margin:auto; padding:0 clamp(16px,4.3vw,60px) }
+.bar { height:54px; display:flex; align-items:center; gap:13px }
+.brand { font-size:.88rem; font-weight:750; letter-spacing:.08em }
+.pmid,.journal,.serial,.figure-label,.study-line,.micro { font-family:"Avenir Next",Avenir,-apple-system,sans-serif }
+.pmid { color:#c7dbd1; font-size:.76rem; border-left:1px solid #6c7976; padding-left:14px }
+.library-button { margin-left:auto; background:transparent; border:1px solid #839690; border-radius:20px; color:inherit; padding:4px 13px; font-size:.8rem }
+h1,h2,h3,p,figure { margin:0 }
+h1,h2,h3 { line-height:1.32; text-wrap:pretty }
+.intro { display:flex; justify-content:space-between; align-items:end; gap:20px; padding:23px 0 18px }
+.intro h1 { font-size:clamp(1.85rem,3.2vw,2.9rem); letter-spacing:-.055em }
+.intro h1 span { color:#517068; font-size:.47em; letter-spacing:.025em; display:inline-block; margin-left:14px }
+.journal { font-size:.77rem; color:#546763; margin-top:5px }
+.serial { font-family:Georgia,serif; font-style:italic; color:#596962 }
+.stages { position:relative; display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:7px; border-block:1px solid var(--rule); padding:7px 0 }
+.stage { position:relative; isolation:isolate; display:flex; align-items:center; justify-content:center; gap:8px; background:transparent; border:0; border-radius:13px; font-weight:750; padding:0 5px; height:86px }
+.stage svg { height:80px; width:82px; overflow:visible }
+.stage small { display:block; font-size:.71rem; font-weight:500; color:#576362 }
+.stage[aria-pressed=true] { background:var(--wash); box-shadow:inset 0 -3px var(--accent); color:var(--deep) }
+.stage:hover { background:#eeeae0 }
+.stage:not(:last-child):after { content:""; position:absolute; right:-14px; top:50%; width:24px; border-top:3px dotted #b9bdb1; z-index:-1 }
+.stage b { display:block; font-size:1.05rem }
+.board { display:grid; grid-template-columns:minmax(0,1.09fr) minmax(0,1fr); border:1px solid #cecec0; border-radius:22px; overflow:hidden; background:#fffefa; margin:16px 0 12px; box-shadow:0 5px 0 #26372d08 }
+.scene { position:relative; display:flex; flex-direction:column; justify-content:space-between; background:var(--wash); padding:22px clamp(18px,2vw,30px) 15px; min-width:0 }
+.figure-label { display:flex; align-items:center; gap:8px; color:var(--deep); font-weight:750; letter-spacing:.08em; font-size:.77rem }
+.figure-label:before { content:""; width:25px; height:2px; background:var(--deep) }
+.scene h2 { font-size:clamp(1.45rem,2.2vw,2.05rem); letter-spacing:-.04em; margin-top:8px }
+.art { display:block; width:100%; height:auto; max-height:310px }
+.art .ink { stroke:#293a3c; stroke-linecap:round; stroke-linejoin:round; stroke-width:2.7 }
+.art text { font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans",sans-serif; fill:#273934; font-weight:650 }
+.art .label { font-size:15px; paint-order:stroke; stroke:var(--wash); stroke-width:5px; stroke-linejoin:round }
+.art .leader { fill:none; stroke:#526d60; stroke-width:1.6; stroke-dasharray:4 4 }
+.inkline { fill:none; stroke:#283e3c; stroke-width:2.4; stroke-linecap:round; stroke-linejoin:round }
+.scenebottom { display:flex; align-items:center; justify-content:space-between; gap:8px; border-top:1px solid #26382e25; padding-top:9px; color:#435b54; font-size:.81rem }
+.arrows { display:flex; gap:5px }
+.round { border:1px solid #849b89; border-radius:50%; height:33px; width:33px; background:#ffffff75; font-size:1.05rem }
+.panel { padding:22px clamp(18px,2vw,32px); display:flex; flex-direction:column; gap:12px; min-width:0 }
+.switches { display:flex; gap:3px; background:#efefe7; padding:3px; border-radius:11px; align-self:start; max-width:100%; flex-wrap:wrap }
+.switches button { font-size:.81rem; font-weight:650; border:0; border-radius:8px; padding:6px 12px; background:transparent }
+.switches button[aria-pressed=true] { background:#fff; box-shadow:0 1px 4px #22352a24; color:var(--deep) }
+.study-line { font-size:.8rem; color:#48615b; font-weight:650 }
+.panel h3 { font-size:clamp(1.3rem,1.85vw,1.7rem); letter-spacing:-.045em }
+.panel .population { font-size:.83rem; color:#475651 }
+.result { background:#f6f6ee; border-radius:12px; padding:11px 15px }
+.number { font-size:2.45rem; font-family:Georgia,serif; line-height:.99; font-weight:bold; letter-spacing:-.045em; color:var(--deep) }
+.metric { font-weight:700; font-size:.88rem; margin-right:7px }
+.ci { display:inline-block; font-size:.85rem; margin-left:8px }
+.outcome { font-size:.78rem; margin-bottom:6px }
+.plot { display:block; width:100%; height:auto; max-height:150px }
+.plot text { font-family:-apple-system,sans-serif; fill:#33443e }
+.plot-row { cursor:pointer }
+.plot-row:hover .halo,.plot-row:focus .halo { opacity:.28 }
+.plot-row:focus { outline:none }
+.micro { font-size:.71rem; color:#52635b }
+.actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:auto }
+.pill,.ref,.step { border:1px solid #abbbb0; background:transparent; border-radius:22px; padding:6px 13px; font-size:.82rem; font-weight:650 }
+.pill,.step { background:var(--deep); border-color:var(--deep); color:white }
+.ref { border-color:transparent; text-decoration:underline; text-underline-offset:.22em }
+.steps { display:flex; gap:8px; align-items:center }
+.step { padding:6px 12px }
+.state-note { font-size:.84rem }
+.legend { display:flex; justify-content:space-between; gap:12px; align-items:center; padding:0 2px 20px; color:#56635d; font-size:.74rem }
+.legend button { font-size:.76rem }
+.art-button { display:grid; justify-items:center; width:100%; padding:0 0 6px; background:none; border:0; border-radius:10px }
+#artAction { font-size:.72rem; color:var(--deep); border-bottom:1px dotted currentColor }
+.acute { display:grid; grid-template-columns:repeat(3,1fr); gap:4px; margin:6px 0 }
+.vital { border:1px solid #babfb6; border-radius:9px; padding:7px 2px; background:#e5efea; font-size:.85rem; font-weight:700; color:#214d48 }
+.vital:last-child { background:#f6e8d7; color:#714923 }
+.vital span { display:block; font-size:1.65rem; line-height:1.05 }
+dialog { border:1px solid var(--rule); border-radius:18px; background:#fffdf7; color:var(--ink); padding:0; width:min(760px,calc(100% - 24px)); max-height:88dvh; box-shadow:0 16px 70px #152e3c42 }
+dialog::backdrop { background:#182f32a6 }
+.dialogbar { position:sticky; top:0; background:#fffdf7; display:flex; align-items:center; justify-content:space-between; gap:8px; border-bottom:1px solid var(--rule); padding:14px 22px; z-index:2 }
+.dialogbar h2 { font-size:1.22rem }
+.inside { padding:16px 22px 26px }
+.inside p,.inside li { margin:.3em 0 }
+.inside details { border-bottom:1px solid var(--rule); padding:.65rem 0 }
+.inside summary { cursor:pointer; font-weight:650 }
+.inside h3 { font-size:1rem; color:#24675c; margin:1rem 0 .3rem }
+.inside a { color:#11635b }
+.inside blockquote { margin:.5em 0; background:#eff3ed; padding:10px 13px; overflow-wrap:anywhere; white-space:pre-wrap }
+.inside dt { color:#4d6259; font-size:.78rem }
+.inside dd { margin:0 0 .6rem }
+.inside input { width:100%; padding:9px; border-radius:8px; border:1px solid #9caf9e }
+.inside pre { white-space:pre-wrap; overflow-wrap:anywhere }
+.keys { display:flex; gap:6px; flex-wrap:wrap; margin:10px 0 }
+.keys button { background:white; border:1px solid var(--rule); border-radius:16px; padding:5px 12px }
+.keys button[aria-pressed=true] { background:#263f3a; color:white }
+.scene svg .drift { animation:drift 6s ease-in-out infinite }
+.scene svg .reveal { animation:reveal .3s ease-out }
+@keyframes drift {
+    50% { transform:translate(3px,-3px) }
+}
+@keyframes reveal {
+    from { opacity:.2 }
+    to { opacity:1 }
+}
+@media(prefers-reduced-motion:reduce) {
+    *,*::before,*::after { animation:none!important; transition:none!important }
+}
+@media(max-width:800px) {
+    .bar,.page { padding-inline:16px }
+    .stage { height:75px }
+    .stage svg { width:60px; height:65px }
+    .stage small { display:none }
+    .panel,.scene { padding:16px }
+    .switches button { padding:6px 9px }
+    .art { max-height:290px }
+    .board { grid-template-columns:minmax(0,1fr) minmax(0,1fr) }
+}
+@media(max-width:650px) {
+    .intro { padding:16px 0 11px }
+    .intro h1 span { display:block; margin:4px 0 0; font-size:.51em }
+    .serial { display:none }
+    .pmid { font-size:.68rem; padding-left:8px }
+    .bar { gap:7px; height:45px }
+    .brand { font-size:.76rem }
+    .library-button { padding:4px 9px; font-size:.73rem }
+    .journal { font-size:.66rem }
+    .stages { gap:1px; padding:4px 0 }
+    .stage { height:67px; flex-direction:column; gap:0 }
+    .stage svg { width:46px; height:42px }
+    .stage b { font-size:.8rem }
+    .stage:not(:last-child):after { width:12px; right:-7px; top:40% }
+    .board { display:block; margin-top:10px; border-radius:15px }
+    .scene { padding:12px 14px 8px }
+    .scene h2 { font-size:1.32rem; margin-top:2px }
+    .figure-label { font-size:.66rem }
+    .art { max-height:178px }
+    .scenebottom { font-size:.73rem; padding-top:4px }
+    .panel { padding:13px 15px; gap:8px }
+    .panel h3 { font-size:1.28rem }
+    .legend { flex-wrap:wrap; gap:4px }
+    .inside,.dialogbar { padding-inline:14px }
+    .number { font-size:2rem }
+    .switches button { min-height:34px }
+    .round { height:32px; width:32px }
+}
+.symbols { position:absolute; width:0; height:0; overflow:hidden; pointer-events:none }
+body[data-stage="0"] { --wash:#f0e8ef; --deep:#6e4e72; --accent:#936f98 }
+body[data-stage="1"] { --wash:#fcf0d9; --deep:#76552b; --accent:#b58245 }
+body[data-stage="3"] { --wash:#e8eff2; --deep:#355b70; --accent:#62849b }
+</style></head><body>
+<header><div class="bar"><svg width="25" height="27" viewBox="0 0 28 28" fill="none" stroke="#dcead8" stroke-width="2"><path d="M13 3v9l-5 4m7-13v9l5 4M10 8C6 6 1 17 3 23c2 3 7-1 9-4V9m5-1c4-2 9 9 8 14-2 3-7 0-9-3V9"/></svg><b class="brand">論文グラレコ</b><span class="pmid">PMID 42526604</span><button class="library-button" id="library">全研究・原文 ↗</button></div></header>
+<main class="page"><div class="intro"><div><h1>電子たばこと喘息<span>ライフステージで読む</span></h1><p class="journal">Pereira et al.　·　J Allergy Clin Immunol　·　2026</p></div><span class="serial">Use of electronic cigarettes and asthma across the lifespan</span></div>
+<nav class="stages" id="stages" aria-label="ライフステージを選択"></nav>
+<div class="board"><section class="scene"><div><p class="figure-label" id="stageLabel"></p><h2 id="sceneTitle"></h2></div>
+<button type="button" class="art-button" id="artExplore"><svg id="art" class="art" viewBox="0 0 520 268" role="img"></svg><span id="artAction"></span></button>
+<div class="scenebottom"><span id="artCaption"></span><span class="arrows"><button class="round" id="prev" aria-label="前のライフステージ">←</button><button class="round" id="next" aria-label="次のライフステージ">→</button></span></div></section>
+<section class="panel" aria-label="選択中の研究"><div class="switches" id="switches" aria-label="テーマを選択"></div><div><p class="study-line" id="studyline"></p><h3 id="message" aria-live="polite"></h3></div><div id="results"></div><p id="population" class="population"></p><div id="actions" class="actions"></div></section></div>
+<div class="legend"><span>人物でライフステージを、グラフの点で研究結果を選択できます。</span><button class="ref" id="overview">論文全体の要点・限界</button></div></main>
+<dialog id="drawer"><div class="dialogbar"><h2 id="drawerTitle"></h2><button class="round" id="close" aria-label="閉じて図に戻る">×</button></div><div id="drawerBody" class="inside"></div></dialog>
+<svg width="0" height="0" aria-hidden="true" class="symbols" xmlns="http://www.w3.org/2000/svg"><defs>
+<pattern id="dots" width="8" height="8" patternUnits="userSpaceOnUse"><circle cx="2" cy="3" r="1.2" fill="#527266" opacity=".2"/></pattern>
+<g id="teen" stroke="#293f40" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+<path fill="#426669" d="M18 116q0-24 9-39 6-9 15-8l23 8-1 39z"/><path fill="#e6a87f" d="M46 52l-3 17 12 10 13-9-4-19z"/>
+<path fill="#e9ae22" d="M43 65q-12 3-17 14l-8 32 12 4 6-20-2 21h56l-3-34q-2-11-20-16-8 8-16 7z"/>
+<path fill="#edbd54" d="M42 64q-5 1-7 8l10 10 11-7 11 8 10-13-10-6q-11 12-25 0z"/>
+<path fill="#f5c69e" d="M40 27q-4 6-1 15-8-4-7 4 1 9 8 9 3 9 13 13 10 3 18-5 5-5 5-15l5-3-5-8-2-12z"/>
+<path fill="#293f40" d="M32 46q-12-9-8-22 2-5 7-8-2-8 8-8 2-9 13-6 8-4 13 2 13-1 15 9 10 5 4 12-2 5-11 5l-1-10-6 9-5-5-6 10-5-5-4 15-6-4-2 10z"/>
+<path d="M66 39q4-3 7-1m-19 4 3-1m14 15q-3 3-7 2M46 84l-1 14m15-15 2 13m11-3 5 20M30 79l5 4" fill="none"/>
+<circle cx="70" cy="43" r="1.55" fill="#293f40"/><path d="M29 110l6-20m-10 18 7-21" stroke="#8e733a" opacity=".65"/><path d="M57 109l8-7 9 5" fill="none"/>
+</g>
+<g id="child" stroke="#343c3a" stroke-width="2.1" stroke-linejoin="round" stroke-linecap="round">
+<path fill="#393d42" d="M28 30Q25 6 47 6q29-3 30 23l4 27-11 3-9-12-21 9-15-2z"/><path fill="#c87847" d="M46 51v15l12 8 7-10-5-15z"/>
+<path fill="#f5ab77" d="M36 25q10 2 21-8 2 9 13 13l-1 11q7-1 6 4-1 6-8 7-6 12-16 10-10-1-16-13-6 1-8-6-1-6 6-4z"/>
+<path d="M39 36l5-1m14-1 5 1m-11 4-1 5 2 1m-7 5q4 4 9 1" fill="none"/><circle cx="43" cy="40" r="1.3"/><circle cx="61" cy="39" r="1.3"/>
+<path fill="#f0d19f" d="M42 63q-14 1-20 20l-4 26 12 3 5-19-1 23h45l-3-24 7 17 9-4-7-26q-3-11-19-16-9 10-24 0z"/>
+<path fill="#da795a" d="M38 65l7-2 1 18h16l1-17 8 3 1 18 6 31H35l4-32z"/>
+<path d="M48 87h15v9q-8 5-15-1z" fill="#e99778"/><path d="M22 83l9 3m-10 4 9 2m47-7 7-3m-4 9 6-3" stroke="#9d7357"/>
+<path d="M28 26l10-9" stroke="#f0bd45" stroke-width="4"/>
+</g>
+<g id="adult" stroke="#29383b" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+<path fill="#453d42" d="M34 52q-13-18-1-34 8-14 28-11 19 2 21 24 2 13-2 25 10 4 14 18l-32 14-36-16q11-9 8-20z"/>
+<path fill="#d99d79" d="M46 49l-2 17 12 8 12-8-5-18z"/><path fill="#eabb98" d="M37 29q13-1 24-14 3 9 15 13l-1 10 4 6-5 2q-2 13-15 16-13 0-19-12-7-2-8-8-1-4 5-4z"/>
+<path d="M42 35l11 1-1 9q-8 4-11-3zm17 0 12-1-1 8q-8 5-11 0zm-6 3 6-1m3 15q4 1 7-2" fill="none"/>
+<path fill="#6599ad" d="M44 64q-17 6-21 20l-6 30 14 2 6-21-2 21h50l-3-28 8 23 9-6-11-29q-4-8-20-12l-12 9z"/>
+<path fill="#e5e8d7" d="M44 63l13 10-8 10-9-16zm23 0-10 10 7 8 8-14z"/><path d="M57 74l1 40m9-21 10-1-1 9-8 1" fill="none"/><path d="M25 83l7 4m45-11 5 5M32 24q4-9 12-12" stroke="#809493" fill="none"/>
+</g>
+<g id="fetus" stroke="#574b59" stroke-width="2.1" stroke-linejoin="round" stroke-linecap="round">
+<path fill="#e8cad4" d="M53 9q24-3 36 22 15 31-1 59-17 29-44 20-27-8-33-34Q3 51 18 28 30 11 53 9z"/>
+<path d="M20 71q-5-18 5-35 8-14 23-17m25 2q16 10 18 27" stroke="#c58d9c" fill="none"/>
+<path fill="#efb59b" d="M45 63q-8-2-13-12-5-13 7-21 13-11 27 0 11 9 6 22-2 7-10 12 5 10 13 8 7-2 4-9-1-7 4-7 8 0 9 14 0 16-17 21-7 13-23 12-15 0-20-14-5-16 13-26z"/>
+<path fill="#edb09b" d="M42 63q8 6 15 1l6-9q3-5 6-3 4 2 0 8l-7 12q-8 7-18 1m6 17q6-13 19-9l8 3"/>
+<path d="M46 43q3 3 7 2m-8 7q3 2 5 1m-4 32q-16 10-20-2-4-13 8-11" fill="none" stroke="#b37781"/>
+</g>
+<g id="lung" stroke="#714c44" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+<path fill="#e9a390" d="M47 24q-7-9-16 1C17 39 7 65 8 87q1 14 13 11l24-10q5-3 4-17z"/>
+<path fill="#f0b29a" d="M58 22q9-6 16 6 15 21 18 53 3 19-8 18L62 86q-9-6-8-19z"/>
+<path fill="#efccab" d="M47 4h9l-1 32 15 14-5 6-14-13-14 15-5-5 15-17z"/>
+<path d="M48 10h6m-6 6h6m-6 6h6m-6 6h6M36 55l-8 14-9 6m12-9 2 12-7 10m10-33 4 8-2 11m28-21 9 12 9 4m-11-6-1 15 8 11m-13-35-5 11 2 10" fill="none" stroke="#f6e1c5" stroke-width="3"/>
+<path d="M13 83q16-7 27-20m21 5q12 2 25 15" fill="none" stroke="#bd7c6b"/>
+</g>
+<g id="alveoli" fill="#eab09c" stroke="#945f57" stroke-width="2.6"><path d="M37 4h10v25L65 40l-6 9-18-12-12 13-9-6 17-19z" fill="#e4bb92"/><path d="M26 37q-14-6-18 5-7 6-1 14-2 12 9 13 7 9 15 3 13 2 14-11 6-8-2-14-2-10-17-10zm40-5q-14-1-15 11-8 6-1 16-1 10 10 12 8 7 17 0 13-2 10-14 6-11-5-17-3-10-16-8z"/><path d="M13 46q6-6 11-1m-8 13q3-5 9-4m34-11q8-5 13-1m-6 15q4-6 10-4" fill="none" stroke="#fce4cb"/></g>
+<g id="house" stroke="#516954" stroke-width="2.2" stroke-linejoin="round"><path fill="#e9d9ad" d="M4 34l38-26 40 24-5 9-7-3v40H16V38l-7 5z"/><path fill="#a4b9a4" d="M1 33L42 4l42 26-5 8-37-24L6 42z"/><path fill="#f9efcc" d="M24 43h15v16H24z"/><path fill="#879c88" d="M49 46h12v32H49z"/><path d="M31 43v16m-7-8h15" fill="none"/></g>
+<g id="car" stroke="#455c55" stroke-width="2.2" stroke-linejoin="round"><path d="M5 35l7-13 16-4L39 5h28l17 17 11 5 3 14H5z" fill="#92b6a0"/><path d="M35 18l8-9h20l10 12z" fill="#f7e7bb"/><circle cx="25" cy="40" r="8" fill="#455c55"/><circle cx="77" cy="40" r="8" fill="#455c55"/><path d="M24 40h2m50 0h2" stroke="#e7dcc0" stroke-width="4"/></g>
+<g id="cloud" fill="none" stroke="#768d81" stroke-width="2" stroke-linecap="round"><path d="M1 22c14-12 25 6 39-3s23-9 39-6M9 12c15-8 23 5 32-3s19-8 26-6M15 31c10-6 19 4 31-2"/><circle cx="82" cy="4" r="2"/><circle cx="71" cy="27" r="1.5"/></g>
+<g id="mouse" stroke="#574f63" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"><path d="M17 54Q-4 48 5 34q4-5 10-3" fill="none"/><path d="M16 54q0-24 29-26 9-2 15 2 3-13 13-11 8 4 4 12l17 15-1 5-14 4q-17 13-44 7l-13 4-5-2 7-6z" fill="#baacbe"/><circle cx="77" cy="42" r="2" fill="#393740"/><path d="M84 48l15-5m-14 8 15 1M61 31q-1-8 6-9" fill="none"/></g>
+</defs></svg>
+<script type="application/json" id="master">@@MASTER@@</script><template id="pdf">@@PDF@@</template>
+<script id="app">
+'use strict';
+const master = JSON.parse(document.getElementById('master').textContent);
+const facts = new Map(master.evidence.map(e => [e.id,e]));
+const refs = new Map(master.source_references.map(s => [s.id,s]));
+const studies = master.teaching.studies;
+const $ = id => document.getElementById(id);
+const esc = x => String(x ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const use = (id,x,y,scale=1) => '<g transform="translate('+x+' '+y+') scale('+scale+')"><use href="#'+id+'"/></g>';
+const labels = ['胎児期','小児期','青年期','成人期'];
+const icons = ['fetus','child','teen','adult'];
+const topics = ['発育と機序','家庭内曝露','発作と発症','発症と肺機能'];
+const options = [['候補機序'],['尿中指標','家庭での曝露'],['喘息発作','呼吸器症状','新規診断'],['発症年齢','急性曝露試験']];
+const evidence = [[['e11','e30','e35','e32']],[['e13'],['e14']],[['e15'],['e16','e17','e66'],['e18','e70','e71']],[['e19'],['e20','e98']]];
+const messages = [
+ ['ヒトの出生前曝露と小児喘息発症を直接調べた研究は、検索時点で見当たらなかった。','ニコチン曝露群の仔で、肺胞の隔壁形成が減少した。','ダニ負荷後の仔で、気道の炎症細胞が変化した。','胎児肺で、曝露条件に応じた遺伝子発現の変化がみられた。'],
+ ['尿中コチニンと入院は関連したが、電子たばこ単独曝露は1人だった。','家庭内の受動曝露と症状日数に、有意な差はみられなかった。'],
+ ['受動曝露を報告した喘息児では、前年の発作のオッズが高かった。','同じ高校生でも、症状によって関連の見え方が異なる。','単独使用と喘息新規診断の推定値は、不確実性が大きい。'],
+ ['成人の現在使用は、より早い喘息発症と関連した。','吸入15分後、喘息群では肺機能が低下し、FeNOは上昇した。']
+];
+const sceneTitles = [
+ ['胎内曝露と、発育中の肺','肺胞の隔壁形成','アレルゲン負荷後の気道','胎児肺の遺伝子発現'],
+ ['家庭内で重なる曝露','保護者が報告した家庭内曝露'],
+ ['室内・車内の受動曝露','家庭内のエアロゾルと症状','能動使用と、その後の喘息'],
+ ['使用歴と喘息の発症年齢','短時間の吸入と肺の応答']
+];
+let stage = 2, topic = 0, step = 0, selected = 'e15', returnFocus = null, pdfUrl;
+const variant = () => stage === 0 ? step : topic;
+const ids = () => evidence[stage][topic];
+const circle = (x,y,r,fill,extra='') => '<circle cx="'+x+'" cy="'+y+'" r="'+r+'" fill="'+fill+'" '+extra+'/>';
+const text = (x,y,s,align='start') => '<text class="label" x="'+x+'" y="'+y+'" text-anchor="'+align+'">'+esc(s)+'</text>';
+const line = d => '<path class="leader" d="'+d+'"/>';
+function illustration() {
+    const ground = '<path d="M20 226q115-10 254 0t223-2" fill="none" stroke="#556e5b" opacity=".4" stroke-width="2"/>';
+    const wash = '<path d="M23 198q-13-57 39-93t105-45q77-25 120 4t87 29q73 1 103 50t-18 62q-69 24-220 18t-209-5z" fill="url(#dots)"/>';
+    let art = '';
+    if (stage === 0) {
+        const plate = '<circle cx="350" cy="128" r="87" fill="#fff9ed" stroke="#aa96b1" stroke-width="2.5"/>';
+        const marker = '<path d="M160 136q54 8 91-10l12-7" class="leader"/>';
+        art = use('fetus',40,53,1.36) + use('mouse',47,181,.62) + text(42,250,'胎内曝露モデル') + marker + plate;
+        if (step === 0) art += use('lung',298,69,1.12)+text(350,248,'胎児肺の候補機序','middle');
+        if (step === 1) art += use('alveoli',282,64,1.55)+text(350,248,'肺胞発育 · ラット','middle');
+        if (step === 2) {
+            art += '<ellipse cx="350" cy="128" rx="59" ry="46" fill="#d69594" stroke="#735d6e" stroke-width="2"/><ellipse cx="350" cy="128" rx="44" ry="31" fill="#ffedd4" stroke="#9c6c70" stroke-width="3"/>';
+            for (const [x,y] of [[317,91],[374,99],[395,144],[337,162],[303,137]]) {
+                art += circle(x,y,8,'#9984ab')+circle(x-2,y,3,'#5d527d')+circle(x+2,y-2,3,'#5d527d');
+            }
+            art += text(350,248,'炎症細胞 · マウス','middle');
+        }
+        if (step === 3) {
+            art += '<g transform="translate(320 67)" fill="none" stroke-linecap="round"><path d="M0 0c0 26 60 32 60 60S0 99 0 125M60 0C60 26 0 32 0 60s60 39 60 65" stroke="#75669a" stroke-width="6"/><path d="M8 12h44M19 23h22M10 49h40M4 62h52M11 76h38M20 99h20M10 110h40" stroke="#cf9d67" stroke-width="4"/></g>'+text(350,248,'発現変化 · ラット','middle');
+        }
+    } else if (stage === 1) {
+        art = circle(235,130,87,'#f5ce92')+use('house',22,85,1.18)+use('child',146,33,1.67)+
+              '<g class="drift">'+use('cloud',81,91,.8)+'</g>'+line('M287 134q40-12 63-11');
+        if (topic === 0) {
+            art += '<g transform="translate(368 66) rotate(9 20 55)" class="ink"><path d="M2 12h47l-5 81q-1 11-18 11T8 94z" fill="#fbefce"/><path d="M7 55q8 4 18 0t21 0l-3 38q-1 10-17 10T9 92z" fill="#efbd53"/><rect x="-1" y="2" width="52" height="13" rx="4" fill="#83988e"/><path d="M30 28h13m-10 11h9m-11 11h10" fill="none"/></g>'+text(393,199,'尿中指標','middle');
+        } else {
+            art += '<g transform="translate(350 63)" class="ink"><rect x="0" y="8" width="81" height="103" rx="6" fill="#fff2da"/><rect x="20" y="2" width="40" height="13" rx="4" fill="#c88963"/><path d="m12 38 5 5 9-13m-14 32 5 5 9-13m-14 33 5 5 9-13M33 38h33m-33 25h33m-33 25h33" fill="none"/></g>'+text(392,204,'保護者の申告','middle');
+        }
+        art += text(29,229,'家庭')+text(227,250,'喘息のある小児','middle');
+    } else if (stage === 2) {
+        art = circle(261,130,92,'#f2d386')+use('house',19,89,1.14);
+        if (topic === 0) art += use('car',66,174,.92);
+        art += '<g class="drift">'+use('cloud',99,93,.82)+use('cloud',122,119,.6)+'</g>'+use('teen',171,25,1.72)+line('M306 153q43-16 60-32')+
+               circle(407,110,58,'#faf5df','stroke="#859f83" stroke-width="2"')+use('lung',369,68,.78)+text(405,197,topic===2?'新規診断':topic===1?'呼吸器症状':'喘息発作','middle');
+        if (topic === 2) art = circle(211,125,92,'#f2d386')+use('teen',116,30,1.67)+line('M258 152q52-17 74-10')+
+            '<g transform="translate(338 85)" class="ink"><rect width="88" height="80" fill="#fff7dd" rx="9"/><path d="M0 22h88M19 -6v17m48-17v17" fill="none"/><path d="M16 39h12m9 0h12m9 0h12m-54 16h12m9 0h12" stroke="#84a49c"/><circle cx="67" cy="55" r="8" fill="#dfa053"/></g>'+text(384,198,'追跡期間','middle');
+        art += text(245,250,topic===2?'米国PATHの青年':'青年期','middle');
+    } else {
+        art = circle(171,127,88,'#ccdae6')+use('adult',70,30,1.66)+line('M222 145q53-15 72-9');
+        if (topic === 0) {
+            art += '<g transform="translate(305 85)" class="ink"><path d="M1 66q46-5 121 0" fill="none"/><path d="M7 58v16m53-16v16m53-16v16" fill="none"/><circle cx="60" cy="39" r="18" fill="#f7d889"/><path d="M60 26v13l8 5" fill="none"/></g>'+text(363,196,'発症年齢を推定','middle');
+        } else art += circle(355,119,61,'#fcf0d5','stroke="#8aa3b0" stroke-width="2"')+use('lung',312,74,.87)+text(357,207,'吸入15分後','middle');
+        art += text(164,250,topic===0?'成人コホート':'成人喫煙者','middle');
+    }
+    $('art').innerHTML='<title>'+esc(sceneTitles[stage][variant()])+'</title>'+wash+ground+'<g class="reveal">'+art+'</g>';
+}
+const titles = ['実験モデル','肺胞発育','気道炎症','遺伝子発現'];
+function button(label, action, value, cls='ref') {
+    return '<button type="button" class="'+cls+'" data-action="'+action+'" data-value="'+esc(value)+'">'+esc(label)+'</button>';
+}
+function plot(rows) {
+    const points = rows.map(id => {
+        const m = facts.get(id).measurements.find(v => v.estimate && v.ci_lower && v.ci_upper);
+        return {id,m,study:studies[id]};
+    });
+    const measure = points[0].m.label;
+    if (!points.every(p => p.m.label === measure && p.study.design === points[0].study.design && p.study.population === points[0].study.population)) throw Error('図の比較条件が異なります');
+    const low = Math.min(0.8,...points.map(p=>Number(p.m.ci_lower))) / 1.12;
+    const high = Math.max(1.25,...points.map(p=>Number(p.m.ci_upper))) * 1.12;
+    const x = n => 8 + Math.log(n/low)/Math.log(high/low)*217;
+    const offset = rows.length>1?100:6;
+    const yEnd = 15 + (rows.length-1)*29;
+    let svg = '<svg class="plot" viewBox="0 0 '+(offset+240)+' '+(yEnd+31)+'" aria-label="'+measure+' 研究別効果推定値と95%信頼区間"><g transform="translate('+offset+' 0)">';
+    svg += '<path d="M'+x(1)+' 1V'+(yEnd+8)+'" stroke="#8c9691" stroke-dasharray="3 3"/>';
+    for (const [i,{id,m,study}] of points.entries()) {
+        const y = 12+i*29, a=x(+m.ci_lower), b=x(+m.ci_upper), c=x(+m.estimate);
+        const label = ({e16:'気管支炎様症状',e17:'息切れ',e66:'喘鳴',e18:'電子たばこ単独',e70:'紙巻きと併用',e71:'紙巻き単独'})[id] || study.outcome;
+        svg += '<g class="plot-row" tabindex="0" role="button" data-point="'+id+'" aria-label="'+esc(label+' '+m.label+' '+m.estimate+'、研究の詳細')+'"><title>'+esc(study.reference+' '+label+' '+m.reported)+'</title><rect x="'+(-offset)+'" y="'+(y-12)+'" height="25" width="'+(offset+235)+'" fill="transparent"/>'+
+               (rows.length>1?'<text x="'+(-offset+2)+'" y="'+(y+4)+'" font-size="11.8">'+label+'</text>':'')+
+               '<path d="M'+a+' '+(y-4)+'v8m0-4H'+b+'m0-4v8" stroke="#2b665c" stroke-width="2.3" fill="none"/>'+
+               circle(c,y,8,'#70b3a0','class="halo" opacity="'+(id===selected?'.33':'0')+'"')+circle(c,y,4.5,'#155e54')+'</g>';
+    }
+    const ticks = high/low < 3.4 ? [0.5,0.75,1,1.25,1.5,2,2.5,3] : [0.5,1,2,4,8,12];
+    for (const tick of ticks.filter(t=>t>low && t<high)) {
+        svg += '<text x="'+x(tick)+'" y="'+(yEnd+24)+'" text-anchor="middle" font-size="10">'+tick+'</text>';
+    }
+    return svg+'</g></svg>';
+}
+function render(focusTarget) {
+    document.body.dataset.stage=stage;
+    const group=ids();
+    $('stages').innerHTML=labels.map((label,i)=>'<button type="button" aria-pressed="'+(stage===i)+'" class="stage" data-stage-choice="'+i+'"><svg viewBox="0 0 105 126" aria-hidden="true">'+circle(54,67,50,['#e4cfdc','#f6d69c','#e0cf92','#cbd9df'][i])+use(icons[i],3,4,.98)+'</svg><span><b>'+label+'</b><small>'+topics[i]+'</small></span></button>').join('');
+    $('stageLabel').textContent=labels[stage]+'　／　'+topics[stage];
+    $('sceneTitle').textContent=sceneTitles[stage][variant()];
+    $('artCaption').textContent=stage===0?'実験所見を順に見る · '+(step+1)+' / 4':'ライフステージ　'+(stage+1)+' / 4';
+    $('prev').disabled=stage===0;
+    $('next').disabled=stage===3;
+    illustration();
+    const choices=stage===0?titles:options[stage];
+    const nextTopic = choices[(variant()+1) % choices.length];
+    $('artAction').textContent = nextTopic+'の図へ →';
+    $('artExplore').setAttribute('aria-label',nextTopic+'の図に切り替える');
+    $('switches').innerHTML=choices.map((v,i)=>'<button type="button" data-option="'+i+'" aria-pressed="'+(i===variant())+'">'+esc(v)+'</button>').join('');
+    const e=facts.get(selected), s=studies[selected];
+    $('studyline').textContent=s?s.reference+'　·　'+s.design:'レビュー著者の記述　·　胎内曝露';
+    $('message').textContent=messages[stage][variant()];
+    if(selected==='e70') $('message').textContent='併用群の新規診断の推定値も、信頼区間は1を含んだ。';
+    if(selected==='e71') $('message').textContent='紙巻き単独使用は、喘息新規診断と関連した。';
+    $('population').textContent=s?s.population+'。'+s.exposure+'。':'妊娠期の実験的曝露を扱った動物研究と、ヒトでの研究の空白を区別して読む。';
+    let body='';
+    const m=e.measurements.find(v=>v.estimate && v.ci_lower && v.ci_upper);
+    if(m) {
+        body='<div class="result"><p class="outcome">'+esc(s.outcome)+'</p><span class="metric">'+esc(m.label)+'</span><strong class="number">'+esc(m.estimate)+'</strong><span class="ci">95% CI　'+esc(m.ci_lower)+'–'+esc(m.ci_upper)+'</span>'+plot(group)+'<p class="micro">対数目盛　·　破線は比＝1　·　横線は95% CI</p></div>';
+    } else if(stage===0) {
+        const note=['肺胞、気道、遺伝子発現の3つの候補を、それぞれの実験条件で見る。','ニコチン群の生後4日の肺組織を対照と比較。','ダニ誘発モデルで、肺胞洗浄液中の好中球が増加。','ニコチン群と基剤群では、変化した遺伝子群が異なる。'][step];
+        body='<div class="result"><p class="outcome">図1の候補機序　／　表1の実験所見</p><p class="state-note">'+note+'</p></div><div class="steps">'+(step?button('← 戻る','step',step-1,'ref'):'')+button(step===3?'最初に戻る ↺':'次の図へ →','step',step===3?0:step+1,'step')+'</div>';
+    } else if(stage===1) {
+        body='<div class="result"><p class="outcome">症状日数の群間比較</p><strong class="number">'+esc(e.measurements[0].reported)+'</strong><p class="micro">二変量解析 · 効果量はこの所見に未収録</p></div>';
+    } else {
+        const outcomes = [['FEV1/FVC','↓','e20'],['PEF','↓','e20'],['FeNO','↑','e98']];
+        const arrows = outcomes.map(([label,arrow,id]) =>
+            '<button class="vital" data-action="inspect" data-value="'+id+'" aria-label="'+label+(arrow==='↑'?'上昇':'低下')+'の詳細"><span>'+arrow+'</span>'+label+'</button>'
+        ).join('');
+        body='<div class="result"><p class="outcome">吸入前 → 15分後　／　喘息群</p><div class="acute">'+arrows+'</div><p class="micro">矢印は変化の方向。健常喫煙者ではFeNOは低下。</p></div>';
+    }
+    $('results').innerHTML=body;
+    const pages=[...new Set(e.source_refs.map(id=>refs.get(id).pdf_page_start))].sort((a,b)=>a-b);
+    $('actions').innerHTML=button('研究の詳細 ↗','inspect',selected,'pill')+button('原文 p.'+pages.join('・'),'source',selected);
+    if(focusTarget) document.querySelector(focusTarget)?.focus({preventScroll:true});
+}
+function setStage(i, focus=false) {
+    stage=i; topic=0;step=0;selected=ids()[0];
+    render(focus?'[data-stage-choice="'+i+'"]':null);
+}
+function setOption(i, focus=true) {
+    if(stage===0) step=i; else topic=i;
+    selected=stage===0?ids()[step]:ids()[0];
+    render(focus?'[data-option="'+i+'"]':null);
+}
+$('stages').onclick=event=>{const b=event.target.closest('[data-stage-choice]');if(b)setStage(+b.dataset.stageChoice,true)};
+$('switches').onclick=event=>{const b=event.target.closest('[data-option]');if(b)setOption(+b.dataset.option)};
+$('artExplore').onclick=()=>{
+    setOption((variant()+1) % sceneTitles[stage].length,false);
+};
+$('prev').onclick=()=>setStage(stage-1,true);
+$('next').onclick=()=>setStage(stage+1,true);
+
+function ensurePdf() {
+    if(!pdfUrl) {
+        const bytes=Uint8Array.from(atob($('pdf').content.textContent.trim()),c=>c.charCodeAt(0));
+        pdfUrl=URL.createObjectURL(new Blob([bytes],{type:'application/pdf'}));
+    }
+    return pdfUrl;
+}
+function blocks(value) {
+    if(Array.isArray(value))return value.map(blocks).join('');
+    if(value && typeof value==='object')return Object.entries(value).map(([k,v])=>'<p><b>'+esc(k)+'</b></p>'+blocks(v)).join('');
+    return value?'<p>'+esc(value)+'</p>':'';
+}
+function showDialog(title,html) {
+    if(!$('drawer').open) {
+        returnFocus=document.activeElement;
+        $('drawer').showModal();
+        $('close').focus({preventScroll:true});
+    }
+    $('drawerTitle').textContent=title;
+    $('drawerBody').innerHTML=html;
+    $('drawer').scrollTop=0;
+}
+function sourceCard(id) {
+    const r=refs.get(id);
+    const range=r.pdf_page_end && r.pdf_page_end!==r.pdf_page_start?'–'+r.pdf_page_end:'';
+    return '<section><h3>'+esc([r.citation,r.table,r.figure].filter(Boolean).join(' · ')||'原本の記述')+'</h3><a target="_blank" rel="noopener" href="'+ensurePdf()+'#page='+r.pdf_page_start+'">PDF p.'+r.pdf_page_start+range+' を開く ↗</a><blockquote>'+esc(r.quote)+'</blockquote><small>'+esc(id)+'</small></section>';
+}
+function inspect(id,sourceOnly=false) {
+    const e=facts.get(id),s=studies[id]||{};
+    const details=[['研究デザイン',s.design],['対象',s.population||e.population],['曝露・比較',s.exposure],['対照',s.comparator],['評価項目',s.outcome],['調整因子',s.adjustments],['適用条件',e.conditions],['限界・例外',e.exceptions]];
+    let body=libraryActive?button('← 全研究・原文','back-library',''):'';
+    body+='<p class="study-line">'+esc(id+'　·　'+(s.design||e.kind))+'</p>'+blocks(e.statement_ja);
+    if(!sourceOnly) body+='<dl>'+details.filter(([,v])=>v && v.length).map(([k,v])=>'<dt>'+k+'</dt><dd>'+blocks(v)+'</dd>').join('')+'</dl>'+e.measurements.map(v=>'<p><b>'+esc(v.label)+'</b>　'+esc(v.reported)+'</p>').join('');
+    body+='<h3>原文の該当箇所</h3>'+e.source_refs.map(sourceCard).join('');
+    showDialog(sourceOnly?'原文とページ':s.reference||'医学的な記述',body);
+}
+const fieldLabels={topic:'テーマ',clinical_area:'臨床領域',one_line_summary:'Take Home Message',why_important:'医学的背景',study_design:'研究方法',population_setting:'研究対象',figure_table_summary:'図表の要点',main_results:'主要結果',pico:'PICO',safety:'安全性',limitations:'限界',applicability_to_japanese_pediatric_clinic:'日本の小児科外来への適用',practice_change:'Practice Change',practice_change_reason:'判断の理由',tomorrow_action:'外来への示唆',summary_jp:'日本語要約'};
+const statusNames={recorded:'記載済み',not_reported:'原文に記載なし',not_assessed:'未評価',not_applicable:'該当なし',not_acquired:'未取得'};
+const linksToFacts=ids=>ids.map(id=>button(id,'inspect',id)).join(' ');
+function overview() {
+    return Object.entries(fieldLabels).map(([k,label])=>{
+        const record=master.teaching.fields[k],v=master.overview[k];
+        return '<h3>'+esc(label)+(record?.origin==='ai_interpretation'?' · AIによる臨床的解釈':'')+'</h3>'+
+            (k==='main_results'?v.map((s,i)=>blocks(s)+linksToFacts(master.overview.result_evidence_ids[i])).join(''):
+            (blocks(v)||blocks([statusNames[record?.status],record?.reason])))+(record?linksToFacts(record.evidence_ids):'');
+    }).join('')+'<h3>臨床的解釈 · AI</h3>'+master.clinical_interpretation.map(b=>blocks(b.text_ja)+linksToFacts(b.evidence_ids)).join('');
+}
+let libraryActive=false,libTab=0,query='';
+const tabLabels=['研究・所見','章別精読','抄録・要点','出典・品質'];
+function filteredEvidence() {
+    const search=query.normalize('NFKC').toLowerCase().trim();
+    const list=master.evidence.filter(e=>[e.id,e.statement_ja,...Object.values(studies[e.id]||{}),...(e.exceptions||[]),...e.measurements.map(v=>v.reported)].join(' ').normalize('NFKC').toLowerCase().includes(search));
+    $('libraryList').innerHTML='<p class="micro">'+list.length+' / '+master.evidence.length+' 所見</p>'+list.map(e=>'<article><h3>'+esc(studies[e.id]?.reference||e.id)+'</h3>'+blocks(e.statement_ja)+button('詳細・原文','inspect',e.id)+'</article>').join('');
+}
+function library(tab=libTab) {
+    libraryActive=true;libTab=tab;
+    let html='<div class="keys">'+tabLabels.map((v,i)=>'<button data-lib="'+i+'" aria-pressed="'+(i===tab)+'">'+v+'</button>').join('')+'</div>';
+    if(tab===0)html+='<label>研究名・アウトカム・根拠IDで検索<input type="search" id="filter" value="'+esc(query)+'"></label><div id="libraryList"></div>';
+    if(tab===1)html+=master.chapters.map(c=>'<details><summary>'+esc(c.title_ja)+'</summary>'+blocks(c.summary_ja)+c.blocks.map(b=>blocks(b.text_ja)+linksToFacts(b.evidence_ids)).join('')+'<details><summary>章の原文参照</summary>'+c.source_refs.map(sourceCard).join('')+'</details></details>').join('');
+    if(tab===2)html+=overview()+'<h3>抄録・対訳</h3>'+master.abstract.parts.map((part,i)=>blocks(part.original)+blocks(part.translation_ja)+'<a target="_blank" rel="noopener" href="'+ensurePdf()+'#page='+master.teaching.abstract_pages[i]+'">原文抄録 ↗</a>').join('');
+    if(tab===3)html+='<h3>品質評価</h3>'+Object.entries(master.teaching.quality).map(([k,v])=>'<details><summary>'+esc(k)+' · '+esc(v.status)+'</summary>'+blocks(v.note)+blocks(v.reviewer)+'</details>').join('')+'<h3>生成・確認記録</h3>'+blocks(master.generation_metadata)+blocks(master.quality_control.issues.map(i=>i.note))+blocks('原本PDF SHA-256　'+master.metadata.pdf_sha256)+'<details><summary>全出典 '+master.source_references.length+'件</summary>'+master.source_references.map(s=>sourceCard(s.id)).join('')+'</details>';
+    showDialog('全研究・原文',html);
+    if(tab===0){filteredEvidence();$('filter').oninput=e=>{query=e.target.value;filteredEvidence()};}
+}
+$('library').onclick=()=>library();
+$('overview').onclick=()=>library(2);
+$('close').onclick=()=>$('drawer').close();
+$('drawer').onclose=()=>{libraryActive=false;if(returnFocus?.isConnected)returnFocus.focus({preventScroll:true});};
+document.addEventListener('click',event=>{
+    const b=event.target.closest('[data-point],[data-action],[data-lib]');
+    if(!b)return;
+    if(b.dataset.lib!==undefined){library(+b.dataset.lib);document.querySelector('[data-lib="'+libTab+'"]').focus();return;}
+    if(b.dataset.point){selected=b.dataset.point;render('[data-point="'+selected+'"]');inspect(selected);return;}
+    const {action,value}=b.dataset;
+    if(action==='step')setOption(+value);
+    if(action==='inspect'||action==='source')inspect(value,action==='source');
+    if(action==='back-library')library();
+});
+document.addEventListener('keydown',event=>{
+    if($('drawer').open||event.ctrlKey||event.metaKey||event.altKey)return;
+    if(event.target.closest('[data-point]') && [' ','Enter'].includes(event.key)){
+        event.preventDefault();event.target.closest('[data-point]').dispatchEvent(new MouseEvent('click',{bubbles:true}));return;
+    }
+    if(['ArrowLeft','ArrowRight'].includes(event.key)){
+        event.preventDefault();setStage(Math.max(0,Math.min(3,stage+(event.key==='ArrowRight'?1:-1))),true);
+    }
+});
+render();
+</script></body></html>
