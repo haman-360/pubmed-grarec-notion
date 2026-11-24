@@ -64,6 +64,10 @@ button,input,textarea,select{font:inherit}button{border:1px solid transparent;bo
 .json-retry-costs thead th:nth-child(2){width:6rem}
 .json-retry-costs thead th:last-child{width:4rem}
 }
+#material-images-list>div{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 12px;align-items:center;padding:12px 0;border-bottom:1px solid #dce7e4}
+#material-images-list small{grid-column:1;overflow-wrap:anywhere}
+#material-images-list button{grid-column:2;grid-row:1 / 3}
+@media(max-width:620px){#material-images-list button{grid-column:1;grid-row:auto;justify-self:start}}
 </style><main>
 <header><div><div class="eyebrow">PUBMED WORKSPACE · MAC</div><h1>論文処理のいま</h1><p class="sub">進めたい工程を選んで、その場で作業できます。</p></div><div class="actions"><button class="secondary" data-nav onclick="navigate('home')">ホーム</button><button class="secondary" data-manual-refresh onclick="manualRefresh()">保存状況を確認</button></div></header>
 <p id="observed" class="hint"></p><div id="progress-strip" hidden></div><div id="message" role="status"></div><p class="errors" id="errors"></p><div id="transition" role="status" hidden></div>
@@ -76,7 +80,12 @@ button,input,textarea,select{font:inherit}button{border:1px solid transparent;bo
 <button class="secondary" id="materials-open" onclick="materialAction('open')">教材HTMLを開く</button>
 <button class="secondary" id="materials-folder" onclick="materialAction('folder')">PNG依頼JSONの場所を開く</button>
 <button id="materials-register" onclick="materialAction('register')">教材HTMLと原本PDFをNotionへ登録</button></div>
-<p class="hint" id="materials-status"></p></section><div class="cards" id="cards"></div><div class="actions setup-tools" id="parked-cards"></div><div class="actions setup-tools"><button data-nav onclick="navigate('add')">PMIDを追加</button><button class="secondary" data-nav onclick="navigate('settings')">このMacの設定</button></div></div>
+<p class="hint" id="materials-status"></p>
+<details id="material-images" hidden><summary>完成PNGを1枚ずつ確認・登録</summary>
+<p>依頼JSONで指定されたファイル名で完成PNGを保存し、「到着状況を更新」を押してください。</p>
+<div class="actions"><button class="secondary" onclick="materialAction('png-folder')">完成PNGの保存先を開く</button>
+<button class="secondary" onclick="materialAction('png-refresh')">到着状況を更新</button></div>
+<div id="material-images-list"></div></details></section><div class="cards" id="cards"></div><div class="actions setup-tools" id="parked-cards"></div><div class="actions setup-tools"><button data-nav onclick="navigate('add')">PMIDを追加</button><button class="secondary" data-nav onclick="navigate('settings')">このMacの設定</button></div></div>
 <div id="view-heading" class="view-heading" hidden><button class="secondary" data-nav onclick="navigate('home')">← 論文処理のいまへ</button><h2 id="view-title" tabindex="-1"></h2><p id="view-description" class="hint"></p><div id="stage-actions" class="actions stage-tools"></div></div>
 <section id="json-panel" hidden><h2>PDFからJSONを作成する — Batch API</h2>
 <p class="hint">PDF取得済み・JSON未作成の論文から、見積もり対象を最大5本選びます。</p>
@@ -180,8 +189,26 @@ function renderMaterials(){
     const status=$('materials-status');
     status.textContent=ready?'作成済み · PNG依頼 '+kit.requests+'件。':'';
     if(ready && !notion.key_ready)status.textContent+=' Notionの接続設定が必要です。';
-    else if(ready && !notion.can_operate)status.textContent+=' Notion登録は担当Macで行えます。';
-    if(kit.page_id)notionPageLink(status,kit.page_id);
+    else if(ready && !notion.can_operate)status.textContent+=' Notion登録は担当Mac（'+(notion.owner||'設定済みの端末')+'）で行えます。';
+    if(kit.page_id) {
+        status.textContent+=' HTML登録済み · PNG '+(kit.images||[]).filter(i=>i.block_id).length+'/'+kit.requests+'枚登録済み。';
+        notionPageLink(status,kit.page_id);
+    }
+    $('material-images').hidden=!kit.images?.length;
+    const list=$('material-images-list');
+    list.textContent='';
+    for(const image of kit.images||[]){
+        const row=document.createElement('div');list.append(row);
+        const title=image.topic==='overview'?'全体図':image.title;
+        line(row,title+' ／ '+(image.block_id?'登録済み':image.approved_at?'承認済み・登録待ち':image.arrived?'確認待ち':'到着待ち'),'strong');
+        line(row,image.name,'small');
+        if(image.block_id||(!image.approved_at&&!image.arrived))continue;
+        const action=image.approved_at
+            ?button(row,'承認済みPNGの登録を再開','materials-png-register',{version:kit.version,topic:image.topic,sha:image.sha})
+            :navButton(row,'画像を確認して登録',()=>medicalReview({pmid:'42526604'},{topic:image.topic},image,kit.version));
+        action.disabled=state.busy||!kit.page_id||!notion.key_ready||!notion.can_operate;
+    }
+    if(kit.images?.length && !kit.page_id)line(list,'PNGはHTML登録後に同じページへ追加できます。','p');
 }
 function renderActionButtons(){for(let b of document.querySelectorAll('button:not([data-nav])'))b.disabled=Boolean(state.busy)&&!b.hasAttribute('data-manual-refresh');renderPdfOptions();renderJsonPanel();renderNotionPanel();renderMaterials()}
 async function manualRefresh(){await refresh();if(state&&!state.busy&&!actionPending)await act('refresh')}
@@ -594,9 +621,9 @@ async function openReadingGuide(paper){
     await load();
     if(status.textContent==='読み込み中…')status.textContent='';
 }
-async function medicalReview(p,g,image){
-    const payload={pmid:p.pmid,heads:p.heads,topic:g.topic,sha:image.sha};
-    const query=new URLSearchParams({pmid:p.pmid,head:p.heads[0],topic:g.topic,sha:image.sha});
+async function medicalReview(p,g,image,version){
+    const payload=version?{version,topic:g.topic}:{pmid:p.pmid,heads:p.heads,topic:g.topic,sha:image.sha};
+    const query=new URLSearchParams(version?payload:{pmid:p.pmid,head:p.heads[0],topic:g.topic,sha:image.sha});
     const dialog=document.createElement('dialog');
     dialog.style.cssText='width:min(1000px,94vw);max-height:90vh;overflow:auto';
     document.body.append(dialog);
@@ -607,8 +634,9 @@ async function medicalReview(p,g,image){
     const info=line(dialog,'画像と固定情報を読み込み中…','p');
     dialog.showModal();
     try{
-        const {facts,checks}=await api('/api/image-review?'+query);
-        const response=await fetch('/api/png?'+query,{headers:{'X-App-Token':token}});
+        const {facts,checks,sha}=await api((version?'/api/material-review?':'/api/image-review?')+query);
+        if(version){payload.sha=sha;query.set('sha',sha)}
+        const response=await fetch((version?'/api/material-png?':'/api/png?')+query,{headers:{'X-App-Token':token}});
         if(!response.ok)throw Error('画像の版が変わりました。開き直してください。');
         const blob=await response.blob();
         if(!dialog.open)return;
@@ -616,10 +644,10 @@ async function medicalReview(p,g,image){
         imageUrl=URL.createObjectURL(blob);img.src=imageUrl;img.alt='照合対象のPNG';
         img.style.width='100%';dialog.append(img);await img.decode();
         if(!dialog.open)return;
-        info.textContent=image.review?.reason||'旧版の画像です。固定情報と照合してください。';
-        button(dialog,'PNGを原寸で開く','open-file',{...payload,path:image.path});
+        info.textContent=version?'画像をこのテーマの固定情報と照合してください。':image.review?.reason||'旧版の画像です。固定情報と照合してください。';
+        if(!version)button(dialog,'PNGを原寸で開く','open-file',{...payload,path:image.path});
         line(dialog,facts.one_line_summary||facts.topic_title,'h3');
-        if(p.files.some(f=>f.kind==='png'&&f.topic===g.topic&&f.sha!==image.sha))
+        if(p.files?.some(f=>f.kind==='png'&&f.topic===g.topic&&f.sha!==image.sha))
             line(dialog,'承認すると、この候補をテーマの正式版にします。前の画像は履歴に残ります。','p');
         const details=document.createElement('details');line(details,'対象・研究方法・結果・推奨・限界などの固定情報','summary');
         line(details,facts.practice_change_display,'p');
@@ -654,10 +682,10 @@ async function medicalReview(p,g,image){
                 info.textContent='固定情報と照合した項目すべてにチェックしてください。';return
             }
             dialog.close();
-            await act('review-png',{...payload,observed_pmid:observed.value.trim(),value:value.value,checks:checked,reject});
+            await act(version?'materials-png-register':'review-png',{...payload,observed_pmid:observed.value.trim(),value:value.value,checks:checked,reject});
         };
-        navButton(dialog,'照合結果を記録（一致時に承認）',()=>record(false));
-        navButton(dialog,'不一致・欠落のため却下',()=>record(true));
+        navButton(dialog,version?'このPNGを承認してNotionに追加':'照合結果を記録（一致時に承認）',()=>record(false));
+        if(!version)navButton(dialog,'不一致・欠落のため却下',()=>record(true));
     }catch(error){info.textContent='照合を保留しました。'+error.message}
 }
 function pngActions(parent,p){

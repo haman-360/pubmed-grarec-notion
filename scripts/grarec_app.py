@@ -11,8 +11,8 @@ from paper_pipeline.manual_status import StatusReporter
 from paper_pipeline.intake import (PENDING, ARCHIVE, ensure_folders, inventory, organize,
                                    parse_pmids, result_message, workspace_lock)
 from paper_pipeline.image_review import CHECKS
-from paper_pipeline import ledger_inbox, reading_guide, materials
-from paper_pipeline.store import now
+from paper_pipeline import ledger_inbox, reading_guide, materials, material_pngs
+from paper_pipeline.store import now, digest
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -77,7 +77,7 @@ class Application:
             from paper_pipeline.notion_sync import status as notion_status
             state['notion_sync'] = notion_status(self.repo, workspace)
             try:
-                state['materials'] = materials.current(workspace)
+                state['materials'] = material_pngs.snapshot(self.repo, workspace)
             except (OSError, ValueError) as error:
                 state['errors'].append(str(error))
             state['errors'] += self.scan_errors
@@ -100,7 +100,7 @@ class Application:
             self.state = dict(base, papers=[], counts=dict(total=0, **{k: 0 for k in STAGES}), errors=[str(error)])
 
     def run(self, action, data):
-        if action not in ('configure', 'add', 'reading-metadata', 'json-metadata', 'fetch-pdfs', 'fetch-pdfs-paid', 'json-budget', 'json-prepare', 'json-send', 'json-collect', 'json-retry-prepare', 'json-retry-send', 'notion-prepare', 'notion-send', 'materials-register') and self.settings['shared_root']:
+        if action not in ('configure', 'add', 'reading-metadata', 'json-metadata', 'fetch-pdfs', 'fetch-pdfs-paid', 'json-budget', 'json-prepare', 'json-send', 'json-collect', 'json-retry-prepare', 'json-retry-send', 'notion-prepare', 'notion-send', 'materials-register', 'materials-png-register') and self.settings['shared_root']:
             with workspace_lock(self.workspace()):
                 return self._run(action, data)
         return self._run(action, data)
@@ -125,6 +125,15 @@ class Application:
             folder = materials.checked_folder(workspace, data.get('version'))
             subprocess.run(['open', str(folder/materials.HTML if action == 'materials-open' else folder)], check=True)
             return '教材を開きました。'
+        if action == 'materials-png-folder':
+            folder = material_pngs.inbox(workspace, data.get('version'))
+            folder.mkdir(exist_ok=True)
+            subprocess.run(['open', str(folder)], check=True)
+            return '完成PNGの保存先を開きました。'
+        if action == 'materials-png-refresh':
+            return '完成PNGの到着状況を更新しました。'
+        if action == 'materials-png-register':
+            return material_pngs.register(self.repo, workspace, data)
         if action == 'materials-register':
             from paper_pipeline.materials_notion import register
             return register(self.repo, workspace, data.get('version'))
@@ -377,6 +386,16 @@ class Handler(BaseHTTPRequestHandler):
                 return self.reply(200, json.dumps(context, ensure_ascii=False))
             except (ValueError, KeyError, OSError):
                 return self.reply(409, '{"error":"論文が更新されたか未同期です。一覧を確認してください"}')
+        if urlsplit(self.path).path in ('/api/material-review', '/api/material-png') and self.allowed():
+            try:
+                query = parse_qs(urlsplit(self.path).query)
+                facts, raw = material_pngs.review_data(app.workspace(), query['version'][0], query['topic'][0],
+                                                       query.get('sha', [None])[0])
+                if urlsplit(self.path).path == '/api/material-png':
+                    return self.reply(200, raw, 'image/png')
+                return self.reply(200, json.dumps(dict(facts=facts, checks=CHECKS, sha=digest(raw)), ensure_ascii=False))
+            except (ValueError, OSError, KeyError) as error:
+                return self.reply(409, json.dumps({'error':str(error)}))
         if urlsplit(self.path).path in ('/api/png', '/api/image-review') and self.allowed():
             try:
                 query = parse_qs(urlsplit(self.path).query)
