@@ -316,3 +316,31 @@ test('teaching stage selects registered papers across searches and drops stale s
     set("state.teaching_jobs.push({pmid:'3',route:'existing',source_sha:'json-3'})");
     assert.deepEqual(run('teachingRows()'),[]);
 });
+
+test('teaching history links each registered edition to its page and keeps pending settings accessible',()=>{
+    const {run,set}=dashboard();
+    set(`
+        const element=tag=>({tag,children:[],dataset:{},append(child){this.children.push(child)}});
+        document.createElement=element;
+        const jobs=element('div');
+        $('teaching-jobs').append=child=>jobs.append(child);
+        $('teaching-papers').append=()=>{};
+        $('teaching-single').scrollIntoView=()=>{};
+        renderMaterials=()=>{};
+        const id='11111111-2222-3333-4444-555555555555';
+        state.teaching_jobs=[{pmid:'1',route:'existing',version:'v1',page_id:id,notion:true},
+            {pmid:'2',message:'精読結果待ち',paid:true}];
+        state.materials={version:'v2',page_id:'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'};
+        renderTeachingJobs();
+        const actions=jobs.children.map(row=>row.children[1].children);
+    `);
+    assert.deepEqual(run("actions.map(nodes=>nodes.map(n=>n.tag))"),[['a','button'],['button'],['a','button']]);
+    assert.equal(run("actions[0][0].href"),'https://www.notion.so/11111111222233334444555555555555');
+    assert.equal(run("actions[2][0].href"),'https://www.notion.so/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
+    assert.equal(run("jobs.children[0].children[0].children[2].textContent"),'教材作成済み · Notion登録済み');
+    assert.equal(run("jobs.children[1].children[0].children[2].textContent"),'精読結果待ち');
+    set('actions[0][1].onclick()');
+    assert.equal(run("$('teaching-pmid').value"),'1');
+    assert.equal(run("$('teaching-route').value"),'existing');
+    assert.equal(run("$('teaching-single').open"),true);
+});
