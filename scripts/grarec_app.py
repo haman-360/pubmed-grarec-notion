@@ -246,6 +246,11 @@ class Application:
             if not reading_guide.fetch_metadata(workspace, [pmid]):
                 return 'PubMed書誌を取得できませんでした。PubMedの論文ページを確認してください。'
             return 'PubMedの論文種別と抄録を取得しました。'
+        if action == 'open-reader':
+            from paper_pipeline.reader import workspace_reader
+            path = workspace_reader(self.repo, workspace, pmid, data['heads'])
+            subprocess.run(['open', str(path)], check=True)
+            return f'オフラインReaderを開きました。保存先：{path}'
         if action == 'copy-reading-guide':
             context = reading_guide.guide(workspace, pmid, data['heads'])
             subprocess.run(['/usr/bin/pbcopy'], input=reading_guide.guide_prompt(context).encode(), check=True)
@@ -313,10 +318,12 @@ class Application:
         def work():
             try:
                 self.message = self.run(action, data)
-                self.refresh(scan=True)
+                if action != 'open-reader':
+                    self.refresh(scan=True)
             except Exception as error:
                 self.message = '要確認: ' + str(error)[:1200]
-                self.refresh()
+                if action != 'open-reader':
+                    self.refresh()
             finally:
                 with self.mutex:
                     self.busy = False

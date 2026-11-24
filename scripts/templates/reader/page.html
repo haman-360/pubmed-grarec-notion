@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'sha256-$css_hash'; script-src 'sha256-$js_hash'; base-uri 'none'; form-action 'none'">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>$title</title>
+<style>$css</style>
+</head>
+<body>
+<a class="skip" href="#content">本文へ移動</a>
+<header><div class="wrap"><p class="id">PubMed 論文リーダー　/　PMID $pmid</p><h1>$title</h1><p>$citation</p></div></header>
+<div class="layout wrap">
+<nav aria-label="論文の目次"><h2>目次</h2><div id="tools" hidden>
+<label for="query">論文内を検索</label><input type="search" id="query" autocomplete="off"><span id="matches" role="status"></span></div>
+<ol>$toc</ol></nav>
+<main id="content">$sections</main>
+</div>
+<script>$js</script>
+</body></html>

@@ -1,0 +1,1252 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PubMed 論文学習用 Master JSON 保存スキーマ",
+  "description": "全文版の保存構造。旧データは読み取りビューで扱う。参照先の実在・引用照合・人による確認は別工程。",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "learning-v2"
+    },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "pmid": {
+          "type": "string",
+          "pattern": "^[0-9]+$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "journal": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "year": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9]{4}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "doi": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "pdf_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      },
+      "required": [
+        "pmid",
+        "title",
+        "journal",
+        "year",
+        "doi",
+        "pdf_sha256"
+      ],
+      "additionalProperties": false
+    },
+    "article_type": {
+      "enum": [
+        "original_article",
+        "rct",
+        "observational",
+        "systematic_review",
+        "meta_analysis",
+        "narrative_review",
+        "scoping_review",
+        "guideline",
+        "consensus",
+        "case_report",
+        "other_unknown"
+      ]
+    },
+    "classification_reason": {
+      "type": "string",
+      "minLength": 1
+    },
+    "abstract": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "enum": [
+            "pubmed",
+            "original_pdf",
+            null
+          ]
+        },
+        "status": {
+          "enum": [
+            "recorded",
+            "not_reported",
+            "not_applicable",
+            "not_acquired",
+            "unverified"
+          ]
+        },
+        "parts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/abstract_part"
+          }
+        }
+      },
+      "required": [
+        "source",
+        "status",
+        "parts"
+      ],
+      "additionalProperties": false
+    },
+    "overview": {
+      "$ref": "#/$defs/clinical"
+    },
+    "clinical_interpretation": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/block"
+      }
+    },
+    "chapters": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/chapter"
+      },
+      "minItems": 1
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/evidence"
+      }
+    },
+    "source_references": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/source_ref"
+      }
+    },
+    "visualizations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/panel"
+      }
+    },
+    "png_plan": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/png"
+      },
+      "minItems": 1,
+      "contains": {
+        "properties": {
+          "role": {
+            "const": "overview"
+          }
+        },
+        "required": [
+          "role"
+        ]
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    "quality_control": {
+      "type": "object",
+      "properties": {
+        "human_checked": {
+          "type": "boolean"
+        },
+        "issues": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1
+              },
+              "status": {
+                "enum": [
+                  "recorded",
+                  "not_reported",
+                  "not_applicable",
+                  "not_acquired",
+                  "unverified"
+                ]
+              },
+              "note": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "path",
+              "status",
+              "note"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "review_event_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "human_checked",
+        "issues",
+        "review_event_id"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "human_checked": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "review_event_id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "generation_metadata": {
+      "type": "object",
+      "properties": {
+        "method": {
+          "enum": [
+            "api_batch",
+            "manual_web",
+            "mixed"
+          ]
+        },
+        "schema_revision": {
+          "type": "string",
+          "minLength": 1
+        },
+        "prompt_version": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "run_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "method",
+        "schema_revision",
+        "prompt_version",
+        "run_id"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema_version",
+    "metadata",
+    "article_type",
+    "classification_reason",
+    "abstract",
+    "overview",
+    "clinical_interpretation",
+    "chapters",
+    "evidence",
+    "source_references",
+    "visualizations",
+    "png_plan",
+    "quality_control",
+    "generation_metadata"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "source_ref": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+        },
+        "source": {
+          "enum": [
+            "original_pdf",
+            "pubmed_abstract"
+          ]
+        },
+        "pdf_page_start": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "pdf_page_end": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "printed_page": {
+          "type": "string",
+          "minLength": 1
+        },
+        "section": {
+          "type": "string",
+          "minLength": 1
+        },
+        "figure": {
+          "type": "string",
+          "minLength": 1
+        },
+        "table": {
+          "type": "string",
+          "minLength": 1
+        },
+        "citation": {
+          "type": "string",
+          "minLength": 1
+        },
+        "quote": {
+          "type": "string",
+          "minLength": 1
+        },
+        "abstract_part": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+        }
+      },
+      "required": [
+        "id",
+        "source",
+        "quote"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "source": {
+                "const": "original_pdf"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "pdf_page_start"
+            ]
+          },
+          "else": {
+            "required": [
+              "abstract_part"
+            ]
+          }
+        }
+      ]
+    },
+    "abstract_part": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "language": {
+          "type": "string",
+          "minLength": 1
+        },
+        "original": {
+          "type": "string",
+          "minLength": 1
+        },
+        "translation_ja": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "language",
+        "original",
+        "translation_ja"
+      ],
+      "additionalProperties": false
+    },
+    "measurement": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reported": {
+          "type": "string",
+          "minLength": 1
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "group": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "timepoint": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "denominator": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "analysis_set": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "estimate": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ci_lower": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ci_upper": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ci_level": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "p_value": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+          },
+          "uniqueItems": true,
+          "minItems": 1
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "reported",
+        "source_refs"
+      ],
+      "additionalProperties": false
+    },
+    "evidence": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+        },
+        "kind": {
+          "enum": [
+            "study_result",
+            "cited_study",
+            "author_statement",
+            "author_hypothesis",
+            "guideline_recommendation",
+            "expert_consensus"
+          ]
+        },
+        "statement_ja": {
+          "type": "string",
+          "minLength": 1
+        },
+        "population": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "conditions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "exceptions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "reported_certainty": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "certainty_system": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "measurements": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/measurement"
+          }
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+          },
+          "uniqueItems": true,
+          "minItems": 1
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "statement_ja",
+        "source_refs"
+      ],
+      "additionalProperties": false
+    },
+    "block": {
+      "type": "object",
+      "properties": {
+        "role": {
+          "enum": [
+            "finding",
+            "specialist_detail",
+            "mechanism",
+            "result",
+            "author_view",
+            "uncertainty",
+            "clinical_meaning",
+            "japan_applicability"
+          ]
+        },
+        "origin": {
+          "enum": [
+            "paper",
+            "ai_interpretation"
+          ]
+        },
+        "text_ja": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+          },
+          "uniqueItems": true,
+          "minItems": 1
+        }
+      },
+      "required": [
+        "role",
+        "origin",
+        "text_ja",
+        "evidence_ids"
+      ],
+      "additionalProperties": false
+    },
+    "chapter": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+        },
+        "parent_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "section_title_original": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "title_ja": {
+          "type": "string",
+          "minLength": 1
+        },
+        "summary_ja": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+          },
+          "uniqueItems": true,
+          "minItems": 1
+        },
+        "blocks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/block"
+          }
+        },
+        "visualization_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "id",
+        "parent_id",
+        "section_title_original",
+        "title_ja",
+        "summary_ja",
+        "source_refs",
+        "blocks",
+        "visualization_ids"
+      ],
+      "additionalProperties": false
+    },
+    "panel": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+        },
+        "type": {
+          "enum": [
+            "step_sequence",
+            "pathway",
+            "timeline",
+            "comparison",
+            "bar_chart",
+            "line_chart",
+            "forest_plot",
+            "decision_tree",
+            "mechanism_diagram",
+            "knowledge_check"
+          ]
+        },
+        "title_ja": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+          },
+          "uniqueItems": true,
+          "minItems": 1
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1
+              },
+              "evidence_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+                },
+                "uniqueItems": true,
+                "minItems": 1
+              },
+              "measurement_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+                },
+                "uniqueItems": true
+              }
+            },
+            "required": [
+              "id",
+              "label",
+              "evidence_ids"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 1
+        },
+        "edges": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "from": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+              },
+              "to": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1
+              },
+              "evidence_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+                },
+                "uniqueItems": true,
+                "minItems": 1
+              }
+            },
+            "required": [
+              "from",
+              "to",
+              "label",
+              "evidence_ids"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "axis": {
+          "type": "object",
+          "properties": {
+            "scale": {
+              "enum": [
+                "linear",
+                "log"
+              ]
+            },
+            "measure": {
+              "type": "string",
+              "minLength": 1
+            },
+            "unit": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "null_value": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "scale",
+            "measure",
+            "unit"
+          ],
+          "additionalProperties": false
+        },
+        "answer": {
+          "type": "object",
+          "properties": {
+            "item_id": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+            },
+            "explanation": {
+              "type": "string",
+              "minLength": 1
+            },
+            "evidence_ids": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+              },
+              "uniqueItems": true,
+              "minItems": 1
+            }
+          },
+          "required": [
+            "item_id",
+            "explanation",
+            "evidence_ids"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "title_ja",
+        "evidence_ids",
+        "items"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "enum": [
+                  "bar_chart",
+                  "line_chart",
+                  "forest_plot"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "axis"
+            ],
+            "properties": {
+              "items": {
+                "items": {
+                  "required": [
+                    "measurement_ids"
+                  ],
+                  "properties": {
+                    "measurement_ids": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+                      },
+                      "uniqueItems": true,
+                      "minItems": 1
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "enum": [
+                  "pathway",
+                  "decision_tree",
+                  "mechanism_diagram"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "edges"
+            ],
+            "properties": {
+              "edges": {
+                "minItems": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "knowledge_check"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "answer"
+            ]
+          }
+        }
+      ]
+    },
+    "png": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+        },
+        "role": {
+          "enum": [
+            "overview",
+            "additional"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+          },
+          "uniqueItems": true,
+          "minItems": 1
+        },
+        "required_caveats": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": [
+        "id",
+        "role",
+        "title",
+        "message",
+        "evidence_ids",
+        "required_caveats"
+      ],
+      "additionalProperties": false
+    },
+    "clinical": {
+      "type": "object",
+      "properties": {
+        "topic": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "clinical_area": {
+          "type": "string"
+        },
+        "one_line_summary": {
+          "type": "string"
+        },
+        "why_important": {
+          "type": "string"
+        },
+        "pico": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "p": {
+                  "type": "string"
+                },
+                "i_or_exposure": {
+                  "type": "string"
+                },
+                "c": {
+                  "type": "string"
+                },
+                "o": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "p",
+                "i_or_exposure",
+                "c",
+                "o"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "study_design": {
+          "type": "string"
+        },
+        "study_type": {
+          "type": "string"
+        },
+        "population_setting": {
+          "type": "string"
+        },
+        "figure_table_summary": {
+          "type": "string"
+        },
+        "main_results": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "result_evidence_ids": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+            },
+            "uniqueItems": true,
+            "minItems": 1
+          }
+        },
+        "safety": {
+          "type": "string"
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "applicability_to_japanese_pediatric_clinic": {
+          "type": "string"
+        },
+        "practice_change": {
+          "enum": [
+            "Yes",
+            "No",
+            "Unclear",
+            null
+          ]
+        },
+        "practice_change_reason": {
+          "type": "string"
+        },
+        "tomorrow_action": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "summary_jp": {
+          "type": "string"
+        },
+        "clinical_impact": {
+          "type": "string"
+        },
+        "evidence_notes": {
+          "type": "string"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "topic",
+        "clinical_area",
+        "one_line_summary",
+        "why_important",
+        "pico",
+        "study_design",
+        "population_setting",
+        "figure_table_summary",
+        "main_results",
+        "result_evidence_ids",
+        "safety",
+        "limitations",
+        "applicability_to_japanese_pediatric_clinic",
+        "practice_change",
+        "practice_change_reason",
+        "tomorrow_action",
+        "source"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

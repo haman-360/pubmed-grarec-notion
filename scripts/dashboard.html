@@ -690,6 +690,8 @@ function renderPapers(){
         if(view==='history'){let current=state.papers.find(x=>x.pmid===p.pmid);if(current)navButton(controls,'現在の工程で作業する',()=>navigate(current.category));}
         if(p.heads.length===1){
             managementControls(actions,p);
+            if(view!=='history'&&!p.structure_wait&&p.files.some(f=>f.kind==='json'))
+                button(controls,'オフラインReaderを開く','open-reader',{pmid:p.pmid,heads:p.heads});
             if(!p.archive&&view!=='history')navButton(controls,'読書ガイド・テーマ図解',()=>openReadingGuide(p));
             if(view==='missing_pdf'){navButton(controls,'無料で検索',()=>openPdfPanel(p.pmid));if(!state.pdf_cooldowns?.[p.pmid]?.blocked)navButton(controls,'有料で検索',()=>openPdfPanel(p.pmid,true));else line(controls,'有料検索は再検索制限中','small');}
             if(view==='json_pending'){navButton(controls,'APIで作成・回収',()=>openJsonPanel(p.pmid));jsonManualActions(controls,p)}
