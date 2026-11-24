@@ -2,6 +2,7 @@
 from collections import defaultdict
 from html import escape
 
+from .reader import TEMPLATES
 from .visual_reader import package_visual_reader, source_excerpt
 
 
@@ -94,4 +95,5 @@ def render_mechanisms(paper):
     if not panels:
         raise ValueError('このMasterに機序図のパネルがありません')
     component = MechanismDiagrams(master, bool(paper.original_pdf))
-    return package_visual_reader(paper, 'mechanisms', ''.join(component.panel(panel) for panel in panels))
+    return package_visual_reader(paper, 'mechanisms', ''.join(component.panel(panel) for panel in panels),
+                                 symbols=(TEMPLATES/'mechanism_symbols.svg').read_text())

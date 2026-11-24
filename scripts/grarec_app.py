@@ -11,7 +11,7 @@ from paper_pipeline.manual_status import StatusReporter
 from paper_pipeline.intake import (PENDING, ARCHIVE, ensure_folders, inventory, organize,
                                    parse_pmids, result_message, workspace_lock)
 from paper_pipeline.image_review import CHECKS
-from paper_pipeline import ledger_inbox, reading_guide
+from paper_pipeline import ledger_inbox, reading_guide, materials
 from paper_pipeline.store import now
 
 REPO = Path(__file__).resolve().parents[1]
@@ -76,6 +76,10 @@ class Application:
             state['json_batch'] = json_status(self.repo, workspace)
             from paper_pipeline.notion_sync import status as notion_status
             state['notion_sync'] = notion_status(self.repo, workspace)
+            try:
+                state['materials'] = materials.current(workspace)
+            except (OSError, ValueError) as error:
+                state['errors'].append(str(error))
             state['errors'] += self.scan_errors
             for row in state['papers']:
                 article = reading_guide.metadata(workspace, row['pmid'])
@@ -96,7 +100,7 @@ class Application:
             self.state = dict(base, papers=[], counts=dict(total=0, **{k: 0 for k in STAGES}), errors=[str(error)])
 
     def run(self, action, data):
-        if action not in ('configure', 'add', 'reading-metadata', 'json-metadata', 'fetch-pdfs', 'fetch-pdfs-paid', 'json-budget', 'json-prepare', 'json-send', 'json-collect', 'json-retry-prepare', 'json-retry-send', 'notion-prepare', 'notion-send') and self.settings['shared_root']:
+        if action not in ('configure', 'add', 'reading-metadata', 'json-metadata', 'fetch-pdfs', 'fetch-pdfs-paid', 'json-budget', 'json-prepare', 'json-send', 'json-collect', 'json-retry-prepare', 'json-retry-send', 'notion-prepare', 'notion-send', 'materials-register') and self.settings['shared_root']:
             with workspace_lock(self.workspace()):
                 return self._run(action, data)
         return self._run(action, data)
@@ -114,6 +118,16 @@ class Application:
             save_settings(self.repo, self.settings)
             return '共有フォルダを設定しました。OneDrive標準アプリで同期します。'
         workspace = self.workspace()
+        if action == 'materials-build':
+            folder = materials.generate(self.repo, workspace)
+            return '教材HTMLとPNG依頼JSONを保存しました：'+str(folder)
+        if action in ('materials-open', 'materials-folder'):
+            folder = materials.checked_folder(workspace, data.get('version'))
+            subprocess.run(['open', str(folder/materials.HTML if action == 'materials-open' else folder)], check=True)
+            return '教材を開きました。'
+        if action == 'materials-register':
+            from paper_pipeline.materials_notion import register
+            return register(self.repo, workspace, data.get('version'))
         if action == 'ledger-code':
             code = ledger_inbox.pairing_code(self.repo, workspace)
             subprocess.run(['/usr/bin/pbcopy'], input=code.encode(), check=True)
@@ -319,7 +333,7 @@ class Application:
             try:
                 self.message = self.run(action, data)
                 if action != 'open-reader':
-                    self.refresh(scan=True)
+                    self.refresh(scan=not action.startswith('materials-'))
             except Exception as error:
                 self.message = '要確認: ' + str(error)[:1200]
                 if action != 'open-reader':

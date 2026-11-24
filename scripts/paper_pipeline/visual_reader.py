@@ -26,12 +26,12 @@ def source_excerpt(source, has_pdf, reported=None):
             f'<blockquote lang="und">{quote}</blockquote></div>')
 
 
-def package_visual_reader(paper, template, panels):
-    css = (TEMPLATES/f'{template}.css').read_text()
-    js = (TEMPLATES/f'{template}.js').read_text()
+def package_visual_reader(paper, template, panels, *, css=None, js=None, **slots):
+    css = css or (TEMPLATES/f'{template}.css').read_text()
+    js = js or (TEMPLATES/f'{template}.js').read_text()
     return Template((TEMPLATES/f'{template}.html').read_text()).substitute(
         title=escape((paper.teaching_master['overview']['topic'] or [paper.title])[0]), pmid=escape(paper.pmid),
-        original=escape(paper.title), panels=panels,
+        original=escape(paper.title), panels=panels, **slots,
         pdf=b64encode(paper.original_pdf or b'').decode(), css=css, js=js,
         css_hash=b64encode(sha256(css.encode()).digest()).decode(),
         js_hash=b64encode(sha256(js.encode()).digest()).decode()).encode()

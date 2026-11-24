@@ -26,7 +26,7 @@ button { cursor: pointer; font: inherit; color: inherit; }
 .ticks { width: calc(100% - 1rem); margin-inline: .5rem; font: 9px sans-serif; fill: #435957; }
 .interval { fill: none; stroke: #14756b; stroke-width: 2; }
 .baseline { stroke: #637673; stroke-dasharray: 2 3; }
-circle { fill: #14675f; stroke: #fff; stroke-width: 1; }
+.forest circle { fill: #14675f; stroke: #fff; stroke-width: 1; }
 dialog { color: inherit; padding: 0; width: min(43rem, calc(100% - 1.4rem)); max-height: 88vh; max-height: 88dvh; border: 1px solid #afc2b6; border-radius: 1rem; background: #fffcf5; overflow-wrap: anywhere; }
 dialog::backdrop { background: #1d3336a8; }
 .drawer-head { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .85rem 1.15rem; border-bottom: 1px solid #c5d3c9; background: #fffcf5; position: sticky; top: 0; }

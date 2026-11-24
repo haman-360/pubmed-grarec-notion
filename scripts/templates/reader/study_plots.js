@@ -5,11 +5,11 @@ document.addEventListener('click', event => {
     if (point) {
         const dialog = point.nextElementSibling;
         const links = dialog.querySelectorAll('[data-pdf-page]');
-        if (links.length && !pdfUrl) {
+        if (links.length && !links[0].hasAttribute('href') && !pdfUrl) {
             const bytes = Uint8Array.from(atob(pdf.content.textContent), char => char.charCodeAt(0));
             pdfUrl = URL.createObjectURL(new Blob([bytes], {type: 'application/pdf'}));
         }
-        for (const link of links) link.href = pdfUrl + '#page=' + link.dataset.pdfPage;
+        if (pdfUrl) for (const link of links) link.href = pdfUrl + '#page=' + link.dataset.pdfPage;
         point.focus({preventScroll: true});
         dialog.showModal();
         dialog.scrollTop = 0;

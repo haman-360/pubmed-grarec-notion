@@ -264,3 +264,13 @@ test('PNG plan shows the overview, each topic title and the count for older file
     assert.equal(run('old.children[0].textContent'),'グラレコ 全1枚 ／ 0枚保存済み');
     assert.equal(run('old.children[1].children[0].children[0].textContent'),'main ／ 作成待ち');
 });
+test('teaching HTML can be registered from the home view before any PNG exists',()=>{
+    const {run,set}=dashboard();
+    set("state={busy:false,materials:{version:'edition',requests:5},notion_sync:{key_ready:true,can_operate:true}};renderMaterials()");
+    assert.equal(run("$('materials-register').hidden"),false);
+    assert.equal(run("$('materials-register').disabled"),false);
+    set("var calls=[];act=(action,data)=>calls.push({action,data});materialAction('register')");
+    assert.deepEqual(run('calls'),[{action:'materials-register',data:{version:'edition'}}]);
+    set('state.materials={};renderMaterials()');
+    assert.equal(run("$('materials-register').hidden"),true);
+});

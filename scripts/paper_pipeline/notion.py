@@ -181,6 +181,9 @@ class Notion:
         return self.all_results('/blocks/'+identifier+'/children')
 
     def upload(self, revision, state, kind, path):
+        return self.upload_file(revision['id'], state, kind, path, lambda: self.save(revision,state))
+
+    def upload_file(self, version, state, kind, path, persist):
         entry = state.get(kind+'_upload',{})
         if entry.get('id'):
             status = self.api.call('GET','/file_uploads/'+entry['id'])
@@ -192,15 +195,15 @@ class Notion:
                 raise ValueError('Notion添付送信結果が未確定です。次回再確認します')
         if path.stat().st_size > min(self.file_limit,20*1024*1024):
             raise ValueError('ファイル上限超過：自動縮小や公開URL化は行いません')
-        name = kind+'_'+digest(revision['id'])[:16]+'_'+digest(path.read_bytes())[:12]+path.suffix
+        name = kind+'_'+digest(version)[:16]+'_'+digest(path.read_bytes())[:12]+path.suffix
         content_type = mimetypes.guess_type(name)[0]
         if not entry.get('id') or status.get('status') != 'pending':
             upload = self.api.call('POST','/file_uploads',json={'mode':'single_part','filename':name,'content_type':content_type})
             entry = {'id':upload['id'],'name':name}
             state[kind+'_upload'] = entry
-            self.save(revision,state)
+            persist()
         entry['send_intent'] = True
-        self.save(revision,state)
+        persist()
         with path.open('rb') as handle:
             self.api.call('POST','/file_uploads/'+entry['id']+'/send',files={'file':(name,handle,content_type)})
         status = self.api.call('GET','/file_uploads/'+entry['id'])

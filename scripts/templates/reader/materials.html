@@ -1,0 +1,10 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'sha256-$css_hash'; script-src 'sha256-$js_hash'; base-uri 'none'; form-action 'none'">
+<title>$title</title><style>$css</style></head><body>
+<header><div class="wrap">論文教材 <span>PMID $pmid</span></div></header>
+$symbols
+<main class="wrap"><h1>$title</h1><p class="original">$original</p>
+<nav aria-label="図解の切り替え"><button type="button" data-view="studies" aria-controls="studies" aria-pressed="true">研究別グラフ</button>
+<button type="button" data-view="mechanisms" aria-controls="mechanisms" aria-pressed="false">機序図</button></nav>
+<section id="studies"><p class="guide">点は推定値、横線は95%信頼区間、破線は比＝1です。各図は独立した対数目盛です。点を選ぶと研究詳細と原文を開きます。</p><div class="panels">$panels</div></section>
+<section id="mechanisms" hidden>$mechanisms</section></main><template id="pdf">$pdf</template><script>$js</script></body></html>

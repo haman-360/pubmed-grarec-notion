@@ -1,0 +1,3 @@
+nav { display: flex; gap: .4rem; margin: 1rem 0; }
+nav button { border: 1px solid #658278; background: #fffef8; padding: .55rem 1rem; border-radius: 2rem; }
+nav button[aria-pressed=true] { background: #235950; color: white; }
