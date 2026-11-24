@@ -73,7 +73,9 @@ def save_metadata(workspace, article):
     if article.title:
         path = workspace.path(f'papers/PMID_{article.pmid}/pubmed-reading.json')
         atomic_write(path, encode(dict(pmid=article.pmid, title=article.title,
-                                      publication_types=article.publication_types, abstract=article.abstract)))
+                                      publication_types=article.publication_types, abstract=article.abstract,
+                                      year=getattr(article,"year",""), journal=getattr(article,"journal",""),
+                                      doi=getattr(article,"doi",""))))
 
 
 def fetch_metadata(workspace, pmids, client=None):

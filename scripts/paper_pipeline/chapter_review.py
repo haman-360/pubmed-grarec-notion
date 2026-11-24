@@ -222,8 +222,12 @@ def build_master(plan, results, run_id, studies=None):
     issues.append(dict(path='generation_metadata.method', status='recorded',
                        note=f'章別結果の作成：手動ローカル {local_count}件、手動Web {len(results)-local_count}件。'
                             '原本の分割・引用照合・統合はローカル処理。'))
+    if all(r['method'] == 'api_batch' for r in results):
+        method = 'api_batch'
+        issues[-1]['note'] = f'章別結果の作成：API Batch {len(results)}件。原本引用をローカルで照合。'
     return dict(schema_version='learning-v2', metadata=plan['metadata'], article_type=plan['article_type'],
-                classification_reason='分割準備時の指定', abstract=dict(source=None,status='not_acquired',parts=[]),
+                classification_reason=('PubMed書誌・論文名で特定できた種別。特定できない場合は不明。'
+                                       if method == 'api_batch' else '分割準備時の指定'), abstract=dict(source=None,status='not_acquired',parts=[]),
                 overview=overview, clinical_interpretation=[], chapters=chapters, evidence=evidence,
                 visualizations=[], source_references=sources,
                 png_plan=[dict(id='overview', role='overview', title=plan['metadata']['title'],

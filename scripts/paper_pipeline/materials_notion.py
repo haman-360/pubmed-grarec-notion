@@ -65,10 +65,12 @@ def verify_blocks(blocks, state):
         state[kind+'_path'] = path
 
 
-def register(repo, workspace, version, api=None):
-    folder = materials.checked_folder(workspace, version)
+def register(repo, workspace, version, api=None, pmid=materials.PMID):
+    folder = materials.checked_folder(workspace, version, pmid)
     master = json.loads((folder/'png-master.json').read_bytes())
-    heads = workspace.heads(materials.PMID)
+    if master['pmid'] != pmid:
+        raise ValueError('教材のPMIDが一致しません')
+    heads = workspace.heads(pmid)
     if len(heads) > 1:
         raise ValueError('PMIDの工程記録に競合があります')
     local = heads[0]['data'] if heads else {}
@@ -83,7 +85,7 @@ def register(repo, workspace, version, api=None):
         children = client.children(page)
         positions = [i for i,b in enumerate(children) if b['type']=='heading_2' and plain(b)==marker]
         if not positions:
-            for kind, name in [('html',materials.HTML), ('pdf',materials.PDF)]:
+            for kind, name in [('html',materials.HTML), ('pdf',f'PMID_{pmid}.pdf')]:
                 client.upload_file(version, state, kind, folder/name, persist)
             items = [{'type':'heading_2','heading_2':{'rich_text':rich(marker)}}]
             for kind, block_type in [('html','embed'), ('pdf','pdf')]:
@@ -104,7 +106,7 @@ def register(repo, workspace, version, api=None):
             state[kind+'_block'] = block['id']
         persist()
         with workspace_lock(workspace):
-            value = materials.current(workspace)
+            value = materials.current(workspace, pmid)
             if value.get('version') == version:
-                atomic_write(workspace.path(materials.DEST+'/current.json'), encode(dict(value, page_id=page)))
+                atomic_write(workspace.path(materials.destination(pmid)+'/current.json'), encode(dict(value, page_id=page)))
     return 'HTMLと原本PDFのNotion登録を確認しました。'

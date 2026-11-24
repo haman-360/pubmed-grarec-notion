@@ -34,6 +34,11 @@ study.referenceに記録。動物、ヒト観察、介入、著者仮説を明�
 同じresult_keyとstudyを使う。引用は対象・解析・主張を支持するものを選ぶ。比の推定値はlabelをaOR、aHR等とし
 reportedに出典表記、estimate、ci_level、ci_lower、ci_upperを原文どおり分離する。不明情報の推測・独自の統合は禁止。
 """
+API_PROTOCOL = 'chapter-learning-batch-v1'
+API_PACKET = deepcopy(PACKET)
+API_PACKET['properties']['method'] = {'const':'api_batch'}
+API_INSTRUCTIONS = INSTRUCTIONS.replace('Webで作成した結果は method=manual_web、人が作成した結果は manual_local。',
+                                       '今回の作成方法はmethod=api_batch。') + '\n応答は指定スキーマのJSONオブジェクトのみ。'
 FIELD_KEYS = ('topic','clinical_area','one_line_summary','why_important','study_design','population_setting',
               'figure_table_summary','limitations','safety','pico','applicability_to_japanese_pediatric_clinic',
               'practice_change','practice_change_reason','tomorrow_action','clinical_interpretation','abstract')
@@ -106,7 +111,7 @@ def synthesis_stage(folder, base, studies, pages):
                 status='unverified' if abstract_status=='not_assessed' else abstract_status, parts=parts),
                 overview=data['overview'], clinical_interpretation=data['clinical_interpretation'],
                 visualizations=data['visualizations'])
-    base['generation_metadata'].update(schema_revision=REVISION,prompt_version=PROTOCOL)
+    base['generation_metadata'].update(schema_revision=REVISION,prompt_version=API_PROTOCOL if base['generation_metadata']['method']=='api_batch' else PROTOCOL)
     field_records = {k:dict(v,origin='ai_interpretation' if k in AI_FIELDS else 'paper') for k,v in data['fields'].items()}
     base['teaching'] = dict(basis=basis, fields=field_records, units=data['units'], studies=studies,
                             abstract_pages=[p['page'] for p in data['abstract_parts']],

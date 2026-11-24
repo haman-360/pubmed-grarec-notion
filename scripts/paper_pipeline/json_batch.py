@@ -3,7 +3,8 @@ import json
 import math
 import os
 import re
-from contextlib import contextmanager
+import sqlite3
+from contextlib import closing, contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -96,8 +97,14 @@ def ledger(repo, workspace, claim=False):
 
 
 def publish(workspace, store):
-    jobs = []
+    jobs, teaching_costs = [], {}
     for revision in store.rows('SELECT * FROM revisions ORDER BY created_at DESC'):
+        if json.loads(revision['config']).get('mode') == 'teaching_batch':
+            entries = store.rows('SELECT actual,reserve,status FROM attempts WHERE revision_id=?', (revision['id'],))
+            teaching_costs[revision['id']] = dict(actual=sum(a['actual'] or 0 for a in entries),
+                reserved=sum(a['reserve'] for a in entries if a['actual'] is None),
+                active=any(a['status'] in ('reserved','submitted','unknown','submitting') for a in entries))
+            continue
         binding = store.setting('binding:' + revision['id'], {})
         attempts = store.rows('SELECT * FROM attempts WHERE revision_id=? ORDER BY created_at', (revision['id'],))
         counted = json.loads(revision['config']).get('counted_input_tokens')
@@ -109,7 +116,7 @@ def publish(workspace, store):
                          attempts=[{k: a[k] for k in ('status', 'batch_id', 'reserve', 'actual')} for a in attempts]))
     budget = store.setting('budget', {})
     # Credentials and account balances never go to OneDrive.
-    report = dict(at=now(), jobs=jobs, preview=store.setting('preview'), retry_preview=store.setting('retry_preview'),
+    report = dict(at=now(), jobs=jobs, teaching_costs=teaching_costs, preview=store.setting('preview'), retry_preview=store.setting('retry_preview'),
                   budget_checked_at=budget.get('checked_at'), budget_end=budget.get('end'))
     atomic_write(workspace.path(SHARED + '/status.json'), encode(report))
 
@@ -172,6 +179,11 @@ def eligible(workspace, pmid, heads):
 
 
 class JsonBatches(Batches):
+    def collect(self):
+        revisions = self.store.rows('SELECT id,config FROM revisions')
+        return super().collect({r['id'] for r in revisions if json.loads(r['config']).get('mode') != 'teaching_batch'})
+
+
     @staticmethod
     def estimate_input(info, prompt):
         return (info['text_bytes'] + info['pages'] * 16384 + len(prompt.encode())
@@ -268,6 +280,7 @@ def prepare(repo, workspace, items):
             paper = store.paper(pmid=pmid, title=event['data'].get('title', ''))
             source = store.source(pdf_path, paper['id'])
             existing = store.rows('SELECT * FROM revisions WHERE source_id=? ORDER BY created_at', (source['id'],))
+            existing = [r for r in existing if json.loads(r['config']).get('mode') != 'teaching_batch']
             if existing:
                 revision = existing[0]
                 previous = store.rows('SELECT status FROM attempts WHERE revision_id=?', (revision['id'],))
@@ -474,6 +487,17 @@ def adopt(workspace, store):
             except ValueError:
                 store.update('revisions', revision['id'], status='candidate',
                              error='手動成果物・原本・記録の変更等があるため候補として保管しました。既存の工程は変更していません。')
+
+
+def awaiting_collection(repo, workspace):
+    """Consult the durable ledger even if a crash prevented the OneDrive status update."""
+    path = local_root(repo, workspace)/'ledger.sqlite3'
+    if not path.is_file():
+        return False
+    with closing(sqlite3.connect(path.resolve().as_uri()+'?mode=ro', uri=True)) as db:
+        rows = db.execute("""SELECT DISTINCT r.config FROM revisions r LEFT JOIN attempts a ON a.revision_id=r.id
+            WHERE r.status='json_received' OR a.status IN ('reserved','unknown','submitted','submitting')""")
+        return any(json.loads(cfg).get('mode') != 'teaching_batch' for cfg, in rows)
 
 
 def collect(repo, workspace, api=None):

@@ -305,10 +305,12 @@ class Batches:
             self.store.update('revisions',revision['id'],error='Batch送信結果が不明です。再送せず照合します。')
         return 1
 
-    def collect(self):
+    def collect(self, revision_ids=None):
         collected = []
         attempts = self.store.rows("SELECT * FROM attempts WHERE status IN ('reserved','submitting','unknown','submitted','legacy_submitted')")
         for attempt in attempts:
+            if revision_ids is not None and attempt['revision_id'] not in revision_ids:
+                continue
             if json.loads(attempt['details']).get('mode') == 'direct':
                 continue
             if attempt['status'] == 'reserved':

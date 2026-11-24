@@ -31,7 +31,7 @@ def locked(folder):
 
 
 def prepare(pdf, output, *, pmid, title, article_type, headings=None, max_pages=10, max_chars=32000,
-            journal=None, year=None, doi=None, learning=False):
+            journal=None, year=None, doi=None, learning=False, api_batch=False):
     pmid_value(pmid)
     if article_type not in MASTER['properties']['article_type']['enum']:
         raise ValueError('論文種別が未対応です')
@@ -47,6 +47,8 @@ def prepare(pdf, output, *, pmid, title, article_type, headings=None, max_pages=
         job['text_sha256'] = digest(source_window(texts, job))
     version, instructions, schema = ((teaching.PROTOCOL, teaching.INSTRUCTIONS, teaching.PACKET) if learning
                                      else (VERSION, INSTRUCTIONS, RESULT_SCHEMA))
+    if api_batch:
+        version, instructions, schema = teaching.API_PROTOCOL, teaching.API_INSTRUCTIONS, teaching.API_PACKET
     plan = dict(version=version, protocol_sha256=digest([instructions, schema]),
                 metadata=dict(pmid=pmid, title=title, journal=journal, year=year, doi=doi, pdf_sha256=digest(raw)),
                 article_type=article_type, split_method=mode, pages=len(texts), max_pages=max_pages,
@@ -68,7 +70,7 @@ def prepare(pdf, output, *, pmid, title, article_type, headings=None, max_pages=
                 staging.mkdir()
                 write_excerpt(reader, job, staging / 'source.pdf')
                 (staging / 'pages.json').write_text(dump(source_window(texts, job)), encoding='utf-8')
-                template = dict(job_key=packet_key(run_id, job), chapter_id=job['id'], method='manual_local',
+                template = dict(job_key=packet_key(run_id, job), chapter_id=job['id'], method='api_batch' if api_batch else 'manual_local',
                                 title_ja='', summary_ja='', sources=[dict(page=job['start'], quote='')],
                                 findings=[dict(kind='author_statement', role='finding', statement_ja='', source_numbers=[1])])
                 (staging / 'response-template.json').write_text(dump(template), encoding='utf-8')
@@ -121,9 +123,11 @@ def resume(folder, confirm_visual=(), revise=(), images=(), pdf=None):
     folder = Path(folder).resolve()
     with locked(folder):
         plan = json.loads((folder / 'manifest.json').read_text(encoding='utf-8'))
-        learning = plan['version'] == teaching.PROTOCOL
+        learning = plan['version'] in (teaching.PROTOCOL, teaching.API_PROTOCOL)
         instructions, schema = (teaching.INSTRUCTIONS, teaching.PACKET) if learning else (INSTRUCTIONS, RESULT_SCHEMA)
-        if folder.name != digest(plan) or plan['version'] not in (VERSION,teaching.PROTOCOL) or plan['protocol_sha256'] != digest([instructions,schema]):
+        if plan['version'] == teaching.API_PROTOCOL:
+            instructions, schema = teaching.API_INSTRUCTIONS, teaching.API_PACKET
+        if folder.name != digest(plan) or plan['version'] not in (VERSION,teaching.PROTOCOL,teaching.API_PROTOCOL) or plan['protocol_sha256'] != digest([instructions,schema]):
             raise ValueError('原本・分割設定・精読形式が一致しません。prepare の出力先を確認してください')
         ids = [job['id'] for job in plan['jobs']]
         if ids != [f'ch{i:04d}' for i in range(1, len(ids)+1)] or (set(confirm_visual) | set(revise)) - set(ids):

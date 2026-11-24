@@ -219,7 +219,7 @@ class Store:
         budget = self.setting('budget', {})
         return budget.get('suspended_reason') or budget.get(stage + '_suspended_reason', '')
 
-    def reserve(self, revision, stage, amount, resume_analysis_only=False, resume_image_only=False):
+    def reserve(self, revision, stage, amount, resume_analysis_only=False, resume_image_only=False, *, check_only=False):
         budget = self.setting("budget", {})
         scoped_analysis = resume_analysis_only and stage == 'analysis' and json.loads(revision['config']).get('image_generation_mode') == 'manual_web'
         if resume_analysis_only and not scoped_analysis:
@@ -262,6 +262,8 @@ class Store:
                 raise ValueError(f'確認済み残高の利用可能額${remaining:.2f}を超えるため停止：確認後の使用・予約${since_check:.3f} ＋ 今回予約${amount:.3f}')
             if revision_total + amount > 4:
                 raise ValueError(f'1処理版の予算$4.00を超えるため停止：使用・予約済み${revision_total:.3f} ＋ 今回予約${amount:.3f}')
+            if check_only:
+                return
             identifier = uid()
             self.db.execute("INSERT INTO attempts(id,revision_id,stage,status,reserve,period,created_at) VALUES(?,?,?,?,?,?,?)",
                             (identifier, revision['id'], stage, 'reserved', amount, period, now()))

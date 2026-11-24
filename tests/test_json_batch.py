@@ -71,6 +71,19 @@ class JsonBatchTests(unittest.TestCase):
         body.update(changes)
         self.api.complete(self.rows('attempts')[0], body)
 
+    def test_desktop_auto_collection_recovers_pending_work_without_shared_status(self):
+        from paper_pipeline.manual import save_settings
+        self.send()
+        self.complete()
+        self.ws.path('API_JSON/status.json').unlink()
+        save_settings(self.repo,dict(shared_root=str(self.ws.root),device_id=self.ws.device_id,device_name='Test Mac'))
+        self.assertTrue(jb.awaiting_collection(self.repo,self.ws))
+        with patch.object(jb,'api_key',return_value='test'), patch.object(jb,'JsonAPI',return_value=self.api):
+            Application(self.repo).run('teaching-poll',{})
+        self.assertFalse(jb.awaiting_collection(self.repo,self.ws))
+        self.assertEqual(self.ws.snapshot()['counts']['web_pending'],1)
+        self.assertEqual(self.api.posts,1)
+
     def test_full_batch_to_shared_json_and_manual_png_handoff(self):
         self.send()
         request = json.loads(next(raw for key, raw in self.api.files.items() if raw.startswith(b'{"body"')))

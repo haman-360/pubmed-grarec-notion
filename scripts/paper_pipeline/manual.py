@@ -341,9 +341,10 @@ class Workspace:
                 files.append(self.asset(pmid, 'prompt', f"PMID_{pmid}_{file['topic']}_PNG作成依頼.json",
                                         png_request(pmid, file['topic'], text).encode(), file['topic'], file['sha']))
 
-    def scan(self):
+    def scan(self, *, pmid=None, kinds=None):
         errors, changed = [], 0
-        for folder in sorted((self.root / 'papers').glob('PMID_*')):
+        folders = [self.folder(pmid)] if pmid else sorted((self.root / 'papers').glob('PMID_*'))
+        for folder in folders:
             pmid = folder.name[5:]
             try:
                 pmid_value(pmid)
@@ -359,6 +360,8 @@ class Workspace:
                         kind = {'png_candidate': 'png', 'draft': 'json'}.get(file['kind'], file['kind'])
                         seen.add((kind, file.get('topic', '') if kind == 'png' else '', file['sha']))
                 for kind, suffix in KINDS.items():
+                    if kinds is not None and kind not in kinds:
+                        continue
                     paths = sorted((self.incoming(pmid) / kind.upper()).glob('*' + suffix))
                     fresh = []
                     for path in paths:

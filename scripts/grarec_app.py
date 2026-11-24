@@ -11,7 +11,7 @@ from paper_pipeline.manual_status import StatusReporter
 from paper_pipeline.intake import (PENDING, ARCHIVE, ensure_folders, inventory, organize,
                                    parse_pmids, result_message, workspace_lock)
 from paper_pipeline.image_review import CHECKS
-from paper_pipeline import ledger_inbox, reading_guide, materials, material_pngs
+from paper_pipeline import ledger_inbox, reading_guide, materials, material_pngs, teaching_jobs
 from paper_pipeline.store import now, digest
 
 REPO = Path(__file__).resolve().parents[1]
@@ -76,10 +76,17 @@ class Application:
             state['json_batch'] = json_status(self.repo, workspace)
             from paper_pipeline.notion_sync import status as notion_status
             state['notion_sync'] = notion_status(self.repo, workspace)
-            try:
-                state['materials'] = material_pngs.snapshot(self.repo, workspace)
-            except (OSError, ValueError) as error:
-                state['errors'].append(str(error))
+            state['teaching_jobs'] = teaching_jobs.progress(workspace)
+            state['teaching_kits'] = {}
+            for pmid in {materials.PMID, *(j['pmid'] for j in state['teaching_jobs'] if j['version'])}:
+                try:
+                    kit = material_pngs.snapshot(self.repo, workspace, pmid)
+                    if pmid == materials.PMID:
+                        state['materials'] = kit
+                    else:
+                        state['teaching_kits'][pmid] = kit
+                except (OSError, ValueError, KeyError) as error:
+                    state['errors'].append('PMID '+pmid+'：'+str(error))
             state['errors'] += self.scan_errors
             for row in state['papers']:
                 article = reading_guide.metadata(workspace, row['pmid'])
@@ -100,7 +107,7 @@ class Application:
             self.state = dict(base, papers=[], counts=dict(total=0, **{k: 0 for k in STAGES}), errors=[str(error)])
 
     def run(self, action, data):
-        if action not in ('configure', 'add', 'reading-metadata', 'json-metadata', 'fetch-pdfs', 'fetch-pdfs-paid', 'json-budget', 'json-prepare', 'json-send', 'json-collect', 'json-retry-prepare', 'json-retry-send', 'notion-prepare', 'notion-send', 'materials-register', 'materials-png-register') and self.settings['shared_root']:
+        if action not in ('configure', 'add', 'reading-metadata', 'json-metadata', 'fetch-pdfs', 'fetch-pdfs-paid', 'json-budget', 'json-prepare', 'json-send', 'json-collect', 'json-retry-prepare', 'json-retry-send', 'notion-prepare', 'notion-send', 'materials-register', 'materials-png-register', 'teaching-request', 'teaching-poll') and self.settings['shared_root']:
             with workspace_lock(self.workspace()):
                 return self._run(action, data)
         return self._run(action, data)
@@ -118,15 +125,31 @@ class Application:
             save_settings(self.repo, self.settings)
             return '共有フォルダを設定しました。OneDrive標準アプリで同期します。'
         workspace = self.workspace()
+        if action == 'teaching-request':
+            result = teaching_jobs.request(self.repo, workspace, data)
+            teaching_jobs.advance(self.repo, workspace, data['pmid'])
+            return result
+        if action == 'teaching-poll':
+            from paper_pipeline import json_batch
+            batch = json_batch.status(self.repo, workspace)
+            message = '教材の進捗を更新しました。'
+            if batch['is_owner'] and batch['key_ready'] and json_batch.awaiting_collection(self.repo,workspace):
+                try:
+                    json_batch.collect(self.repo,workspace)
+                except (ValueError, RuntimeError, OSError) as error:
+                    message = '全文JSONの回収は次回再確認：'+str(error)
+            for pmid in teaching_jobs.requests_list(workspace):
+                teaching_jobs.advance(self.repo,workspace,pmid)
+            return message
         if action == 'materials-build':
             folder = materials.generate(self.repo, workspace)
             return '教材HTMLとPNG依頼JSONを保存しました：'+str(folder)
         if action in ('materials-open', 'materials-folder'):
-            folder = materials.checked_folder(workspace, data.get('version'))
+            folder = materials.checked_folder(workspace, data.get('version'),data.get('pmid',materials.PMID))
             subprocess.run(['open', str(folder/materials.HTML if action == 'materials-open' else folder)], check=True)
             return '教材を開きました。'
         if action == 'materials-png-folder':
-            folder = material_pngs.inbox(workspace, data.get('version'))
+            folder = material_pngs.inbox(workspace, data.get('version'),data.get('pmid',materials.PMID))
             folder.mkdir(exist_ok=True)
             subprocess.run(['open', str(folder)], check=True)
             return '完成PNGの保存先を開きました。'
@@ -136,7 +159,7 @@ class Application:
             return material_pngs.register(self.repo, workspace, data)
         if action == 'materials-register':
             from paper_pipeline.materials_notion import register
-            return register(self.repo, workspace, data.get('version'))
+            return register(self.repo, workspace, data.get('version'),pmid=data.get('pmid',materials.PMID))
         if action == 'ledger-code':
             code = ledger_inbox.pairing_code(self.repo, workspace)
             subprocess.run(['/usr/bin/pbcopy'], input=code.encode(), check=True)
@@ -333,6 +356,25 @@ class Application:
             return '進捗を記録しました。実ファイルのクラウド同期はOneDriveアプリで確認してください。'
         raise ValueError('この旧操作は廃止されました。JSON Batchは専用の作成・回収ボタンを使ってください。')
 
+    def monitor(self, interval=180):
+        from paper_pipeline import json_batch, notion_sync
+        timer = threading.Event()
+        while True:
+            try:
+                if self.settings['shared_root'] and not self.busy:
+                    workspace = self.workspace()
+                    batch = json_batch.status(self.repo, workspace)
+                    rows = teaching_jobs.progress(workspace)
+                    notion_owner = notion_sync.read(workspace,'owner',{}).get('device_id') == workspace.device_id
+                    needs_work = any((not j['version'] and batch['is_owner'] and
+                                      (not j['held'] or (j['cost'] or {}).get('active'))) or
+                                     (j['version'] and j['notion'] and not j['page_id'] and notion_owner) for j in rows)
+                    if needs_work or rows != self.state.get('teaching_jobs', []) or (batch['is_owner'] and batch['key_ready'] and json_batch.awaiting_collection(self.repo,workspace)):
+                        self.start('teaching-poll', {}).join()
+            except (ValueError, OSError):
+                pass  # A foreground action or a temporarily unavailable shared folder is checked next time.
+            timer.wait(interval)
+
     def start(self, action, data):
         with self.mutex:
             if self.busy:
@@ -342,7 +384,7 @@ class Application:
             try:
                 self.message = self.run(action, data)
                 if action != 'open-reader':
-                    self.refresh(scan=not action.startswith('materials-'))
+                    self.refresh(scan=not action.startswith(('materials-', 'teaching-')))
             except Exception as error:
                 self.message = '要確認: ' + str(error)[:1200]
                 if action != 'open-reader':
@@ -390,7 +432,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 query = parse_qs(urlsplit(self.path).query)
                 facts, raw = material_pngs.review_data(app.workspace(), query['version'][0], query['topic'][0],
-                                                       query.get('sha', [None])[0])
+                                                       query.get('sha', [None])[0],query.get('pmid',[materials.PMID])[0])
                 if urlsplit(self.path).path == '/api/material-png':
                     return self.reply(200, raw, 'image/png')
                 return self.reply(200, json.dumps(dict(facts=facts, checks=CHECKS, sha=digest(raw)), ensure_ascii=False))
@@ -438,6 +480,7 @@ if __name__ == '__main__':
     app = Application(REPO)
     server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
     server.app = app
+    threading.Thread(target=app.monitor, daemon=True).start()
     threading.Thread(target=app.reporter.watch, daemon=True).start()
     print(f'http://127.0.0.1:{server.server_port}/?token={app.token}', flush=True)
     server.serve_forever()
