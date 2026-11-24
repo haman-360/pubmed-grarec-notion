@@ -25,8 +25,12 @@ def main(argv=None):
     parser.add_argument('json', type=Path, help='版を指定した精読JSON')
     parser.add_argument('--png', type=Path, action='append', default=[], help='対応を確認したPNG。複数指定可')
     parser.add_argument('--pdf', type=Path, help='学習版に対応する原本PDFを内包')
+    parser.add_argument('--study-plots', action='store_true',
+                        help='学習版Masterの研究別グラフを独立したHTMLに出力')
     parser.add_argument('--output-dir', type=Path, default=Path(__file__).resolve().parents[1] / 'output/readers')
     args = parser.parse_args(argv)
+    if args.study_plots and args.png:
+        parser.error('--study-plots はグラフ専用です。PNGは通常のReaderに指定してください')
     try:
         paper = paper_from_json(args.json.read_bytes())
         check_filename(args.json, paper.pmid)
@@ -39,7 +43,7 @@ def main(argv=None):
         for path in dict.fromkeys(args.png):
             check_filename(path, paper.pmid)
             images.append((path.name + '（手動指定）', path.read_bytes()))
-        print(save_reader(args.output_dir, paper, images).resolve())
+        print(save_reader(args.output_dir, paper, images, study_plots=args.study_plots).resolve())
     except (OSError, ValueError, SyntaxError, Image.DecompressionBombError) as error:
         parser.exit(2, f'Readerを作成できません：{error}\n')
 

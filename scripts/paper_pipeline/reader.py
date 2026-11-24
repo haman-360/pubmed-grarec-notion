@@ -89,11 +89,17 @@ def render(paper, images=(), image_notes=()):
                                sections=''.join(sections)).encode('utf-8')
 
 
-def save_reader(root, paper, images=(), image_notes=()):
-    html = render(paper, images, image_notes)
+def save_reader(root, paper, images=(), image_notes=(), *, study_plots=False):
+    filename = 'reader.html'
+    if study_plots:
+        from .study_plots import render_study_plots
+        html = render_study_plots(paper)
+        filename = 'reader_study_plots.html'
+    else:
+        html = render(paper, images, image_notes)
     folder = Path(root) / ('PMID_' + paper.pmid) / hashlib.sha256(html).hexdigest()
     folder.mkdir(parents=True, exist_ok=True)
-    path = folder / 'reader.html'
+    path = folder / filename
     if not path.exists():
         with tempfile.NamedTemporaryFile(dir=folder, delete=False) as handle:
             tmp = Path(handle.name)

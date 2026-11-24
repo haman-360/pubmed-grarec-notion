@@ -220,6 +220,14 @@ Macの論文一覧で、完成JSONのある論文の **「オフラインReader�
 
 `editions` に教材の `master.json`（learning-v3）、単体でオフライン閲覧できる `reader.html`、既存PNG経路に取り込める `png-master.json`（hybrid-v1）、各テーマの `png-request-*.json` を保存します。HTMLのページ表記から根拠を展開でき、原本を内包した場合は該当ページへのリンクも使えます。PDFビューアによっては先頭ページで開くため、物理ページ番号も表示します。教材を単独で再描画するときは `scripts/generate_reader.py` に版を指定できます。
 
+研究別グラフだけを開くには、`forest_plot` を収録した学習版Masterを次のように指定します。
+
+```sh
+.venv/bin/python scripts/generate_reader.py path/to/master.json --study-plots --pdf path/to/original.pdf
+```
+
+表示されたパスの `reader_study_plots.html` を開きます。点を選ぶと、その測定値の報告値、引用、研究詳細を表示します。`--pdf` を付けると、SHA-256を照合した原本の該当ページをオフラインで開けます。
+
 **6. 品質を評価する。** `resume` の `assessment` と `quality` に8項目の状態が出ます。評価を記録するには表示された `quality_template` を同じディレクトリの `response.json` にコピーし、確認した項目だけ状態・評価者・確認内容を記入して同じ引数で再開します。評価は画像・原本の添付と描画結果を含む版に紐づきます。機械的な引用一致やPNG形式の合格を医学的な承認に使いません。`--classic` および以前に準備した従来のrunは、全章受理後に従来のMasterとReaderを生成します。
 
 ## Batch APIでJSONを作成・回収する（段階4）

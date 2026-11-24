@@ -112,3 +112,11 @@ Mac Chromeをオフラインにして1366、820、390pxで検索、図解展開�
 - 「全研究・原文」に99所見、14章、抄録・要点と品質記録を収録。内包したMasterを元のJSONと比較し、PDFのSHA-256も原本と照合した。元のmaster.jsonとreader.htmlのSHA-256はそれぞれ `a547585cb64bcfb745d9853b1ad4cd5ea595ace7f6d94af1e0f49635d3a50f5f` と `97b8da9443549e40b798783816ed38e0691eb734ae7aa75d0fd242e4b61d7fc8`。
 - `python3 prototypes/42526604/build.py` で、検証用の教材版と同じディレクトリに `reader_visual_prototype.html` を出力する。Gitには専用テンプレートと生成スクリプトを記録し、生成物は既存方針に従いローカルのoutput配下に保存した。
 - Mac Chromeをオフラインにして1366・820・390px幅で各図と詳細画面を撮影・目視確認した。9点の推定値・CI、症状日数と急性試験の測定値、図送り、検索、キーボード操作、原文PDFの物理p.34の表示を確認。外部HTTP(S)要求、JavaScriptエラー、ページの横あふれは0件。Reader関連の回帰テスト8件成功。iPad・iPhone実機での操作と、医師の読解課題による学習効果は未評価。
+
+## 2026-11-24 — Master指定の測定値から研究別グラフを生成
+
+- 学習版Masterの `visualizations[].items[].measurement_ids` を使う共通部品を追加。`generate_reader.py --study-plots` で、論文固有のIDや文言をコードに指定せず、研究別グラフを `reader_study_plots.html` に出力する。通常のReaderとは別に内容ハッシュ付きのフォルダに保存する。使い方はREADMEに追記した。
+- 点を選ぶと測定値の報告文字列、引用、研究の対象・方法・限界を開く。測定値固有の出典とEvidence全体の追加出典を分け、引用内で報告文字列と完全一致した箇所を強調する。原本を指定した場合はPDFの物理ページへ移動できる。
+- PMID 42526604の既存Masterで4パネル8点を生成。Baylyの1点（e15-m2）とIslamの3点はPDF p.34、Patelの3点はp.35、Pérezの1点はp.37。Mac Chromeで全点から原本を開き、PDFビューアのページ番号も確認。1366・820・390pxで報告値・CI・研究詳細・引用・図へのフォーカス復帰を照合した。外部HTTP(S)要求・JavaScriptエラーは0件。タブレット・スマートフォンは画面幅と入力操作のエミュレーションで検証した。
+- 生成先は `output/readers/PMID_42526604/36a04d143ddf0a8f29ddf07c736fb10e3144130c95734042ff1f5d8acd919fe3/reader_study_plots.html`。教材版master.json・reader.htmlと専用reader_visual_prototype.htmlのSHA-256は生成前後で一致した。再精読・有料API呼び出しは0件。
+- 同じEvidenceに複数の測定値がある場合の点の位置・研究・出典、およびPDF省略時のページ表記を回帰テストに追加した。Pythonは348件中347件成功・1件スキップ（localhostのbind制限を受けた2件は許可環境で再検証）、JavaScriptは24件成功。
