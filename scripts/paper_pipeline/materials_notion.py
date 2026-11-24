@@ -26,8 +26,9 @@ def page_for(client, store, master, local):
     rows = store.rows('SELECT * FROM papers WHERE pmid=?', (pmid,))
     paper = rows[0] if rows else dict(id=local.get('legacy_id') or 'onedrive-pmid-'+pmid, pmid=pmid,
                                      doi=doi_key(master['doi']), page_id=local.get('notion_page'))
-    if rows and doi_key(master['doi']) != (paper['doi'] or ''):
+    if rows and master['doi'] and paper['doi'] and doi_key(master['doi']) != paper['doi']:
         raise ValueError('教材のDOIが以前のNotion登録記録と異なります')
+    paper = dict(paper, doi=paper['doi'] or doi_key(master['doi']))
     page = client.find_page(paper)
     identifier = notion_sync.prop_text(page, 'Automation ID') if page else ''
     if rows and identifier and identifier != paper['id']:
@@ -44,14 +45,14 @@ def page_for(client, store, master, local):
         payload.pop('cover', None)
         payload['properties']['Automation ID'] = {'rich_text':rich(paper['id'])}
         page = request_once(client, store, 'material-page:'+pmid, 'POST', '/pages', payload)
-    store.update('papers', paper['id'], page_id=page['id'])
+    store.update('papers', paper['id'], page_id=page['id'], doi=paper['doi'] or None)
     return page['id']
 
 
-def verify_blocks(blocks, state):
-    if len(blocks) != 2 or [b['type'] for b in blocks] != ['embed','pdf']:
+def verify_blocks(blocks, state, kinds=('html','pdf')):
+    if [b['type'] for b in blocks] != ['embed' if kind=='html' else kind for kind in kinds]:
         raise ValueError('教材HTML・原本PDFの登録状態を確認できません')
-    for block, kind in zip(blocks, ('html','pdf')):
+    for block, kind in zip(blocks, kinds):
         body = block[block['type']]
         url = body.get('url') if kind == 'html' else body.get('file', {}).get('url')
         stored_id = state.get(kind+'_block')
@@ -65,15 +66,29 @@ def verify_blocks(blocks, state):
         state[kind+'_path'] = path
 
 
-def register(repo, workspace, version, api=None, pmid=materials.PMID):
-    folder = materials.checked_folder(workspace, version, pmid)
-    master = json.loads((folder/'png-master.json').read_bytes())
+def register(repo, workspace, version, api=None, pmid=materials.PMID, route='master'):
+    folder = materials.checked_folder(workspace, version, pmid, route)
+    existing = route == 'existing'
+    master = json.loads((folder/('metadata.json' if existing else 'png-master.json')).read_bytes())
+    hashes = json.loads((folder/'manifest.json').read_bytes())
+    attachments = {'html':materials.HTML}
+    pdf_name = f'PMID_{pmid}.pdf'
+    if not existing or pdf_name in hashes:
+        attachments['pdf'] = pdf_name
+    kinds = tuple(attachments)
     if master['pmid'] != pmid:
         raise ValueError('教材のPMIDが一致しません')
     heads = workspace.heads(pmid)
     if len(heads) > 1:
         raise ValueError('PMIDの工程記録に競合があります')
     local = heads[0]['data'] if heads else {}
+    if existing:
+        if local.get('archive') or local.get('structure_wait'):
+            raise ValueError('現在の論文の状態を確認してください')
+        for kind, name in [('json','source.json'), ('pdf',pdf_name)]:
+            selected = [f['sha'] for f in local.get('files', []) if f['kind']==kind]
+            if selected != ([hashes[name]] if name in hashes else []):
+                raise ValueError('元のJSONまたはPDFが変更されています。既存JSON版を作り直してください')
     with notion_sync.ledger(repo, workspace, claim=True) as store:
         client = notion_sync.client_for(repo, store, api)
         page = page_for(client, store, master, local)
@@ -81,32 +96,33 @@ def register(repo, workspace, version, api=None, pmid=materials.PMID):
         state = store.setting(key, {})
         def persist():
             store.set_setting(key, state)
-        marker = 'インタラクティブ教材（自動生成） · '+version[:16]
+        marker = ('教材（既存グラレコJSON版）' if existing else 'インタラクティブ教材（自動生成）')+' · '+version[:16]
         children = client.children(page)
         positions = [i for i,b in enumerate(children) if b['type']=='heading_2' and plain(b)==marker]
         if not positions:
-            for kind, name in [('html',materials.HTML), ('pdf',f'PMID_{pmid}.pdf')]:
+            for kind, name in attachments.items():
                 client.upload_file(version, state, kind, folder/name, persist)
             items = [{'type':'heading_2','heading_2':{'rich_text':rich(marker)}}]
-            for kind, block_type in [('html','embed'), ('pdf','pdf')]:
+            for kind in kinds:
+                block_type = 'embed' if kind=='html' else 'pdf'
                 items.append({'type':block_type,block_type:{'type':'file_upload',
                               'file_upload':{'id':state[kind+'_upload']['id']}}})
             response = request_once(client, store, key+':append', 'PATCH', '/blocks/'+page+'/children', {'children':items})
-            for block, kind in zip(response['results'][1:], ('html','pdf')):
+            for block, kind in zip(response['results'][1:], kinds):
                 state[kind+'_block'] = block['id']
             persist()
             children = client.children(page)
             positions = [i for i,b in enumerate(children) if b['type']=='heading_2' and plain(b)==marker]
-        if len(positions) != 1 or not all(kind+'_upload' in state for kind in ('html','pdf')):
+        if len(positions) != 1 or not all(kind+'_upload' in state for kind in kinds):
             raise ValueError('登録した教材版を一意に特定できません')
         offset = positions[0]+1
-        blocks = children[offset:offset+2]
-        verify_blocks(blocks, state)
-        for block, kind in zip(blocks, ('html','pdf')):
+        blocks = children[offset:offset+len(kinds)]
+        verify_blocks(blocks, state, kinds)
+        for block, kind in zip(blocks, kinds):
             state[kind+'_block'] = block['id']
         persist()
         with workspace_lock(workspace):
-            value = materials.current(workspace, pmid)
+            value = materials.current(workspace, pmid, route)
             if value.get('version') == version:
-                atomic_write(workspace.path(materials.destination(pmid)+'/current.json'), encode(dict(value, page_id=page)))
-    return 'HTMLと原本PDFのNotion登録を確認しました。'
+                atomic_write(workspace.path(materials.destination(pmid, route)+'/current.json'), encode(dict(value, page_id=page)))
+    return ('HTMLと原本PDF' if 'pdf' in attachments else '教材HTML')+'のNotion登録を確認しました。'

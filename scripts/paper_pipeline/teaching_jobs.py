@@ -51,6 +51,22 @@ def source_for(workspace, pmid, expected=None):
 
 def request(repo, workspace, data, *, selected_heads=None):
     pmid = pmid_value(data.get('pmid'))
+    route = data.get('route', 'master')
+    if route == 'existing':
+        if data.get('paid'):
+            raise ValueError('既存JSON版では精読APIを使用しません')
+        with workspace_lock(workspace):
+            if not workspace.heads(pmid):
+                raise ValueError('登録済みのグラレコ用JSONが必要です。新しいPMIDはPDFからの作成を選んでください')
+            event, pdf = source_for(workspace, pmid, selected_heads)
+            if selected_heads is not None:
+                kit = materials.current(workspace, pmid, route)
+                if kit and any(f['kind']=='json' and f['sha']==kit.get('source_sha') for f in event['data']['files']):
+                    raise ValueError('このJSON版は作成済みです。履歴から開いてください')
+            materials.publish_existing(workspace, pmid, event, pdf, data.get('notion') is True)
+        return '既存グラレコJSONから教材HTMLを保存しました。'
+    if route != 'master':
+        raise ValueError('教材の作成方法を選び直してください')
     folder = directory(workspace, pmid)
     with workspace_lock(workspace):
         if selected_heads is None:
@@ -107,9 +123,9 @@ def request_selected(repo, workspace, data):
     errors = []
     for pmid, heads in selection.items():
         try:
-            request(repo, workspace, dict(pmid=pmid, paid=data.get('paid'), notion=data.get('notion')),
+            request(repo, workspace, dict(data, pmid=pmid),
                     selected_heads=heads)
-            advance(repo, workspace, pmid)
+            advance(repo, workspace, pmid, route=data.get('route', 'master'))
         except ValidationError as error:
             errors.append(f'PMID {pmid}：教材JSONを確認してください：{error.json_path}')
         except (ValueError, RuntimeError, OSError, KeyError, PyPdfError) as error:
@@ -316,7 +332,24 @@ def collect_teaching(repo, workspace, pmid, reading, api):
             TeachingBatches(store, api or json_batch.JsonAPI(json_batch.api_key(repo))).collect({revision['id']})
 
 
-def advance(repo, workspace, pmid, api=None, notion_api=None):
+def existing_pmids(workspace):
+    return [path.parents[1].name[5:] for path in sorted(workspace.path('教材').glob('PMID_*/既存JSON版/current.json'))
+            if path.parents[1].name[5:].isascii() and path.parents[1].name[5:].isdigit()]
+
+
+def advance(repo, workspace, pmid, api=None, notion_api=None, route='master'):
+    if route == 'existing':
+        kit = materials.current(workspace, pmid, route)
+        if kit.get('notion') and not kit.get('page_id') and (
+                notion_sync.read(workspace,'owner',{}).get('device_id') == workspace.device_id):
+            try:
+                materials_notion.register(repo, workspace, kit['version'], notion_api, pmid, route)
+            except (ValueError, RuntimeError, OSError) as error:
+                with workspace_lock(workspace):
+                    path = workspace.path(materials.destination(pmid, route)+'/current.json')
+                    if read(path).get('version') == kit['version']:
+                        write(path, registration_message=str(error))
+        return
     folder = directory(workspace, pmid)
     intent = read(folder/'request.json')
     kit = materials.current(workspace, pmid)
@@ -367,4 +400,15 @@ def progress(workspace):
         rows.append(dict(pmid=pmid, message=note, version=kit.get('version'),page_id=kit.get('page_id'),
                          paid=intent.get('paid'), notion=intent.get('notion'), cost=costs.get(reading.get('revision')),
                          held=reading.get('held',False)))
+    for pmid in existing_pmids(workspace):
+        kit = materials.current(workspace, pmid, 'existing')
+        if not kit:
+            continue
+        if kit.get('page_id'):
+            note = 'Notion登録済み'
+        elif kit.get('notion'):
+            note = kit.get('registration_message') or 'Notion担当Macの登録待ち'
+        else:
+            note = '作成済み'
+        rows.append(dict(kit, pmid=pmid, route='existing', message=note))
     return rows

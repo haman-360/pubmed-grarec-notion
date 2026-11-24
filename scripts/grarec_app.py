@@ -78,7 +78,7 @@ class Application:
             state['notion_sync'] = notion_status(self.repo, workspace)
             state['teaching_jobs'] = teaching_jobs.progress(workspace)
             state['teaching_kits'] = {}
-            for pmid in {materials.PMID, *(j['pmid'] for j in state['teaching_jobs'] if j['version'])}:
+            for pmid in {materials.PMID, *(j['pmid'] for j in state['teaching_jobs'] if j['version'] and j.get('route') != 'existing')}:
                 try:
                     kit = material_pngs.snapshot(self.repo, workspace, pmid)
                     if pmid == materials.PMID:
@@ -129,7 +129,7 @@ class Application:
             return teaching_jobs.request_selected(self.repo, workspace, data)
         if action == 'teaching-request':
             result = teaching_jobs.request(self.repo, workspace, data)
-            teaching_jobs.advance(self.repo, workspace, data['pmid'])
+            teaching_jobs.advance(self.repo, workspace, data['pmid'], route=data.get('route','master'))
             return result
         if action == 'teaching-poll':
             from paper_pipeline import json_batch
@@ -142,12 +142,14 @@ class Application:
                     message = '全文JSONの回収は次回再確認：'+str(error)
             for pmid in teaching_jobs.requests_list(workspace):
                 teaching_jobs.advance(self.repo,workspace,pmid)
+            for pmid in teaching_jobs.existing_pmids(workspace):
+                teaching_jobs.advance(self.repo, workspace, pmid, route='existing')
             return message
         if action == 'materials-build':
             folder = materials.generate(self.repo, workspace)
             return '教材HTMLとPNG依頼JSONを保存しました：'+str(folder)
         if action in ('materials-open', 'materials-folder'):
-            folder = materials.checked_folder(workspace, data.get('version'),data.get('pmid',materials.PMID))
+            folder = materials.checked_folder(workspace, data.get('version'),data.get('pmid',materials.PMID), data.get('route','master'))
             subprocess.run(['open', str(folder/materials.HTML if action == 'materials-open' else folder)], check=True)
             return '教材を開きました。'
         if action == 'materials-png-folder':
@@ -161,7 +163,7 @@ class Application:
             return material_pngs.register(self.repo, workspace, data)
         if action == 'materials-register':
             from paper_pipeline.materials_notion import register
-            return register(self.repo, workspace, data.get('version'),pmid=data.get('pmid',materials.PMID))
+            return register(self.repo, workspace, data.get('version'),pmid=data.get('pmid',materials.PMID), route=data.get('route','master'))
         if action == 'ledger-code':
             code = ledger_inbox.pairing_code(self.repo, workspace)
             subprocess.run(['/usr/bin/pbcopy'], input=code.encode(), check=True)

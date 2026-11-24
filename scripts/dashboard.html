@@ -77,22 +77,23 @@ button,input,textarea,select{font:inherit}button{border:1px solid transparent;bo
 <details><summary>最終確認時の取り込み待ちファイル</summary><div id="pending-list" class="pending-list"></div></details><details id="intake-result" class="result-box" hidden><summary id="intake-result-label">前回の処理結果</summary><p class="intake-result" id="intake-summary"></p><p class="errors" id="intake-errors"></p></details></section></div><div class="cards" id="cards"></div><div class="actions setup-tools" id="parked-cards"></div><div class="actions setup-tools"><button data-nav onclick="navigate('add')">PMIDを追加</button><button class="secondary" data-nav onclick="navigate('settings')">このMacの設定</button></div></div>
 <div id="view-heading" class="view-heading" hidden><button class="secondary" data-nav onclick="navigate('home')">← 論文処理のいまへ</button><h2 id="view-title" tabindex="-1"></h2><p id="view-description" class="hint"></p><div id="stage-actions" class="actions stage-tools"></div></div>
 <section id="materials-box" hidden><h2>教材を作る論文を選択</h2>
+<label>作成方法 <select id="teaching-batch-route" onchange="teachingSelection.clear();renderTeachingOptions()"><option value="existing">既存グラレコJSONから要約教材を作る（精読API費用なし）</option><option value="master">PDFから教材用Master JSONを作る（精読API・1論文版の予約上限 $4）</option></select></label>
+<p class="hint" id="teaching-route-help"></p>
 <label>論文を検索 <input id="teaching-find" placeholder="論文名・PMID" oninput="renderTeachingOptions()"></label>
 <div class="actions filterbar"><button class="secondary" id="teaching-select-all" onclick="selectTeachingRows()">表示中の論文をすべて選択</button><button class="secondary" id="teaching-clear" onclick="teachingSelection.clear();renderTeachingOptions()">選択を解除</button></div>
 <div id="teaching-options"><table class="json-candidate-table" aria-label="教材作成の候補">
 <thead><tr><th>選択</th><th>PMID</th><th>論文タイトル</th><th>原本PDF</th></tr></thead><tbody id="teaching-rows"></tbody></table></div>
 <p id="teaching-empty" class="hint" hidden>該当する未依頼の論文はありません。</p>
-<p><label><input id="teaching-batch-paid" type="checkbox"> 教材Masterがない選択論文はPDFをAPIへ送り、設定予算内で精読・統合（1論文版の予約上限 $4）</label><br>
-<label><input id="teaching-batch-notion" type="checkbox" checked> 完成後、Notion担当MacからHTMLと原本PDFを登録</label></p>
-<p class="hint">API利用をオフにすると、保存済みの教材Masterを再利用します。Masterがない論文は精読の依頼待ちになります。</p>
+<p><label><input id="teaching-batch-notion" type="checkbox" checked> 完成後、Notion担当Macから教材HTMLと保存済みの原本PDFを登録</label></p>
 <button id="teaching-submit" onclick="startSelectedTeaching()" disabled>選択した論文の教材を作る</button>
 <span id="teaching-count" role="status"></span></section>
 <section id="teaching-history" hidden><h2>依頼済み・作成済みの教材</h2><div id="teaching-jobs"></div>
 <details id="teaching-single"><summary>個別の教材を開く・PMIDを指定して依頼する</summary>
 <label>論文のPMID <input id="teaching-pmid" list="teaching-papers" inputmode="numeric" placeholder="PMID" oninput="renderMaterials()"></label>
 <datalist id="teaching-papers"></datalist><span id="teaching-title"></span>
-<p><label><input id="teaching-paid" type="checkbox"> 教材MasterがなければPDFをAPIへ送り、設定予算内で精読・統合（1論文版の予約上限 $4）</label><br>
-<label><input id="teaching-notion" type="checkbox" checked> 完成後、Notion担当MacからHTMLと原本PDFを登録</label></p>
+<label>作成方法 <select id="teaching-route" onchange="$('teaching-paid').checked=this.value==='master';renderMaterials()"><option value="existing">既存グラレコJSONから要約教材を作る（精読API費用なし）</option><option value="master">PDFから教材用Master JSONを作る（精読API・1論文版の予約上限 $4）</option></select></label>
+<p><label id="teaching-paid-label" hidden><input id="teaching-paid" type="checkbox"> 保存済みの教材用Masterがなければ、PDFの精読・統合をAPIに依頼する</label>
+<label><input id="teaching-notion" type="checkbox" checked> 完成後、Notion担当Macから教材HTMLと保存済みの原本PDFを登録</label></p>
 <div class="actions"><button onclick="startTeaching()">教材一式を作る</button>
 <button class="secondary" id="materials-open" onclick="materialAction('open')">教材HTMLを開く</button>
 <button class="secondary" id="materials-folder" onclick="materialAction('folder')">PNG依頼JSONの場所を開く</button>
@@ -198,25 +199,34 @@ let actionPending=false;
 function teachingPmid(){return $('teaching-pmid').value.trim()||''}
 function selectedKit(){
     const pmid=teachingPmid();
+    if($('teaching-route').value==='existing')return (state.teaching_jobs||[]).find(j=>j.pmid===pmid && j.route==='existing');
     return pmid==='42526604'||(!pmid && !state.teaching_jobs)?state.materials:state.teaching_kits?.[pmid];
 }
 function materialAction(action){
     const kit=selectedKit();
-    return act('materials-'+action,{version:kit.version,...(kit.pmid?{pmid:kit.pmid}:{})});
+    return act('materials-'+action,{version:kit.version,...(kit.route?{route:kit.route}:{}),...(kit.pmid?{pmid:kit.pmid}:{})});
 }
 function startTeaching(){
     const pmid=teachingPmid();
     if(!/^[1-9][0-9]{0,8}$/.test(pmid)){$('materials-status').textContent='PMIDを数字で入力してください。';return}
-    return act('teaching-request',{pmid,paid:$('teaching-paid').checked,notion:$('teaching-notion').checked});
+    const route=$('teaching-route').value;
+    return act('teaching-request',{pmid,route,paid:route==='master' && $('teaching-paid').checked,notion:$('teaching-notion').checked});
 }
 const teachingSelection=new Map();
 let teachingTableSignature='';
-function teachingRows(){
-    const requested=new Set((state?.teaching_jobs||[]).map(job=>job.pmid));
+function teachingRows(route=$('teaching-batch-route').value){
+    const jobs=(state?.teaching_jobs||[]).filter(j=>(j.route||'master')===route);
+    const requested=new Map(jobs.map(j=>[j.pmid,j]));
     return (state?.papers||[]).filter(paper=>{
-        if(paper.category==='archived'||paper.heads.length!==1||requested.has(paper.pmid))return false;
-        if((paper.pmid==='42526604'?state.materials:state.teaching_kits?.[paper.pmid])?.version)return false;
+        if(paper.category==='archived'||paper.heads.length!==1)return false;
         const pdf=paper.files.find(file=>file.kind==='pdf');
+        if(route==='existing'){
+            const file=paper.files.find(f=>f.kind==='json');
+            const job=requested.get(paper.pmid);
+            return file && !paper.structure_wait && !paper.missing?.includes(file.name) &&
+                !(pdf && paper.missing?.includes(pdf.name)) && (!job || job.source_sha!==file.sha);
+        }
+        if(requested.has(paper.pmid)||(paper.pmid==='42526604'?state.materials:state.teaching_kits?.[paper.pmid])?.version)return false;
         return pdf?!paper.missing?.includes(pdf.name):paper.category==='missing_pdf';
     });
 }
@@ -229,12 +239,14 @@ function selectTeachingRows(){
     renderTeachingOptions();
 }
 function renderTeachingOptions(){
+    const existing=$('teaching-batch-route').value==='existing';
+    $('teaching-route-help').textContent=existing?'取り込み済みのグラレコ用JSONの要約・結果と確認済みPNGからHTMLを作ります。章ごとの根拠を含む教材用Masterが必要な場合は、PDFからの作成を選んでください。':'原本PDFを章ごとに精読し、教材用Masterから詳細な教材を作ります。原本に対応する保存済みMasterがあれば再利用します。';
     const rows=teachingRows(),visible=visibleTeachingRows(rows);
     const heads=new Map(rows.map(p=>[p.pmid,p.heads[0]]));
     for(const [pmid,head] of teachingSelection){
         if(heads.get(pmid)!==head)teachingSelection.delete(pmid);
     }
-    const signature=JSON.stringify(visible.map(p=>[p.pmid,p.title,p.heads[0],p.files.some(f=>f.kind==='pdf')]));
+    const signature=JSON.stringify([existing,visible.map(p=>[p.pmid,p.title,p.heads[0],p.files.some(f=>f.kind==='pdf')])]);
     if(signature!==teachingTableSignature){
         teachingTableSignature=signature;
         const body=$('teaching-rows');body.replaceChildren();
@@ -243,7 +255,7 @@ function renderTeachingOptions(){
             const check=document.createElement('input');check.type='checkbox';check.id='teach-'+paper.pmid;
             cell(row,'').append(check);cell(row,paper.pmid,'json-pmid');
             const title=line(cell(row,''),paper.title||'論文名未登録','label');title.htmlFor=check.id;
-            cell(row,paper.files.some(f=>f.kind==='pdf')?'取得済み':'依頼時に無料検索');
+            cell(row,paper.files.some(f=>f.kind==='pdf')?'取得済み':existing?'未登録':'依頼時に無料検索');
             check.onchange=()=>{
                 if(check.checked)teachingSelection.set(paper.pmid,paper.heads[0]);
                 else teachingSelection.delete(paper.pmid);
@@ -257,17 +269,18 @@ function renderTeachingOptions(){
         check.closest('tr').dataset.selected=String(check.checked);
     }
     $('teaching-options').hidden=!visible.length;$('teaching-empty').hidden=Boolean(visible.length);
+    $('teaching-empty').textContent=existing && !rows.length?'要約教材を作れる未作成のグラレコ用JSONはありません。PDFを精読するには「作成方法」を切り替えてください。':'該当する未依頼の論文はありません。';
     const count=teachingSelection.size;
     $('teaching-count').textContent=count+'本選択中';
     $('teaching-select-all').disabled=state.busy||!visible.length;
     $('teaching-clear').disabled=state.busy||!count;$('teaching-submit').disabled=state.busy||!count;
-    $('teaching-batch-paid').disabled=state.busy;$('teaching-batch-notion').disabled=state.busy;
+    $('teaching-batch-route').disabled=state.busy;$('teaching-batch-notion').disabled=state.busy;
 }
 async function startSelectedTeaching(){
     if(!teachingSelection.size||state.busy)return;
     const items=[...teachingSelection].map(([pmid,head])=>({pmid,heads:[head]}));
-    await act('teaching-request-selected',{items,paid:$('teaching-batch-paid').checked,notion:$('teaching-batch-notion').checked});
-    $('teaching-batch-paid').checked=false;
+    const route=$('teaching-batch-route').value;
+    await act('teaching-request-selected',{items,route,paid:route==='master',notion:$('teaching-batch-notion').checked});
 }
 function renderTeachingJobs(){
     const options=$('teaching-papers'),jobs=$('teaching-jobs');
@@ -276,33 +289,36 @@ function renderTeachingJobs(){
         const option=document.createElement('option');option.value=paper.pmid;option.label=paper.title;options.append(option);
     }
     const history=[...(state.teaching_jobs||[])];
-    if(state.materials?.version&&!history.some(j=>j.pmid==='42526604'))
+    if(state.materials?.version&&!history.some(j=>j.pmid==='42526604' && j.route!=='existing'))
         history.push({pmid:'42526604',message:'教材作成済み',paid:false,notion:Boolean(state.materials.page_id)});
     if(!history.length)line(jobs,'依頼済みの教材はありません。','p');
     for(const job of history){
         const cost=job.cost?' ／ 使用概算 $'+job.cost.actual.toFixed(3)+'・未確定予約 $'+job.cost.reserved.toFixed(3):'';
         const title=(state.papers||[]).find(p=>p.pmid===job.pmid)?.title;
-        navButton(jobs,(title?title+' ／ ':'')+'PMID '+job.pmid+' · '+job.message+cost,()=>{
+        const edition=job.route==='existing'?'既存JSON版':'教材Master版';
+        navButton(jobs,edition+' ／ '+(title?title+' ／ ':'')+'PMID '+job.pmid+' · '+job.message+cost,()=>{
             $('teaching-single').open=true;
-            $('teaching-pmid').value=job.pmid;$('teaching-paid').checked=job.paid;$('teaching-notion').checked=job.notion;renderMaterials();$('teaching-single').scrollIntoView({block:'start'});
+            $('teaching-route').value=job.route||'master';$('teaching-pmid').value=job.pmid;$('teaching-paid').checked=job.paid;$('teaching-notion').checked=job.notion;renderMaterials();$('teaching-single').scrollIntoView({block:'start'});
         });
     }
 }
 function renderMaterials(){
-    const selected=teachingPmid();
+    const selected=teachingPmid(), existing=$('teaching-route').value==='existing';
+    $('teaching-paid-label').hidden=existing;
     $('teaching-title').textContent=(state.papers||[]).find(p=>p.pmid===selected)?.title||'';
     const kit=selectedKit()||{}, ready=Boolean(kit.version), notion=state.notion_sync||{};
     for(const name of ['open','folder','register']){
         const button=$('materials-'+name);
-        button.hidden=!ready;
+        button.hidden=!ready || (existing && name==='folder');
         button.disabled=state.busy || !ready || (name==='register' && (!notion.key_ready || !notion.can_operate));
     }
     const status=$('materials-status');
-    status.textContent=ready?'作成済み · PNG依頼 '+kit.requests+'件。':'';
+    status.textContent=ready?(existing?'既存グラレコJSON版 · 作成済み。':'教材Master版 · PNG依頼 '+kit.requests+'件。'):'';
+    $('materials-register').textContent=existing&&!kit.has_pdf?'教材HTMLをNotionへ登録':'教材HTMLと原本PDFをNotionへ登録';
     if(ready && !notion.key_ready)status.textContent+=' Notionの接続設定が必要です。';
     else if(ready && !notion.can_operate)status.textContent+=' Notion登録は担当Mac（'+(notion.owner||'設定済みの端末')+'）で行えます。';
     if(kit.page_id) {
-        status.textContent+=' HTML登録済み · PNG '+(kit.images||[]).filter(i=>i.block_id).length+'/'+kit.requests+'枚登録済み。';
+        status.textContent+=existing?' HTML登録済み。':' HTML登録済み · PNG '+(kit.images||[]).filter(i=>i.block_id).length+'/'+kit.requests+'枚登録済み。';
         notionPageLink(status,kit.page_id);
     }
     $('material-images').hidden=!kit.images?.length;
@@ -550,7 +566,7 @@ if(e.source)line(box,'取得元：'+e.source,'p');for(let url of e.manual_urls||
 let view='home', activePanel='', page=1, viewSignature='';
 const pageSize=10;
 const stageHelp={
-    teaching:'登録済みの論文をまとめて選べます。PDF未取得の論文は依頼時に無料検索します。',
+    teaching:'作成方法を選んでから、対象の論文をまとめて選べます。',
     total:'すべての論文の現在地を確認できます。「この工程で作業する」から続けてください。',
     archived:'対象から外した理由と履歴を確認できます。ファイルは保持され、作業対象に戻せます。',
     deferred:'次回確認日の早い順です。起動・手動更新時に期日を迎えた論文が「今探す」に戻ります。自動検索は行いません。',
@@ -604,7 +620,7 @@ function renderView(){
 function renderCards(){
     if(!$('cards').children.length)for(let [key,name,help] of stageCards){let b=navButton($(key==='total'?'total-card':['deferred','archived'].includes(key)?'parked-cards':'cards'),'',()=>navigate(key));b.className=['deferred','archived'].includes(key)?'secondary':'card';b.id='card-'+key;line(b,name,'span');line(b,'','strong');line(b,help)}
     for(const [key] of stageCards){
-        const count=key==='teaching'?teachingRows().length:(state?.counts[key]??0);
+        const count=key==='teaching'?new Set([...teachingRows('existing'),...teachingRows('master')].map(p=>p.pmid)).size:(state?.counts[key]??0);
         const caption=(key==='teaching'?'未依頼 ':'')+count+'本';
         const card=$('card-'+key);card.querySelector('strong').textContent=caption;
         card.setAttribute('aria-label',label(key)+' '+caption);

@@ -122,14 +122,14 @@ def save_reader(root, paper, images=(), image_notes=(), *, study_plots=False, me
     return path
 
 
-def workspace_reader(repo, workspace, pmid, heads):
-    data = workspace.current(pmid, heads)['data']
+def workspace_reader_inputs(workspace, pmid, data):
     masters = [item for item in data['files'] if item['kind'] == 'json']
     if len(masters) != 1 or data.get('structure_wait'):
         raise ValueError('構造確認済みの精読JSONを1つ選んでください')
     master = masters[0]
     cached = reading_guide.metadata(workspace, pmid)
-    paper = paper_from_json(workspace.read_asset(master), cached.get('abstract', ''))
+    raw_json = workspace.read_asset(master)
+    paper = paper_from_json(raw_json, cached.get('abstract', ''))
     if paper.pmid != pmid:
         raise ValueError('論文と精読JSONのPMIDが一致しません')
     images, notes = [], []
@@ -147,4 +147,10 @@ def workspace_reader(repo, workspace, pmid, heads):
             notes.append(title + '：PNGを読み込めません')
             continue
         images.append(('PMID ' + pmid + ' ／ ' + title, raw))
+    return paper, images, notes, raw_json
+
+
+def workspace_reader(repo, workspace, pmid, heads):
+    data = workspace.current(pmid, heads)['data']
+    paper, images, notes, _ = workspace_reader_inputs(workspace, pmid, data)
     return save_reader(Path(repo) / 'output/readers', paper, images, notes)

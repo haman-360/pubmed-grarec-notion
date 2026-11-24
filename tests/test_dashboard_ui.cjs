@@ -287,6 +287,7 @@ test('teaching stage selects registered papers across searches and drops stale s
         }
         document.createElement=()=>new Element();
         document.getElementById=id=>{if(!nodes.has(id))nodes.set(id,new Element());return nodes.get(id)};
+        $('teaching-batch-route').value='master';
         state.teaching_jobs=[{pmid:'3'}];
         state.papers[3].files=[{kind:'pdf',name:'paper.pdf'}];
         state.papers.push({...state.papers[0],pmid:'5',category:'archived'});
@@ -303,8 +304,15 @@ test('teaching stage selects registered papers across searches and drops stale s
     assert.equal(run("$('teaching-count').textContent"),'2本選択中');
     set("$('teaching-find').value='';state.papers[0].heads=['updated'];renderTeachingOptions()");
     assert.equal(run("$('teach-1').checked"),false);
-    set("$('teach-2').checked=true;$('teach-2').onchange();$('teaching-batch-paid').checked=false;$('teaching-batch-notion').checked=true");
+    set("$('teach-2').checked=true;$('teach-2').onchange();$('teaching-batch-notion').checked=true");
     await set('startSelectedTeaching()');
     assert.deepEqual(run('calls'),[{action:'teaching-request-selected',data:{
-        items:[{pmid:'4',heads:['d']},{pmid:'2',heads:['b']}],paid:false,notion:true}}]);
+        items:[{pmid:'4',heads:['d']},{pmid:'2',heads:['b']}],route:'master',paid:true,notion:true}}]);
+    set(`state.papers[2].files=[{kind:'json',name:'summary.json',sha:'json-3'}];
+        $('teaching-batch-route').value='existing';teachingSelection.clear();selectTeachingRows()`);
+    assert.deepEqual(run('teachingRows().map(p=>p.pmid)'),['3']);
+    await set('startSelectedTeaching()');
+    assert.deepEqual(run('calls[1].data'),{items:[{pmid:'3',heads:['c']}],route:'existing',paid:false,notion:true});
+    set("state.teaching_jobs.push({pmid:'3',route:'existing',source_sha:'json-3'})");
+    assert.deepEqual(run('teachingRows()'),[]);
 });

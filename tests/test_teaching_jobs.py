@@ -15,7 +15,8 @@ from paper_pipeline.manual import Workspace, save_settings
 from paper_pipeline.teaching import FIELD_KEYS
 from test_chapter_review import fixture_pdf, response
 from test_materials import EmbeddedNotion
-from test_paper_pipeline import FakeOpenAI
+from test_paper_pipeline import FakeOpenAI, sample_summary
+from paper_pipeline.graphics import adapt_legacy
 
 
 class CountedAPI(FakeOpenAI):
@@ -127,6 +128,15 @@ class TeachingFlow(unittest.TestCase):
             self.assertEqual(len({a['revision_id'] for a in attempts}),1)
             self.assertTrue(all(a['actual']>0 for a in attempts))
 
+        saved = adapt_legacy(sample_summary(dict(pmid=self.pmid, title='Existing summary', doi='')))
+        self.ws.import_file(self.pmid, 'json', 'saved.json', json.dumps(saved).encode())
+        self.app.run('teaching-request', dict(self.intent, route='existing', paid=False))
+        summary = materials.current(self.ws, self.pmid, 'existing')
+        self.assertEqual(summary['page_id'], kit['page_id'])
+        self.assertEqual(materials.current(self.ws, self.pmid), kit)
+        self.assertEqual(len(self.notion.pages), 1)
+        self.assertEqual([b['type'] for b in self.notion.blocks[kit['page_id']]], ['heading_2','embed','pdf']*2)
+
         # A previously assembled edition also works on a Mac without an API ledger.
         cached = Workspace.create(self.repo/'cached', 'c'*32, 'Reader')
         cached.add(self.pmid)
@@ -179,3 +189,59 @@ class TeachingFlow(unittest.TestCase):
             self.assertEqual(jobs.read(jobs.directory(self.ws, self.pmid)/'request.json'), original)
             self.assertEqual(fetch.call_count, 1)
             self.assertEqual(self.api.posts, 0)
+
+    def test_existing_json_and_master_requests_can_coexist(self):
+        self.attach()
+        data = adapt_legacy(sample_summary(dict(pmid=self.pmid, title='Saved findings', doi='')))
+        raw = json.dumps(data).encode()
+        event = self.ws.import_file(self.pmid, 'json', 'saved.json', raw)
+        batch = dict(items=[dict(pmid=self.pmid, heads=[event['id']])], route='existing', paid=False, notion=True)
+        # Simulate a different Mac preparing the kit before the Notion owner picks it up.
+        other = Workspace(self.ws.root, 'b'*32, 'Reader')
+        with patch.object(jobs, 'process', side_effect=AssertionError('no paid reading')), \
+                patch.object(jobs.pdf_download, 'download_selected', side_effect=AssertionError('no PDF search')):
+            self.assertIn('要確認 0本', jobs.request_selected(self.repo, other, batch))
+            self.assertFalse(self.notion.pages)
+            self.app.run('teaching-poll', {})
+            self.app.run('teaching-poll', {})
+        rows = jobs.progress(self.ws)
+        self.assertEqual(len(rows), 1)
+        kit = rows[0]
+        self.assertEqual(kit['route'], 'existing')
+        self.assertTrue(kit['page_id'])
+        folder = materials.checked_folder(self.ws, kit['version'], self.pmid, 'existing')
+        self.assertEqual((folder/'source.json').read_bytes(), raw)
+        self.assertIn('Saved findings', (folder/materials.HTML).read_text())
+        self.assertIn('既存グラレコJSON版', (folder/materials.HTML).read_text())
+        self.assertFalse((folder/'master.json').exists())
+        self.assertEqual(materials.current(self.ws, self.pmid), {})
+        self.assertEqual(self.api.posts, 0)
+        self.assertEqual(len(self.notion.uploads), 2)
+        self.assertEqual([b['type'] for b in self.notion.blocks[kit['page_id']]], ['heading_2','embed','pdf'])
+        self.assertIn('要確認 1本', self.app.run('teaching-request-selected', dict(batch, notion=False)))
+        self.assertTrue(materials.current(self.ws, self.pmid, 'existing')['notion'])
+        self.app.run('teaching-request-selected', dict(batch, route='master', paid=True))
+        self.assertGreater(self.api.posts, 0)
+        self.assertEqual(materials.current(self.ws, self.pmid, 'existing')['version'], kit['version'])
+        self.assertEqual(len(jobs.progress(self.ws)), 2)
+
+    def test_existing_route_never_falls_back_and_supports_legacy_json_without_pdf(self):
+        self.ws.add(self.pmid)
+        intent = dict(pmid=self.pmid, route='existing', paid=False, notion=False)
+        with self.assertRaises(ValueError):
+            self.app.run('teaching-request', intent)
+        self.assertEqual(jobs.requests_list(self.ws), [])
+        self.assertFalse(jobs.existing_pmids(self.ws))
+        event = self.ws.current(self.pmid)
+        raw = json.dumps(dict(PMID=self.pmid, title='Old paper', main_results='Recorded finding')).encode()
+        event['data']['files'] = [self.ws.asset(self.pmid,'json','old.json',raw)]
+        self.ws.record(self.pmid, event['data'], [event['id']])
+        self.app.run('teaching-request', intent)
+        kit = materials.current(self.ws,self.pmid,'existing')
+        self.assertFalse(kit['has_pdf'])
+        self.assertFalse(self.notion.pages)
+        for _ in range(2):
+            self.app.run('materials-register',dict(pmid=self.pmid,route='existing',version=kit['version']))
+        self.assertEqual(len(self.notion.pages), 1)
+        self.assertEqual(len(self.notion.uploads), 1)
+        self.assertEqual(self.api.posts, 0)
