@@ -93,6 +93,14 @@ class ReadingGuideTests(unittest.TestCase):
         self.assertEqual(candidate['publication_types'], ['Review'])
         self.assertEqual(candidate['heads'], [head])
 
+    def test_teaching_metadata_includes_papers_outside_json_queue(self):
+        self.workspace.add(PMID)
+        app = Application(self.root / 'repo', self.workspace.root)
+        with patch('paper_pipeline.reading_guide.fetch_metadata', return_value=1) as fetch:
+            message = app.run('teaching-metadata', {'pmids': [PMID, PMID, '99999999']})
+        self.assertIn('1/1件', message)
+        self.assertEqual(fetch.call_args.args[1], [PMID])
+
     def test_unavailable_pubmed_preserves_registration(self):
         app = Application(self.root / 'repo', self.workspace.root)
         client = Mock()

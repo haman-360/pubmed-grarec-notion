@@ -108,7 +108,7 @@ class Application:
             self.state = dict(base, papers=[], counts=dict(total=0, **{k: 0 for k in STAGES}), errors=[str(error)])
 
     def run(self, action, data):
-        if action not in ('configure', 'add', 'reading-metadata', 'json-metadata', 'fetch-pdfs', 'fetch-pdfs-paid', 'json-budget', 'json-prepare', 'json-send', 'json-collect', 'json-retry-prepare', 'json-retry-send', 'notion-prepare', 'notion-send', 'materials-register', 'materials-png-register', 'teaching-request', 'teaching-request-selected', 'teaching-poll') and self.settings['shared_root']:
+        if action not in ('configure', 'add', 'reading-metadata', 'json-metadata', 'teaching-metadata', 'fetch-pdfs', 'fetch-pdfs-paid', 'json-budget', 'json-prepare', 'json-send', 'json-collect', 'json-retry-prepare', 'json-retry-send', 'notion-prepare', 'notion-send', 'materials-register', 'materials-png-register', 'teaching-request', 'teaching-request-selected', 'teaching-poll') and self.settings['shared_root']:
             with workspace_lock(self.workspace()):
                 return self._run(action, data)
         return self._run(action, data)
@@ -277,15 +277,18 @@ class Application:
             result = migrate(workspace, select_state_dir(self.repo))
             return f"旧台帳から{result['copied']}件をコピー（既存{result['skipped']}件は保持）。" + '\n'.join(result['warnings'])
         pmid = data.get('pmid')
-        if action == 'json-metadata':
+        if action in ('json-metadata', 'teaching-metadata'):
             requested = data.get('pmids')
             if not isinstance(requested, list):
-                raise ValueError('Batch候補の一覧を更新してください')
+                raise ValueError('候補の一覧を更新してください')
             pmids = []
             with workspace_lock(workspace):
                 for identifier in dict.fromkeys(pmid_value(value) for value in requested):
                     heads = workspace.heads(identifier)
-                    if len(heads) == 1 and workspace.category(heads[0]['data']) == 'json_pending':
+                    if len(heads) != 1:
+                        continue
+                    category = workspace.category(heads[0]['data'])
+                    if category == 'json_pending' or (action == 'teaching-metadata' and category != 'archived'):
                         pmids.append(identifier)
             if not pmids:
                 raise ValueError('PubMedの書誌を取得する候補がありません')

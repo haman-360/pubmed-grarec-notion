@@ -14,6 +14,9 @@ button,input,textarea,select{font:inherit}button{border:1px solid transparent;bo
 .json-candidate-table th:first-child{width:3.75rem;text-align:center}
 .json-candidate-table th:nth-child(2){width:7rem}
 .json-candidate-table th:last-child,.json-estimate-table th:nth-child(3){width:clamp(8rem,23vw,17rem)}
+#teaching-options table{min-width:640px}
+#teaching-options th:nth-child(4){width:clamp(9rem,20vw,15rem)}
+#teaching-options th:last-child{width:6.5rem}
 .json-candidate-table td:first-child{text-align:center}
 .json-candidate-table input{margin:4px 0 0;cursor:pointer}
 .json-candidate-table tr[data-selected="true"]{background:#eaf5f1}
@@ -99,10 +102,10 @@ button,input,textarea,select{font:inherit}button{border:1px solid transparent;bo
 <label>対象 <select id="teaching-scope" onchange="teachingSelection.clear();renderTeachingOptions()"><option value="first">初めて教材を依頼する論文</option><option value="additional">別版を追加・更新する論文</option></select></label>
 <label>作成方法 <select id="teaching-batch-route" onchange="teachingSelection.clear();renderTeachingOptions()"><option value="existing">既存グラレコJSONから要約教材を作る（精読API費用なし）</option><option value="master">PDFから教材用Master JSONを作る（精読API・1論文版の予約上限 $4）</option></select></label>
 <p class="hint" id="teaching-route-help"></p>
-<label>論文を検索 <input id="teaching-find" placeholder="論文名・PMID" oninput="renderTeachingOptions()"></label>
-<div class="actions filterbar"><button class="secondary" id="teaching-select-all" onclick="selectTeachingRows()">表示中の論文をすべて選択</button><button class="secondary" id="teaching-clear" onclick="teachingSelection.clear();renderTeachingOptions()">選択を解除</button></div>
+<label>論文を検索 <input id="teaching-find" placeholder="論文名・PMID・論文種別" oninput="renderTeachingOptions()"></label>
+<div class="actions filterbar"><button class="secondary" id="teaching-select-all" onclick="selectTeachingRows()">表示中の論文をすべて選択</button><button class="secondary" id="teaching-clear" onclick="teachingSelection.clear();renderTeachingOptions()">選択を解除</button><button class="secondary" id="teaching-metadata">表示中の論文のPubMed種別を更新</button></div>
 <div id="teaching-options"><table class="json-candidate-table" aria-label="教材作成の候補">
-<thead><tr><th>選択</th><th>PMID</th><th>論文タイトル</th><th>原本PDF</th></tr></thead><tbody id="teaching-rows"></tbody></table></div>
+<thead><tr><th>選択</th><th>PMID</th><th>論文タイトル</th><th>論文種別</th><th>原本PDF</th></tr></thead><tbody id="teaching-rows"></tbody></table></div>
 <p id="teaching-empty" class="hint" hidden>該当する未依頼の論文はありません。</p>
 <p><label><input id="teaching-batch-notion" type="checkbox" checked> 完成後、Notion担当Macから教材HTMLと保存済みの原本PDFを登録</label></p>
 <button id="teaching-submit" onclick="startSelectedTeaching()" disabled>選択した論文の教材を作る</button>
@@ -258,7 +261,7 @@ function scopedTeachingRows(route, additional){
 }
 function visibleTeachingRows(rows){
     const query=$('teaching-find').value.trim().toLowerCase();
-    return rows.filter(p=>(p.pmid+' '+p.title).toLowerCase().includes(query));
+    return rows.filter(p=>[p.pmid,p.title,publicationText(p),...(p.publication_types||[])].join(' ').toLowerCase().includes(query));
 }
 function selectTeachingRows(){
     for(const p of visibleTeachingRows(scopedTeachingRows($('teaching-batch-route').value,$('teaching-scope').value==='additional')))teachingSelection.set(p.pmid,p.heads[0]);
@@ -272,7 +275,7 @@ function renderTeachingOptions(){
     for(const [pmid,head] of teachingSelection){
         if(heads.get(pmid)!==head)teachingSelection.delete(pmid);
     }
-    const signature=JSON.stringify([existing,visible.map(p=>[p.pmid,p.title,p.heads[0],p.files.some(f=>f.kind==='pdf')])]);
+    const signature=JSON.stringify([existing,visible.map(p=>[p.pmid,p.title,p.heads[0],p.publication_type,p.publication_types,p.publication_type_inferred,p.files.some(f=>f.kind==='pdf')])]);
     if(signature!==teachingTableSignature){
         teachingTableSignature=signature;
         const body=$('teaching-rows');body.replaceChildren();
@@ -281,6 +284,7 @@ function renderTeachingOptions(){
             const check=document.createElement('input');check.type='checkbox';check.id='teach-'+paper.pmid;
             cell(row,'').append(check);cell(row,paper.pmid,'json-pmid');
             const title=line(cell(row,''),paper.title||'論文名未登録','label');title.htmlFor=check.id;
+            renderPublication(cell(row,''),paper);
             cell(row,paper.files.some(f=>f.kind==='pdf')?'取得済み':existing?'未登録':'依頼時に無料検索');
             check.onchange=()=>{
                 if(check.checked)teachingSelection.set(paper.pmid,paper.heads[0]);
@@ -298,6 +302,8 @@ function renderTeachingOptions(){
     $('teaching-empty').textContent=existing && !rows.length?'要約教材を作れる未作成のグラレコ用JSONはありません。PDFを精読するには「作成方法」を切り替えてください。':'現在の対象・作成方法・検索条件に該当する論文はありません。';
     const count=teachingSelection.size;
     $('teaching-count').textContent=count+'本選択中';
+    $('teaching-metadata').disabled=state.busy||!visible.length;
+    $('teaching-metadata').onclick=()=>act('teaching-metadata',{pmids:visible.map(p=>p.pmid)});
     $('teaching-select-all').disabled=state.busy||!visible.length;
     $('teaching-clear').disabled=state.busy||!count;$('teaching-submit').disabled=state.busy||!count;
     $('teaching-batch-route').disabled=state.busy;$('teaching-batch-notion').disabled=state.busy;
@@ -379,7 +385,7 @@ function renderMaterials(){
 }
 function renderActionButtons(){for(let b of document.querySelectorAll('button:not([data-nav])'))b.disabled=Boolean(state.busy)&&!b.hasAttribute('data-manual-refresh');renderPdfOptions();renderJsonPanel();renderNotionPanel();renderMaterials();if(view==='teaching')renderTeachingOptions()}
 async function manualRefresh(){await refresh();if(state&&!state.busy&&!actionPending)await act('refresh')}
-async function act(action,data={}){if(actionPending)return false;actionPending=true;let before=new Map((state?.papers||[]).map(p=>[p.pmid,p.category]));let failure='';try{if(state){state.busy=true;renderActionButtons();renderProgress()}$('message').textContent='処理中です。完了すると結果を表示します。途中の状況は「保存状況を確認」で確認できます。';await api('/api/action',{action,...data})}catch(e){failure=e.message}finally{actionPending=false;await refresh()}if(failure){$('message').textContent=failure;return false}showTransitions(before);if(action==='organize'&&state.intake_result)$('intake-result').open=true;return true}
+async function act(action,data={}){if(actionPending)return false;actionPending=true;let before=new Map((state?.papers||[]).map(p=>[p.pmid,p.category]));let failure='';try{if(state){state.busy=true;renderActionButtons();renderProgress()}$('message').textContent=action==='teaching-request-selected'?data.items.length+'本の教材依頼を順番に処理しています。各論文の受付・結果待ち・保留は処理後に教材の履歴で確認できます。':'処理中です。完了すると結果を表示します。途中の状況は「保存状況を確認」で確認できます。';await api('/api/action',{action,...data})}catch(e){failure=e.message}finally{actionPending=false;await refresh()}if(failure){$('message').textContent=failure;return false}showTransitions(before);if(action==='organize'&&state.intake_result)$('intake-result').open=true;return true}
 function button(parent,text,action,data={}){let b=document.createElement('button');b.className='secondary';b.textContent=text;b.onclick=()=>act(action,data);parent.append(b);return b}
 function cell(row,text,cls){let e=document.createElement('td');e.textContent=text||'';if(cls)e.className=cls;row.append(e);return e}
 function line(parent,text,tag='small'){let el=document.createElement(tag);el.textContent=text;parent.append(el);return el}

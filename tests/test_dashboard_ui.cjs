@@ -357,3 +357,32 @@ test('first teaching request is counted once across routes and extra editions ha
     set("state.papers[0].artifacts.requested=true;state.teaching_jobs.push({pmid:'1'})");
     assert.deepEqual(run("scopedTeachingRows('existing',false)"),[]);
 });
+test('teaching candidates show searchable publication types and keep selections when metadata changes',async()=>{
+    const {set,run}=dashboard();
+    set(`
+        class Element {
+            constructor(){this.children=[];this.value='';this.dataset={}}
+            append(node){node.parent=this;this.children.push(node)}
+            replaceChildren(){this.children=[]}
+            closest(){return this.parent.parent}
+            set id(key){elements.set(key,this);this.key=key}
+            get id(){return this.key}
+        }
+        const elements=new Map();
+        document.createElement=()=>new Element();
+        document.getElementById=id=>{if(!elements.has(id))elements.set(id,new Element());return elements.get(id)};
+        var paper=state.papers[0];paper.publication_type='レビュー';paper.publication_type_inferred=true;
+        $('teaching-batch-route').value='master';$('teaching-find').value='レビュー';
+        renderTeachingOptions();
+        var typeCell=()=>$('teaching-rows').children[0].children[3];
+        var payload;act=(action,data)=>{payload={action,data}};
+        $('teach-1').checked=true;$('teach-1').onchange();
+    `);
+    assert.equal(run('typeCell().children[0].textContent'),'レビュー');
+    assert.equal(run('typeCell().children[1].textContent'),'タイトルから推定');
+    await set("$('teaching-metadata').onclick()");
+    assert.deepEqual(run('payload'),{action:'teaching-metadata',data:{pmids:['1']}});
+    set("paper.publication_type_inferred=false;paper.publication_types=['Review'];$('teaching-find').value='review';renderTeachingOptions()");
+    assert.equal(run('typeCell().children[1].textContent'),'PubMed · Review');
+    assert.equal(run("$('teach-1').checked"),true);
+});
