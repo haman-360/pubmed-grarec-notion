@@ -2,6 +2,7 @@
 import argparse
 from pathlib import Path
 import re
+from hashlib import sha256
 
 from PIL import Image
 
@@ -23,11 +24,17 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description='精読JSONと任意のPNGからオフラインReaderを作成します')
     parser.add_argument('json', type=Path, help='版を指定した精読JSON')
     parser.add_argument('--png', type=Path, action='append', default=[], help='対応を確認したPNG。複数指定可')
+    parser.add_argument('--pdf', type=Path, help='学習版に対応する原本PDFを内包')
     parser.add_argument('--output-dir', type=Path, default=Path(__file__).resolve().parents[1] / 'output/readers')
     args = parser.parse_args(argv)
     try:
         paper = paper_from_json(args.json.read_bytes())
         check_filename(args.json, paper.pmid)
+        if args.pdf:
+            pdf = args.pdf.read_bytes()
+            if not paper.teaching_master or sha256(pdf).hexdigest() != paper.teaching_master['metadata']['pdf_sha256']:
+                raise ValueError('原本PDFと学習版が一致しません')
+            paper.original_pdf = pdf
         images = []
         for path in dict.fromkeys(args.png):
             check_filename(path, paper.pmid)

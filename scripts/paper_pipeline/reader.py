@@ -59,6 +59,9 @@ def png_html(caption, raw):
 
 
 def render(paper, images=(), image_notes=()):
+    if paper.teaching_master is not None:
+        from .teaching_reader import render_teaching
+        return render_teaching(paper, images, image_notes)
     figures = []
     for label, raw in images:
         try:

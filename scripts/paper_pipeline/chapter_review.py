@@ -53,10 +53,10 @@ def packet_key(run_id, job):
     return digest([run_id, job])
 
 
-def prompt(run_id, job):
+def prompt(run_id, job, instructions=INSTRUCTIONS, schema=RESULT_SCHEMA):
     binding = dict(job_key=packet_key(run_id, job), chapter_id=job['id'], title=job['title'],
                    original_pdf_pages=[job['start'], job['end']], next_heading=job['next_heading'])
-    return INSTRUCTIONS + '\n' + json.dumps(binding, ensure_ascii=False, indent=2) + '\n' + json.dumps(RESULT_SCHEMA, ensure_ascii=False, indent=2)
+    return instructions + '\n' + json.dumps(binding, ensure_ascii=False, indent=2) + '\n' + json.dumps(schema, ensure_ascii=False, indent=2)
 
 
 def quoted(fragment, text):
@@ -70,8 +70,8 @@ def quoted(fragment, text):
     return re.search(start + re.escape(needle) + end, ' '.join(text.split())) is not None
 
 
-def validate_result(result, run_id, job, texts, confirm_visual):
-    error = next(Draft202012Validator(RESULT_SCHEMA).iter_errors(result), None)
+def validate_result(result, run_id, job, texts, confirm_visual, schema=RESULT_SCHEMA):
+    error = next(Draft202012Validator(schema).iter_errors(result), None)
     if error:
         raise ValueError(f'章結果の形式を確認してください：{error.json_path} ({error.validator})')
     if result['job_key'] != packet_key(run_id, job) or result['chapter_id'] != job['id']:
@@ -91,13 +91,37 @@ def validate_result(result, run_id, job, texts, confirm_visual):
             raise ValueError('所見の出典番号が重複または範囲外です')
         quotes = [result['sources'][i-1]['quote'] for i in indices]
         for measure in finding.get('measurements', []):
+            interval_fields = set()
+            if schema is not RESULT_SCHEMA and measure.get('ci_lower') and measure.get('ci_upper'):
+                # Upper bounds following a dash need a range match; checking isolated numbers would
+                # either reject valid intervals or accept a different sign or a suffix of a value.
+                lo, hi = (re.escape(measure[k]) for k in ('ci_lower', 'ci_upper'))
+                interval = rf'(?<![\d.,+−–-]){lo}\s*(?:[-–—,;]|to)\s*{hi}(?!\d|[.,]\d)'
+                if not re.search(interval, measure['reported']):
+                    raise ValueError('信頼区間の上下限を同じ原文表記で照合できません')
+                interval_fields.update(('ci_lower','ci_upper'))
+                if measure.get('ci_level'):
+                    level = measure['ci_level'].rstrip('%').strip()
+                    if not re.search(r'(?<![\d.])'+re.escape(level)+r'\s*%',measure['reported']) and not any(
+                        quoted(measure['ci_level'],q) for q in quotes
+                    ):
+                        raise ValueError('信頼水準の原文表記を確認してください')
+                    interval_fields.add('ci_level')
+                named = re.search(r'\b(a?(?:OR|HR|RR|PR|MSR))\b',measure['reported'])
+                if named and measure['label'] in ('OR','aOR','HR','aHR','RR','aRR','aPR','aMSR'):
+                    if named[1] != measure['label']:
+                        raise ValueError('効果指標と原文表記が一致しません')
+                    if measure.get('estimate') and not quoted(measure['estimate'],measure['reported'][:re.search(interval,measure['reported']).start()]):
+                        raise ValueError('効果推定値と原文表記が一致しません')
             for field in ('reported', 'estimate', 'ci_lower', 'ci_upper', 'ci_level', 'p_value', 'denominator'):
+                if field in interval_fields:
+                    continue
                 value = measure.get(field)
                 if value is not None and not any(quoted(value, quote) for quote in quotes):
                     raise ValueError(f'測定値 {field} を所見の原文引用で確認できません')
 
 
-def build_master(plan, results, run_id):
+def build_master(plan, results, run_id, studies=None):
     chapters, evidence, sources, issues, highlights = [], [], [], [], []
     by_source, by_fact = {}, {}
     if len(results) != len(plan['jobs']):
@@ -121,13 +145,37 @@ def build_master(plan, results, run_id):
             record = {k:finding[k] for k in DEFS['evidence']['properties'] if k in finding and k != 'measurements'}
             record['source_refs'] = ids
             measures = finding.get('measurements', [])
-            key = digest([record, measures])
+            key = digest([record, measures, finding.get('study')]) if studies is not None else digest([record, measures])
+            if studies is not None and finding.get('result_key'):
+                key = ('linked', finding['result_key'])
             if key not in by_fact:
                 eid = f'e{len(evidence)+1}'
                 record['measurements'] = [dict(id=f'{eid}-m{i}', source_refs=ids, **m) for i,m in enumerate(measures,1)]
                 by_fact[key] = dict(id=eid, **record)
                 evidence.append(by_fact[key])
+            else:
+                existing = by_fact[key]
+                if studies is not None and finding.get('result_key'):
+                    if studies[existing['id']] != finding['study'] or existing['kind'] != finding['kind']:
+                        raise ValueError('同一結果キーの研究・対象・解析が一致しません')
+                    existing['source_refs'] = list(dict.fromkeys(existing['source_refs'] + ids))
+                    adds_estimate = any(m.get('estimate') for m in measures) and not any(
+                        m.get('estimate') for m in existing['measurements'])
+                    if measures and (not existing['measurements'] or adds_estimate):
+                        existing['statement_ja'] = finding['statement_ja']
+                    for name in ('conditions','exceptions'):
+                        existing[name] = list(dict.fromkeys(existing.get(name,[]) + finding.get(name,[])))
+                    for m in measures:
+                        prior = next((v for v in existing['measurements'] if all(v.get(k)==val for k,val in m.items())),None)
+                        if prior:
+                            prior['source_refs'] = list(dict.fromkeys(prior['source_refs'] + ids))
+                        elif any(v['label']==m['label'] for v in existing['measurements']):
+                            raise ValueError('同一結果キーに異なる測定値があります')
+                        else:
+                            existing['measurements'].append(dict(m, id=f"{existing['id']}-m{len(existing['measurements'])+1}", source_refs=ids))
             fact = by_fact[key]
+            if studies is not None and 'study' in finding:
+                studies[fact['id']] = finding['study']
             blocks.append(dict(role=finding['role'], origin='paper', text_ja=finding['statement_ja'], evidence_ids=[fact['id']]))
             if finding.get('interpretation_ja'):
                 blocks.append(dict(role='clinical_meaning', origin='ai_interpretation',

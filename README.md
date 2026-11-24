@@ -192,7 +192,9 @@ Macの論文一覧で、完成JSONのある論文の **「オフラインReader�
 
 **2. 章ごとに精読する。** 各 `ch0001` 等のフォルダには抜粋 `source.pdf`、精読依頼 `request.txt`、記入用 `response-template.json` が入ります。人が記入する場合は雛形をコピーして `response.json` として保存します。既存のWeb手動運用なら抜粋と依頼文から得たJSONを同じ名前で保存します。CLIからPDFや依頼文を外部に送る処理はありません。
 
-結果には章の日本語解説、所見の種類・適用条件・例外、出典ページと原文の短い引用を記入します。`source_numbers` はその章の `sources` 配列の1番目から数えます。測定値は `measurements` に原文表記を保存します。`highlight: true` の所見を論文全体の概要に採用します。表紙や文献一覧は章の位置を示す引用を添え、所見を空にできます。
+新規の分割は医師向け教材形式（`chapter-learning-v2`）を使います。従来形式の新規作成には `prepare --classic` を指定できます。既存作業フォルダは保存した形式で再開します。
+
+結果には章の日本語解説、所見の種類・適用条件・例外、出典ページと原文の短い引用を記入します。`source_numbers` はその章の `sources` 配列の1番目から数えます。測定値は `measurements` に原文表記を保存します。`highlight: true` の所見は全体統合の候補です。研究結果には `study` に文献・デザイン・対象・曝露・アウトカムを記録します。表と本文の同じ解析には同じ `result_key` と研究情報を指定し、集団やアウトカムが異なる解析は分けます。表紙や文献一覧は章の位置を示す引用を添え、所見を空にできます。
 
 **3. 取り込み・再開する。** `prepare` が表示したフォルダを指定します。
 
@@ -204,7 +206,21 @@ Macの論文一覧で、完成JSONのある論文の **「オフラインReader�
 
 図表やスキャンの引用を文字抽出で確認できない場合は、該当出典に `visual_only: true` を記録し、原ページと目視照合したうえで `resume … --confirm-visual ch0003` のように章を指定します。確認方法はMasterに残ります。受理済みの章を訂正する場合は、その章の `response.json` を直して `--revise ch0003` を指定します。
 
-全章が揃うと、Masterのスキーマと参照関係を検証し、`editions` の同じ版に `master.json` と `reader.html` を保存します。Readerでは所見の横に原本PDFのページが表示されます。原文引用・数値の機械照合後も `human_checked` は false です。論文全体の医学的妥当性は医師が原本で確認します。
+**4. 全章の内容を統合する。** 教材形式では全章の受理後にいったん終了コード1を返し、`synthesis` に統合用フォルダを表示します。その中の `request.txt`、`context.json`、`schema.json` と原本PDFを使って `response.json` を作成し、同じフォルダに保存してください。章の受理内容や統合仕様が変わると、別の統合用フォルダが選ばれます。`master-schema.json` に最終教材のスキーマも出力します。
+
+統合担当者は全章を確認し、overview各項目の根拠または欠測状態、原文抄録の逐語断片と対訳、外来へのAI解釈、学習単元、必要な図解を指定します。`units` には日本語の題名と章IDを指定し、`evidence_ids` を併用すると複数の処理章から一つの医学的テーマを構成できます。`forest_plot` では原文が報告した比と95% CIを使い、指標・集団・デザインごとにパネルを分けます。
+
+**5. 教材と画像用データを保存する。** 再度 `resume` を実行します。対応を確認した既存PNGと原本PDFを内包する場合の例です。どちらも省略できます。
+
+```sh
+.venv/bin/python scripts/review_chapters.py resume '作業フォルダのパス' \
+  --png images/2026/08/PMID_42526604_grarec.png \
+  --pdf 'input/pdfs/42526604_Use electronic cigarettes asthma across lifespan.pdf'
+```
+
+`editions` に教材の `master.json`（learning-v3）、単体でオフライン閲覧できる `reader.html`、既存PNG経路に取り込める `png-master.json`（hybrid-v1）、各テーマの `png-request-*.json` を保存します。HTMLのページ表記から根拠を展開でき、原本を内包した場合は該当ページへのリンクも使えます。PDFビューアによっては先頭ページで開くため、物理ページ番号も表示します。教材を単独で再描画するときは `scripts/generate_reader.py` に版を指定できます。
+
+**6. 品質を評価する。** `resume` の `assessment` と `quality` に8項目の状態が出ます。評価を記録するには表示された `quality_template` を同じディレクトリの `response.json` にコピーし、確認した項目だけ状態・評価者・確認内容を記入して同じ引数で再開します。評価は画像・原本の添付と描画結果を含む版に紐づきます。機械的な引用一致やPNG形式の合格を医学的な承認に使いません。`--classic` および以前に準備した従来のrunは、全章受理後に従来のMasterとReaderを生成します。
 
 ## Batch APIでJSONを作成・回収する（段階4）
 

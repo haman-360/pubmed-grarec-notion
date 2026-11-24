@@ -23,6 +23,9 @@ class Paper:
     title: str
     citation: list[str]
     sections: list = field(default_factory=list)
+    teaching_master: dict | None = None
+    sha256: str = ''
+    original_pdf: bytes | None = None
 
 
 @dataclass
@@ -171,6 +174,12 @@ def paper_from_json(raw, cached_abstract=''):
     if not isinstance(data, dict):
         raise ValueError('論文1本の精読JSONを指定してください')
     version = data.get('schema_version')
+    if version == 'learning-v3':
+        from .teaching import validate_teaching
+        validate_teaching(data)
+        meta = data['metadata']
+        return Paper(pmid_value(meta['pmid']),meta['title'],[str(meta[k]) for k in ('journal','year','doi') if meta.get(k)],
+                     teaching_master=data,sha256=hashlib.sha256(raw).hexdigest())
     if version not in (None, VERSION, 'learning-v2') or ('schema_version' in data and version is None):
         raise ValueError(f'未対応のスキーマ版です：{version}')
     try:

@@ -19,6 +19,7 @@ def main(argv=None):
     create.add_argument('--article-type', required=True, choices=MASTER['properties']['article_type']['enum'])
     for field in ('journal', 'year', 'doi'):
         create.add_argument('--' + field)
+    create.add_argument('--classic', action='store_true', help='従来の章別形式を使う')
     create.add_argument('--sections', type=Path, help='任意の章見出しJSON')
     create.add_argument('--max-pages', type=int, default=10)
     create.add_argument('--max-chars', type=int, default=32000)
@@ -26,6 +27,8 @@ def main(argv=None):
     collect = commands.add_parser('resume', help='未完了の章を取り込み、全章完了時にMasterとReaderを出力')
     collect.add_argument('run', type=Path)
     collect.add_argument('--confirm-visual', action='append', default=[], metavar='章ID', help='この章の目視引用を原ページと照合済み')
+    collect.add_argument('--pdf', type=Path, help='SHA-256が一致する原本PDFをHTMLに内包する')
+    collect.add_argument('--png', type=Path, action='append', default=[], help='対応を確認したグラレコPNG')
     collect.add_argument('--revise', action='append', default=[], metavar='章ID', help='この章の修正版を取り込む')
     args = parser.parse_args(argv)
     try:
@@ -34,10 +37,15 @@ def main(argv=None):
             headings = json.loads(args.sections.read_text(encoding='utf-8-sig')) if args.sections else None
             folder = prepare(args.pdf, args.output_dir, pmid=args.pmid, title=args.title, article_type=args.article_type,
                              headings=headings, max_pages=args.max_pages, max_chars=args.max_chars,
-                             journal=args.journal, year=args.year, doi=args.doi)
+                             journal=args.journal, year=args.year, doi=args.doi, learning=not args.classic)
             print(folder.resolve())
         else:
-            report = resume(args.run, args.confirm_visual, args.revise)
+            images = []
+            for path in args.png:
+                pmid = json.loads((args.run/'manifest.json').read_text())['metadata']['pmid']
+                check_filename(path, pmid)
+                images.append(('既存グラレコ · '+path.name+'（手動指定）',path.read_bytes()))
+            report = resume(args.run, args.confirm_visual, args.revise, images, args.pdf.read_bytes() if args.pdf else None)
             print(json.dumps(report, ensure_ascii=False, indent=2))
             if report['errors']:
                 return 2
