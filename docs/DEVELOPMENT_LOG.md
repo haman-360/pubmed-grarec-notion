@@ -120,3 +120,10 @@ Mac Chromeをオフラインにして1366、820、390pxで検索、図解展開�
 - PMID 42526604の既存Masterで4パネル8点を生成。Baylyの1点（e15-m2）とIslamの3点はPDF p.34、Patelの3点はp.35、Pérezの1点はp.37。Mac Chromeで全点から原本を開き、PDFビューアのページ番号も確認。1366・820・390pxで報告値・CI・研究詳細・引用・図へのフォーカス復帰を照合した。外部HTTP(S)要求・JavaScriptエラーは0件。タブレット・スマートフォンは画面幅と入力操作のエミュレーションで検証した。
 - 生成先は `output/readers/PMID_42526604/36a04d143ddf0a8f29ddf07c736fb10e3144130c95734042ff1f5d8acd919fe3/reader_study_plots.html`。教材版master.json・reader.htmlと専用reader_visual_prototype.htmlのSHA-256は生成前後で一致した。再精読・有料API呼び出しは0件。
 - 同じEvidenceに複数の測定値がある場合の点の位置・研究・出典、およびPDF省略時のページ表記を回帰テストに追加した。Pythonは348件中347件成功・1件スキップ（localhostのbind制限を受けた2件は許可環境で再検証）、JavaScriptは24件成功。
+
+## 2026-11-24 — 胎内曝露の並列所見を既存Masterから機序図に描画
+
+- `generate_reader.py --mechanisms` で学習版Masterの `mechanism_diagram` を独立HTMLに出力する。実際の辺を起点別にまとめ、項目順から因果関係を推定せず、所見の直接選択と前後移動に対応した。SVGは項目名に応じて選び、未知の項目には中立の図記号を使う。利用手順をREADMEに追記した。
+- PMID 42526604の全体図から、肺胞発育、気道炎症、遺伝子発現の各図を切替可能。各研究の実験条件、限界、Evidence、引用、PDFの物理ページを個別に表示し、関係の説明にだけ付く追加根拠も保持した。原文引用とオフラインHTMLの組み立ては研究別グラフと共用する。
+- オフラインのMac Chromeで1366・820・390px幅、全体図と3分岐の描画・前後移動・直接選択・条件展開を確認。7件のEvidenceと引用をMasterに照合し、デスクトップで各EvidenceからPDFを開いた。レビュー本文p.13、図1 p.43、Orzabal/Cahillの表1 p.28、Noëlの表1 p.29をPDFビューアのページ表示でも確認。外部HTTP(S)要求、JavaScriptエラー、ページの横あふれは0件。タブレット・スマートフォンはエミュレーションで確認した。
+- 新しいHTMLは `output/readers/PMID_42526604/00c39628a853db8b2aca56c921907bd49800d78517fe3e9a09e16f5b631ebd33/reader_mechanisms.html`。既存Master・Reader・専用試作のSHA-256は作業前後で一致した。前回の研究別グラフは再生成して同じSHA-256を確認。分岐と関係の根拠の取り違えを検出するテストを追加し、Python 350件中349件成功・1件スキップ、JavaScript 24件成功。

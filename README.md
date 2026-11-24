@@ -228,6 +228,14 @@ Macの論文一覧で、完成JSONのある論文の **「オフラインReader�
 
 表示されたパスの `reader_study_plots.html` を開きます。点を選ぶと、その測定値の報告値、引用、研究詳細を表示します。`--pdf` を付けると、SHA-256を照合した原本の該当ページをオフラインで開けます。
 
+候補機序の分岐を確認するには、`mechanism_diagram` を収録した学習版Masterで次を実行します。
+
+```sh
+.venv/bin/python scripts/generate_reader.py path/to/master.json --mechanisms --pdf path/to/original.pdf
+```
+
+出力された `reader_mechanisms.html` では、起点から伸びる各分岐を直接選ぶか、「次の所見へ」で順に閲覧できます。各研究の「条件・根拠・原文」から、実験条件・限界・引用と該当ページを確認できます。
+
 **6. 品質を評価する。** `resume` の `assessment` と `quality` に8項目の状態が出ます。評価を記録するには表示された `quality_template` を同じディレクトリの `response.json` にコピーし、確認した項目だけ状態・評価者・確認内容を記入して同じ引数で再開します。評価は画像・原本の添付と描画結果を含む版に紐づきます。機械的な引用一致やPNG形式の合格を医学的な承認に使いません。`--classic` および以前に準備した従来のrunは、全章受理後に従来のMasterとReaderを生成します。
 
 ## Batch APIでJSONを作成・回収する（段階4）

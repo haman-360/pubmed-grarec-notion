@@ -89,12 +89,18 @@ def render(paper, images=(), image_notes=()):
                                sections=''.join(sections)).encode('utf-8')
 
 
-def save_reader(root, paper, images=(), image_notes=(), *, study_plots=False):
+def save_reader(root, paper, images=(), image_notes=(), *, study_plots=False, mechanisms=False):
     filename = 'reader.html'
+    if study_plots and mechanisms:
+        raise ValueError('研究別グラフと機序図は個別に出力してください')
     if study_plots:
         from .study_plots import render_study_plots
         html = render_study_plots(paper)
         filename = 'reader_study_plots.html'
+    elif mechanisms:
+        from .mechanisms import render_mechanisms
+        html = render_mechanisms(paper)
+        filename = 'reader_mechanisms.html'
     else:
         html = render(paper, images, image_notes)
     folder = Path(root) / ('PMID_' + paper.pmid) / hashlib.sha256(html).hexdigest()

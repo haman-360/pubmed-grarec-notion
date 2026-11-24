@@ -1,30 +1,8 @@
 """Offline, interactive forest plots projected from validated learning-v3 panels."""
-from base64 import b64encode
-from hashlib import sha256
 from html import escape
 from math import log
-from string import Template
 
-from .reader import TEMPLATES
-
-
-def source_excerpt(source, has_pdf, reported=None):
-    page = source.get('pdf_page_start')
-    end = source.get('pdf_page_end', page)
-    location = 'PubMed 抄録'
-    if page:
-        pages = str(page) if page == end else f'{page}–{end}'
-        location = f'原本PDF p.{pages}'
-        if has_pdf:
-            location = f'<a data-pdf-page="{page}" target="_blank" rel="noopener">{location} ↗</a>'
-    label = ' · '.join(escape(source[k]) for k in ('table', 'figure', 'citation') if source.get(k))
-    original = source.get('quote') or ''
-    quote = escape(original)
-    if reported and reported in original:
-        before, match, after = original.partition(reported)
-        quote = escape(before) + '<mark>' + escape(match) + '</mark>' + escape(after)
-    return (f'<div class="source" data-source="{escape(source["id"])}"><p>{location}　{label}</p>'
-            f'<blockquote lang="und">{quote}</blockquote></div>')
+from .visual_reader import package_visual_reader, source_excerpt
 
 
 def details_for_point(item, value, fact, study, refs, has_pdf):
@@ -102,11 +80,4 @@ def render_study_plots(paper):
     if not panels:
         raise ValueError('このMasterに研究別グラフのパネルがありません')
     component = ForestPlots(master, bool(paper.original_pdf))
-    css = (TEMPLATES/'study_plots.css').read_text()
-    js = (TEMPLATES/'study_plots.js').read_text()
-    return Template((TEMPLATES/'study_plots.html').read_text()).substitute(
-        title=escape((master['overview']['topic'] or [paper.title])[0]), pmid=escape(paper.pmid),
-        original=escape(paper.title), panels=''.join(component.panel(panel) for panel in panels),
-        pdf=b64encode(paper.original_pdf or b'').decode(), css=css, js=js,
-        css_hash=b64encode(sha256(css.encode()).digest()).decode(),
-        js_hash=b64encode(sha256(js.encode()).digest()).decode()).encode()
+    return package_visual_reader(paper, 'study_plots', ''.join(component.panel(panel) for panel in panels))

@@ -1,0 +1,58 @@
+:root { color: #253c39; background: #f7f7f0; font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Hiragino Sans", sans-serif; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+.wrap { max-width: 77rem; padding-inline: clamp(1rem,4vw,3.4rem); margin: auto; }
+header { background: #233f40; color: #fff; padding-block: .72rem; font-weight: bold; }
+header span { margin-left: 1rem; color: #c7dfd3; font-weight: normal; font-size: .85rem; }
+.definitions { position: absolute; width: 0; height: 0; overflow: hidden; }
+main { padding-block: 1.8rem 3rem; }
+.paper, .scene small { color: #526761; font-size: .84rem; }
+.paper { font-weight: 500; margin: 0; }
+.panel h2 { font-size: clamp(1.7rem,3.6vw,2.9rem); letter-spacing: -.04em; line-height: 1.25; margin: .3rem 0 1.2rem; }
+.group { display: grid; grid-template-columns: minmax(0,1.05fr) minmax(0,1fr); grid-template-rows: auto 1fr; margin-bottom: 1.8rem; background: #fffef9; border: 1px solid #c6d2c9; border-radius: 1.1rem; overflow: hidden; }
+.map, .controls { background: #e8f0e7; }
+.map { padding: clamp(.8rem,2.2vw,1.8rem); text-align: center; }
+button, summary { font: inherit; color: inherit; cursor: pointer; touch-action: manipulation; }
+button:focus-visible, summary:focus-visible, a:focus-visible { outline: 3px solid #a65322; outline-offset: 2px; }
+button:disabled { opacity: .42; cursor: default; }
+.origin { padding: .55rem 1rem; font-weight: bold; border-radius: 2rem; border: 1px solid #547767; background: #fffef9; }
+.origin[aria-pressed=true] { background: #235950; color: #fff; }
+.branches { display: flex; justify-content: center; padding-top: 2rem; position: relative; flex-wrap: wrap; }
+.branches::before { content: ''; position: absolute; top: 0; height: 1rem; left: 50%; border-left: 2px solid #829c8d; }
+.branch { --ink: #829c8d; position: relative; background: #fafaf3; border: 0; box-shadow: inset 0 0 0 1px #bacbbd; border-radius: .9rem; flex: 1 1 5rem; min-width: 0; margin: 0 .15rem; padding: .75rem .15rem; }
+.branch::before { content: ''; position: absolute; top: -1rem; left: -.15rem; right: -.15rem; border-top: 2px solid var(--ink); }
+.branch:first-child::before { left: 50%; }
+.branch:last-child::before { right: 50%; }
+.branch::after { content: ''; position: absolute; top: -1rem; height: 1rem; left: 50%; border-left: 2px solid var(--ink); }
+.branch[aria-pressed=true] { background: #fffdf5; box-shadow: inset 0 0 0 3px #387467; --ink: #387467; }
+.branch b { display: block; font-size: clamp(.82rem,1.5vw,1.08rem); }
+.branch[aria-pressed=true] .symbol { transform: scale(1.1); }
+.map:has(.branch[aria-pressed=true]) .branch[aria-pressed=false] .symbol { opacity: .63; }
+.branches.many { gap: .5rem; }
+.branches.many::before, .branches.many .branch::before, .branches.many .branch::after { display: none; }
+.symbol { display: block; width: 100%; max-width: 9rem; margin: 0 auto .25rem; }
+.caption { margin: .8rem 0 0; color: #53695c; font-size: .8rem; }
+.controls { grid-column: 1; padding: 0 1rem 1.2rem; display: flex; justify-content: center; align-items: start; gap: .8rem; font-size: .8rem; }
+.controls output { padding-top: .5rem; color: #455f55; }
+.controls button { padding: .4rem .8rem; border-radius: 2rem; background: #fffdf5; border: 1px solid #789689; }
+.scene { grid-column: 2; grid-row: 1 / 3; padding: clamp(1rem,2.3vw,1.8rem); min-width: 0; overflow-wrap: anywhere; }
+.scene[hidden] { display: none; }
+.scene h3 { margin: 0 0 .35rem; color: #235950; font-size: 1.5rem; }
+.scene p { margin: .35rem 0; }
+.relation { color: #465e56; font-size: .9rem; }
+.fact { border-top: 1px solid #ccd6cc; padding: .85rem 0; }
+.fact h4 { font-size: .86rem; margin: 0; color: #526b62; }
+summary { color: #255c52; font-size: .85rem; padding: .45rem 0; font-weight: 600; }
+.record { padding: .5rem .7rem; background: #f2f5ee; border-radius: .45rem; }
+dl { margin: .5rem 0; }
+dt { font-size: .78rem; font-weight: bold; color: #53675d; }
+dd { margin: 0 0 .35rem; }
+.source { margin-block: .65rem; font-size: .88rem; }
+a { color: #145a52; }
+blockquote { margin: .3rem 0; border-left: 2px solid #a9bfb1; padding-left: .65rem; }
+@media(max-width: 740px) {
+    .group { display: block; }
+    main { padding-block: 1rem 2rem; }
+    .map { padding: 1rem .5rem; }
+    .controls { padding-bottom: .8rem; }
+}
