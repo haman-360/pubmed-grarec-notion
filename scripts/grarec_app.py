@@ -11,7 +11,7 @@ from paper_pipeline.manual_status import StatusReporter
 from paper_pipeline.intake import (PENDING, ARCHIVE, ensure_folders, inventory, organize,
                                    parse_pmids, result_message, workspace_lock)
 from paper_pipeline.image_review import CHECKS
-from paper_pipeline import ledger_inbox, reading_guide, materials, material_pngs, teaching_jobs
+from paper_pipeline import artifact_status, ledger_inbox, reading_guide, materials, material_pngs, teaching_jobs
 from paper_pipeline.store import now, digest
 
 REPO = Path(__file__).resolve().parents[1]
@@ -99,6 +99,7 @@ class Application:
                     row['category'] = 'attention'
                 if errors:
                     row['note'] = '\n'.join([row['note'], *errors])
+            artifact_status.annotate(workspace, state)
             workspace.export_view(state)
             self.state = dict(base, **{k: v for k, v in state.items() if k not in base})
             self.state.update(observed_at=now(), intake_result=self.intake_result)

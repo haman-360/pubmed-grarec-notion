@@ -344,3 +344,16 @@ test('teaching history links each registered edition to its page and keeps pendi
     assert.equal(run("$('teaching-route').value"),'existing');
     assert.equal(run("$('teaching-single').open"),true);
 });
+
+test('first teaching request is counted once across routes and extra editions have their own list',()=>{
+    const {run,set}=dashboard();
+    set(`state.papers=state.papers.slice(0,2);
+        for(const p of state.papers){p.artifacts={requested:false};p.files=[{kind:'pdf',name:'paper.pdf'},{kind:'json',name:'paper.json',sha:'j'}]}
+        state.papers[1].artifacts.requested=true;
+        state.teaching_jobs=[{pmid:'2',route:'existing',version:'v',source_sha:'j'}];`);
+    assert.deepEqual(run("scopedTeachingRows('existing',false).map(p=>p.pmid)"),['1']);
+    assert.deepEqual(run("scopedTeachingRows('master',false).map(p=>p.pmid)"),['1']);
+    assert.deepEqual(run("scopedTeachingRows('master',true).map(p=>p.pmid)"),['2']);
+    set("state.papers[0].artifacts.requested=true;state.teaching_jobs.push({pmid:'1'})");
+    assert.deepEqual(run("scopedTeachingRows('existing',false)"),[]);
+});
