@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
 from pypdf import PdfWriter
 from PIL import Image
-from paper_pipeline.store import Store, encode, now, atomic_write
+from paper_pipeline.store import PendingBudgetSettlement, Store, encode, now, atomic_write
 from paper_pipeline.sources import Sources, inspect_pdf, matches_pdf
 from paper_pipeline.batches import API, Batches, config, schema
 from paper_pipeline.notion import Notion, rich, plain
@@ -513,6 +513,20 @@ class PipelineTests(unittest.TestCase):
         self.budget()
         self.store.reserve(r,'analysis',3)
         with self.assertRaises(ValueError): self.store.reserve(r,'image',1.1)
+
+    def test_teaching_reservations_wait_only_until_settlement_can_free_capacity(self):
+        r = self.revision(self.paper())
+        r = dict(r, config=encode(dict(json.loads(r['config']), mode='teaching_batch')))
+        a = self.store.reserve(r, 'analysis', 3.95)
+        self.store.update('attempts', a['id'], status='submitted')
+        with self.assertRaises(PendingBudgetSettlement):
+            self.store.reserve(r, 'analysis', .15)
+        self.store.update('attempts', a['id'], status='completed', actual=.7)
+        self.store.reserve(r, 'analysis', .15, check_only=True)
+        self.store.update('attempts', a['id'], actual=3.95)
+        with self.assertRaises(ValueError) as stopped:
+            self.store.reserve(r, 'analysis', .15)
+        self.assertNotIsInstance(stopped.exception, PendingBudgetSettlement)
 
     def test_outstanding_reserve_carries_across_billing_period(self):
         p = self.paper(); r = self.revision(p)

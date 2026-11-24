@@ -13,6 +13,10 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
+class PendingBudgetSettlement(ValueError):
+    """A confirmed, in-flight Batch could release enough of its reservation."""
+
+
 def now():
     return datetime.now(timezone.utc).isoformat()
 
@@ -252,16 +256,25 @@ class Store:
             self.db.execute("BEGIN IMMEDIATE")
             attempts = self.rows("SELECT * FROM attempts")
             cost = lambda a: float(a['actual'] if a['actual'] is not None else a['reserve'])
-            period_total = sum(cost(a) for a in attempts if a['period'] == period or a['actual'] is None)
-            since_check = sum(cost(a) for a in attempts if a['created_at'] >= budget['checked_at'] or a['actual'] is None)
-            revision_total = sum(cost(a) for a in attempts if a['revision_id'] == revision['id'])
             limit = 80.0 if budget.get('production') else 20.0
-            if period_total + amount > limit:
-                raise ValueError(f'期間予算${limit:.2f}を超えるため停止：使用・予約済み${period_total:.3f} ＋ 今回予約${amount:.3f}（見積額であり請求額ではありません）')
-            if since_check + amount > remaining:
-                raise ValueError(f'確認済み残高の利用可能額${remaining:.2f}を超えるため停止：確認後の使用・予約${since_check:.3f} ＋ 今回予約${amount:.3f}')
-            if revision_total + amount > 4:
-                raise ValueError(f'1処理版の予算$4.00を超えるため停止：使用・予約済み${revision_total:.3f} ＋ 今回予約${amount:.3f}')
+            limits = (
+                (f'期間予算${limit:.2f}', limit, [a for a in attempts if a['period'] == period or a['actual'] is None]),
+                (f'確認済み残高の利用可能額${remaining:.2f}', remaining,
+                 [a for a in attempts if a['created_at'] >= budget['checked_at'] or a['actual'] is None]),
+                ('1処理版の予算$4.00', 4, [a for a in attempts if a['revision_id'] == revision['id']]),
+            )
+            waiting = None
+            for name, ceiling, entries in limits:
+                used = sum(map(cost, entries))
+                if used + amount <= ceiling:
+                    continue
+                unsettled = sum(a['reserve'] for a in entries if a['actual'] is None and a['status'] == 'submitted')
+                detail = f'{name}を超えるため停止：使用・予約済み${used:.3f} ＋ 今回予約${amount:.3f}（見積額であり請求額ではありません）'
+                if json.loads(revision['config']).get('mode') != 'teaching_batch' or used - unsettled + amount > ceiling:
+                    raise ValueError(detail)
+                waiting = PendingBudgetSettlement(f'{name}の予約精算待ち：使用・予約済み${used:.3f} ／ 次の予約${amount:.3f}')
+            if waiting is not None:
+                raise waiting
             if check_only:
                 return
             identifier = uid()

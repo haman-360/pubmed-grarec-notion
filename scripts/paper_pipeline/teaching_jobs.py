@@ -10,7 +10,7 @@ from . import chapter_run, json_batch, materials, materials_notion, notion_sync,
 from .batches import Batches, config
 from .intake import workspace_lock
 from .manual import pmid_value
-from .store import atomic_write, digest, encode, now, uid
+from .store import PendingBudgetSettlement, atomic_write, digest, encode, now, uid
 
 QUEUE = '教材/作成依頼'
 ACTIVE = {'reserved', 'submitting', 'unknown', 'submitted'}
@@ -362,6 +362,8 @@ def advance(repo, workspace, pmid, api=None, notion_api=None, route='master'):
             process(repo, workspace, pmid, api)
             if reading.get('held'):
                 write(folder/'reading.json', held=False)
+        except PendingBudgetSettlement as error:
+            write(folder/'reading.json', message=str(error)+'。Batch回収後に自動で再判定します。', held=False)
         except ValidationError as error:
             write(folder/'reading.json', message='教材JSONを確認してください：'+error.json_path,
                   held=True,held_request=intent.get('request_id'))

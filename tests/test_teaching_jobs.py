@@ -164,6 +164,17 @@ class TeachingFlow(unittest.TestCase):
         self.app.run('teaching-request',self.intent)
         self.assertEqual(self.api.posts,2)
 
+    def test_pending_settlement_keeps_teaching_poll_enabled(self):
+        self.attach()
+        jobs.request(self.repo, self.ws, self.intent)
+        with patch.object(jobs, 'process', side_effect=jobs.PendingBudgetSettlement('予約精算待ち')):
+            jobs.advance(self.repo, self.ws, self.pmid, self.api)
+        row, = jobs.progress(self.ws)
+        self.assertFalse(row['held'])
+        self.assertIn('自動で再判定', row['message'])
+        jobs.advance(self.repo, self.ws, self.pmid, self.api)
+        self.assertEqual(self.api.posts, 2)
+
     def test_selected_requests_preserve_existing_intent_and_skip_stale_rows(self):
         self.attach()
         other = '90000002'
